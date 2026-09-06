@@ -105,10 +105,6 @@
 				<text class="ic ic-social action-icon">{{ commentIcon }}</text>
 				<text class="text text-muted" v-if="commentCount > 0">{{ commentCount }}</text>
 			</view>
-			<view class="action-item" @click="handleCollect">
-				<text class="ic ic-home action-icon" :class="{ collected: collected }">{{ collectIcon }}</text>
-				<text class="text text-muted" v-if="collectCount > 0">{{ collectCount }}</text>
-			</view>
 			<view class="action-item" @click="handleShare">
 				<text class="icon">↗</text>
 				<text class="text text-muted">分享</text>
@@ -199,12 +195,9 @@ const emit = defineEmits<{
 
 const liked = ref(props.dynamic.liked === true)
 const likeCount = ref(props.dynamic.likeCount != null ? props.dynamic.likeCount : 0)
-const collected = ref(props.dynamic.collected === true)
-const collectCount = ref(props.dynamic.collectCount != null ? props.dynamic.collectCount : 0)
 const followed = ref(props.dynamic.followed === true)
 const likeIcon = String.fromCharCode(0xec8c)
 const commentIcon = String.fromCharCode(0xe679)
-const collectIcon = String.fromCharCode(0xe60e)
 const applyStatus = ref(props.dynamic.applyStatus != null ? props.dynamic.applyStatus : 'none')
 
 watch(
@@ -212,8 +205,6 @@ watch(
 	(d: Dynamic) => {
 		liked.value = d.liked === true
 		likeCount.value = d.likeCount != null ? d.likeCount : 0
-		collected.value = d.collected === true
-		collectCount.value = d.collectCount != null ? d.collectCount : 0
 		followed.value = d.followed === true
 		applyStatus.value = d.applyStatus != null ? d.applyStatus : 'none'
 	},
@@ -387,10 +378,6 @@ const handleComment = () => {
 
 const handleShare = () => {
 	emit('share', props.dynamic.id)
-}
-
-const handleCollect = () => {
-	emit('collect', props.dynamic.id)
 }
 
 const handleFollow = () => {
@@ -762,10 +749,6 @@ const handleOpen = () => {
 
 .action-icon.liked {
 	color: var(--danger);
-}
-
-.action-icon.collected {
-	color: var(--gold);
 }
 
 .action-icon.liked {

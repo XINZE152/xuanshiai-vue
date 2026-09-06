@@ -22,13 +22,15 @@
 			</view>
 		</view>
 
-		<scroll-view v-else class="scroll-content" scroll-y enhanced show-scrollbar="false" refresher-enabled="true" :refresher-triggered="refreshing" @refresherrefresh="onPullRefresh" @refresherrestore="refreshing = false">
+		<scroll-view v-else class="scroll-content" scroll-y enhanced show-scrollbar="false" :scroll-into-view="aiJumpAnchor" :scroll-with-animation="true" refresher-enabled="true" :refresher-triggered="refreshing" @refresherrefresh="onPullRefresh" @refresherrestore="refreshing = false">
 			<view class="progress-section">
 				<view class="progress-header"><text class="progress-label">资料完整度</text><text class="progress-value">{{ completeness }}%</text></view>
 				<view class="progress-track"><view class="progress-fill" :style="{ width: completeness + '%' }"></view></view>
 				<text class="progress-hint">资料越完整，推荐权重越高，更容易遇见对的人</text>
 				<text v-if="missingCompletionSummary != ''" class="progress-missing">待完善：{{ missingCompletionSummary }}</text>
 			</view>
+
+			<XsaProfileAiCard :score="aiScore" :summary="aiSummary" :todos="aiTodos" :has-data="aiHasData" :analyzing="aiAnalyzing" :error-message="aiError" :stale="aiStale" @retry="onAiRetry" @jump="onAiJump" />
 
 			<view class="section-card avatar-section">
 				<view class="section-heading">
@@ -102,7 +104,7 @@
 				</view>
 			</view>
 
-			<view class="section-card intro-card">
+			<view id="sec-self_intro" class="section-card intro-card">
 				<view class="section-heading"><text class="section-title">自我介绍{{ completionSuffix('intro', 10) }}</text><view class="pill-action" @tap="saveIntroduction"><text class="pill-action-text">保存</text></view></view>
 				<textarea class="intro-main-input" :class="{ 'has-content': introHasContent }" :value="formData.introduction" maxlength="500" placeholder="分享一下你的性格、爱好、生活态度...让TA更快了解你" @input="onInput('introduction', $event)"></textarea>
 				<text class="section-caption">超有趣的自我介绍会被更多人看见哦！完成后建议搭配照片验证</text>
@@ -119,7 +121,7 @@
 				<text v-if="!completionPassed('interest')" class="completion-warning">兴趣标签：少于 3 个</text>
 			</view>
 
-			<view class="section-card tags-card" @tap="goTagsEdit('personality')">
+			<view id="sec-personality_tags" class="section-card tags-card" @tap="goTagsEdit('personality')">
 				<view class="section-heading"><text class="section-title">性格标签{{ completionSuffix('personality', 3) }}</text><view class="pill-action"><text class="pill-action-text">编辑</text><text class="pill-action-arrow">›</text></view></view>
 				<text class="section-caption">选择能代表你的性格特征</text>
 				<view class="tag-list">
@@ -136,7 +138,7 @@
 				<text v-if="!completionPassed('preference')" class="completion-warning">择偶要求：未看到有效年龄范围</text>
 			</navigator>
 
-			<view class="section-card qa-card">
+			<view id="sec-qa_answers" class="section-card qa-card">
 				<text class="section-title">关于我</text>
 				<text class="section-caption">你的回答将展示在个人主页，帮助对方更深入了解你</text>
 				<view class="qa-item" v-for="(qa, index) in qaItems" :key="qa.id" @tap="openQaEditor(index)">
@@ -292,6 +294,8 @@
 
 <script setup lang="uts">
 	import { getOwnProfile, updateOwnProfile, updateOwnNickname, getOwnPreferences, uploadUserProfileMedia, deleteUserProfilePhoto, getMeProfile, getProfileCompletion, getAgreementVersions, acceptAgreement } from '@/api'
+	import { getLatestThoughtfulness, analyzeProfileThoughtfulness, normalizeThoughtfulness, ThoughtfulnessResult } from '@/api/ai-profile.uts'
+	import XsaProfileAiCard from '@/components/XsaProfileAiCard.uvue'
 	import { resolveMediaUrl } from '@/api/config.uts'
 	import locationJson from '@/data/location.json'
 
@@ -518,6 +522,136 @@
 		}
 	}
 
+	// ===== AI 用心度 =====
+	const AI_THOUGHTFULNESS_KEY = 'xsa_profile_ai_thoughtfulness'
+	const aiAnalyzing = ref(false)
+	const aiError = ref('')
+	const aiResult = ref<ThoughtfulnessResult | null>(null)
+	const aiStale = ref(false)
+	const aiJumpAnchor = ref('')
+	const pendingAiEditedKeys = ref([] as string[])
+	const lastSavedPayloadJson = ref('')
+	const aiHasData = computed(() => aiResult.value != null)
+	const aiScore = computed(() => aiResult.value != null ? aiResult.value!.score : 0)
+	const aiSummary = computed(() => aiResult.value != null ? aiResult.value!.summary : '')
+	const aiTodos = computed(() => aiResult.value != null ? aiResult.value!.todos : [])
+
+	const payloadHash = (payload: any): string => {
+		try {
+			const text = JSON.stringify(payload)
+			let hash = 0
+			for (let i = 0; i < text.length; i++) hash = (hash * 31 + text.charCodeAt(i)) | 0
+			return 'h' + hash
+		} catch (e) { return '' }
+	}
+
+	const persistThoughtfulness = () => {
+		const result = aiResult.value
+		if (result == null) return
+		try {
+			uni.setStorageSync(AI_THOUGHTFULNESS_KEY, {
+				score: result.score,
+				summary: result.summary,
+				todos: result.todos,
+				generated_at: result.generatedAt,
+				profile_hash: payloadHash(buildProfilePayload())
+			} as any)
+		} catch (e) {
+			console.error('[EditProfile] thoughtfulness persist failed', e)
+		}
+	}
+
+	const loadThoughtfulness = async () => {
+		try {
+			const cached = uni.getStorageSync(AI_THOUGHTFULNESS_KEY) as any
+			if (cached != null && typeof cached == 'object') {
+				aiResult.value = normalizeThoughtfulness(cached)
+				aiStale.value = cached.profile_hash != null && '' + cached.profile_hash != '' && '' + cached.profile_hash != payloadHash(buildProfilePayload())
+			}
+		} catch (e) {
+			console.error('[EditProfile] thoughtfulness cache read failed', e)
+		}
+		try {
+			const res = await getLatestThoughtfulness()
+			if (res.success && res.data != null) {
+				aiResult.value = res.data as ThoughtfulnessResult
+				aiError.value = ''
+				aiStale.value = false
+				persistThoughtfulness()
+			} else if (!res.success && aiResult.value == null) {
+				aiError.value = res.message != null ? '' + res.message : 'AI 用心度评审暂时不可用'
+			}
+		} catch (e) {
+			if (aiResult.value == null) aiError.value = '网络异常，AI 用心度评审暂时不可用'
+		}
+	}
+
+	const triggerThoughtfulness = async (trigger: string, editedKeys: string[]) => {
+		if (aiAnalyzing.value) return
+		aiAnalyzing.value = true
+		aiError.value = ''
+		try {
+			const res = await analyzeProfileThoughtfulness(trigger, editedKeys)
+			if (!res.success || res.data == null) {
+				if (aiResult.value == null) aiError.value = res.message != null ? '' + res.message : 'AI 用心度分析失败，请稍后再试'
+				return
+			}
+			aiResult.value = res.data as ThoughtfulnessResult
+			aiStale.value = false
+			persistThoughtfulness()
+		} catch (e) {
+			if (aiResult.value == null) aiError.value = '网络异常，AI 用心度分析失败'
+		} finally {
+			aiAnalyzing.value = false
+		}
+	}
+
+	const onAiRetry = () => { triggerThoughtfulness('manual', []) }
+
+	const onAiJump = (key: string) => {
+		const anchors: any = {
+			avatar: 'sec-avatar',
+			photos: 'sec-photos',
+			basic_info: 'sec-basic_info',
+			mbti: 'sec-basic_info',
+			self_intro: 'sec-self_intro',
+			interest_tags: 'sec-interest_tags',
+			personality_tags: 'sec-personality_tags',
+			qa_answers: 'sec-qa_answers'
+		}
+		const target = anchors[key] != null ? '' + anchors[key] : ''
+		if (target == '') return
+		aiJumpAnchor.value = ''
+		setTimeout(() => { aiJumpAnchor.value = target }, 80)
+	}
+
+	/** 对比保存前后 payload,把变更字段映射为用心度评审的 key 集合 */
+	const collectEditedKeys = (beforeJson: string, after: any, pending: string[]): string[] => {
+		const changed: string[] = []
+		let before: any = null
+		try { before = JSON.parse(beforeJson) } catch (e) { before = null }
+		const keys = Object.keys(after != null ? after : {})
+		for (const k of keys) {
+			const beforeValue = before != null && before[k] != null ? before[k] : null
+			const afterValue = after[k] != null ? after[k] : null
+			if (JSON.stringify(beforeValue) != JSON.stringify(afterValue)) changed.push(k)
+		}
+		const mapped: string[] = []
+		const push = (key: string) => { if (mapped.indexOf(key) < 0) mapped.push(key) }
+		for (const k of changed.concat(pending)) {
+			if (k == 'self_intro') push('self_intro')
+			else if (k == 'qa_answers') push('qa_answers')
+			else if (k == 'interest_tags') push('interest_tags')
+			else if (k == 'personality_tags') push('personality_tags')
+			else if (k == 'mbti') push('mbti')
+			else if (k == 'avatar' || k == 'photos') push(k)
+			else push('basic_info')
+		}
+		return mapped
+	}
+
+	const clearPendingEditedKeys = () => { pendingAiEditedKeys.value.splice(0, pendingAiEditedKeys.value.length) }
+
 	const load = async () => {
 		loading.value = true
 		loadError.value = ''
@@ -550,6 +684,9 @@
 				console.error('[EditProfile] auth profile unavailable', meError)
 			}
 			await refreshCompletion()
+			lastSavedPayloadJson.value = JSON.stringify(buildProfilePayload())
+			clearPendingEditedKeys()
+			loadThoughtfulness()
 		} catch (e) {
 			loadError.value = '网络不可用，请重试'
 		} finally {
@@ -924,6 +1061,7 @@
 		const res = await deleteUserProfilePhoto(Number(item.id))
 		if (res.success) {
 			list.splice(index, 1)
+			if (pendingAiEditedKeys.value.indexOf('photos') < 0) pendingAiEditedKeys.value.push('photos')
 			await refreshCompletion()
 		}
 		else uni.showToast({ title: res.message != null ? '' + res.message : '删除失败，请重试', icon: 'none' })
@@ -1158,6 +1296,11 @@
 			}
 			await refreshCompletion()
 			uni.showToast({ title: '资料已保存', icon: 'success' })
+			// AI 用心度:对本次保存的编辑内容触发评审,不阻塞保存/返回流程
+			const editedKeys = collectEditedKeys(lastSavedPayloadJson.value, buildProfilePayload(), pendingAiEditedKeys.value)
+			clearPendingEditedKeys()
+			lastSavedPayloadJson.value = JSON.stringify(buildProfilePayload())
+			triggerThoughtfulness('save', editedKeys)
 			if (detailSheetVisible.value) detailSheetVisible.value = false
 			else setTimeout(() => uni.navigateBack({ delta: 1 }), 700)
 		} catch (e) {
@@ -1292,14 +1435,14 @@
 .preference-card { gap: 8px; }
 .preference-summary { padding: 12px 14px; border-radius: 12px; background: var(--warm); color: var(--ink2); font-size: 13px; line-height: 1.5; }
 
-/* QA */
-.qa-card { gap: 8px; }
-.qa-item { padding: 12px; border-radius: 12px; background: var(--warm); display: flex; flex-direction: column; gap: 6px; }
+/* QA — 紧凑布局，避免"关于我"占据过多纵向空间 */
+.qa-card { gap: 4px; padding: 12px 16px; }
+.qa-item { padding: 8px 10px; border-radius: 10px; background: var(--warm); display: flex; flex-direction: column; gap: 2px; }
 .qa-question { font-size: 13px; font-weight: 600; color: var(--ink); }
 .qa-answer-row { display: flex; flex-direction: row; justify-content: space-between; align-items: center; }
 .qa-hint { font-size: 12px; color: var(--muted); }
-.qa-answer-text { flex: 1; font-size: 13px; color: var(--ink2); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.qa-edit-icon { font-size: 14px; color: var(--sage); margin-left: 8px; flex-shrink: 0; }
+.qa-answer-text { flex: 1; font-size: 12px; color: var(--ink2); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.qa-edit-icon { font-size: 13px; color: var(--sage); margin-left: 6px; flex-shrink: 0; }
 .qa-sheet-body { padding: 4px 20px 0 20px; display: flex; flex-direction: column; gap: 10px; }
 .qa-sheet-question { font-size: 15px; font-weight: 600; color: var(--ink); line-height: 1.5; }
 .qa-sheet-textarea { width: 100%; height: 140px; padding: 12px; border-radius: 12px; background: var(--warm); font-size: 14px; color: var(--ink); line-height: 1.6; box-sizing: border-box; }

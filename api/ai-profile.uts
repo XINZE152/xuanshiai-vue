@@ -367,6 +367,129 @@ export async function polishPaperPlaneText(content: string, field: string, style
   return { success: true, data: { original: original, polished: polished, field: field, style: raw.style != null ? raw.style : style, changedPoints: raw.changed_points != null ? raw.changed_points : [] }, code: 0, message: 'success' }
 }
 
+/** AI 用心度评审待办条目 */
+export interface ThoughtfulnessTodo {
+  key: string
+  label: string
+  advice: string
+  priority: string
+}
+
+/** AI 用心度评审结果 */
+export interface ThoughtfulnessResult {
+  score: number
+  summary: string
+  todos: ThoughtfulnessTodo[]
+  generatedAt: string
+}
+
+/** 用心度待办 key 与显示名对照(与 buildProfilePayload 字段对齐,契约见 docs/ai-profile-thoughtfulness-api.md) */
+export const THOUGHTFULNESS_KEY_LABELS: Map<string, string> = new Map()
+THOUGHTFULNESS_KEY_LABELS.set('avatar', '头像')
+THOUGHTFULNESS_KEY_LABELS.set('photos', '我的相册')
+THOUGHTFULNESS_KEY_LABELS.set('self_intro', '自我介绍')
+THOUGHTFULNESS_KEY_LABELS.set('interest_tags', '兴趣标签')
+THOUGHTFULNESS_KEY_LABELS.set('personality_tags', '性格标签')
+THOUGHTFULNESS_KEY_LABELS.set('qa_answers', '关于我问答')
+THOUGHTFULNESS_KEY_LABELS.set('basic_info', '基础信息')
+THOUGHTFULNESS_KEY_LABELS.set('mbti', 'MBTI')
+
+/** 将后端 snake_case 数据规范化为 ThoughtfulnessResult(缓存读回时也复用) */
+export function normalizeThoughtfulness(raw: any): ThoughtfulnessResult {
+  const data = raw != null ? raw : {}
+  const score = data.score != null ? Number(data.score) : 0
+  const summary = data.summary != null ? '' + data.summary : ''
+  const todosRaw: any[] = data.todos != null ? data.todos as any[] : []
+  const todos: ThoughtfulnessTodo[] = []
+  todosRaw.forEach((item) => {
+    if (item == null) return
+    const key = item.key != null ? '' + item.key : ''
+    if (key == '') return
+    const keyLabel = THOUGHTFULNESS_KEY_LABELS.get(key)
+    todos.push({
+      key: key,
+      label: item.label != null ? ('' + item.label) : (keyLabel != null ? keyLabel : key),
+      advice: item.advice != null ? '' + item.advice : '',
+      priority: item.priority != null ? '' + item.priority : 'medium'
+    })
+  })
+  return {
+    score: score,
+    summary: summary,
+    todos: todos,
+    generatedAt: data.generated_at != null ? '' + data.generated_at : ''
+  }
+}
+
+/** 用心度接口统一错误文案(401/402/503 语义与 polishPaperPlaneText 一致) */
+function thoughtfulnessErrorMessage(res: any, fallback: string): string {
+  const code = res.code != null ? Number(res.code) : 0
+  if (code == 401) return '请先登录后再使用 AI 用心度评审'
+  if (code == 402) return 'AI 用心度分析次数已用完，请稍后再试'
+  if (code == 503) return 'AI 服务暂时不可用，请稍后再试'
+  return res.message != null ? '' + res.message : fallback
+}
+
+/**
+ * 获取最新一次 AI 用心度评审结果。
+ * 后端未生成过评审时返回 404,此处归一为 success:true + data:null(「未评审」态)。
+ */
+export async function getLatestThoughtfulness(): Promise<any> {
+  const res = await request({
+    url: '/ai/profile/thoughtfulness',
+    method: 'GET',
+    mockData: {
+      score: 76,
+      summary: '你的资料整体真诚自然，但自我介绍偏短、兴趣标签偏少，用心程度还有提升空间。',
+      todos: [
+        { key: 'self_intro', label: '自我介绍', advice: '目前 42 字偏短，建议补充一个具体的生活场景或周末常态，让 TA 更容易找到共鸣话题。', priority: 'high' },
+        { key: 'interest_tags', label: '兴趣标签', advice: '兴趣标签只有 2 个，建议补充到 5 个以上，推荐权重会明显提高。', priority: 'medium' },
+        { key: 'qa_answers', label: '关于我问答', advice: '问答还有 2 题未回答，回答后 AI 分身才能替你更好地展示自己。', priority: 'medium' }
+      ],
+      generated_at: '2026-09-06T12:00:00+08:00'
+    }
+  })
+  if (!res.success) {
+    const code = res.code != null ? Number(res.code) : 0
+    if (code == 404) return { success: true, data: null, code: 0, message: 'not_analyzed' }
+    return { success: false, data: null, code: res.code, message: thoughtfulnessErrorMessage(res, '用心度评审获取失败，请稍后再试') }
+  }
+  return { success: true, data: normalizeThoughtfulness(res.data), code: 0, message: 'success' }
+}
+
+/**
+ * 触发 AI 用心度(重)分析。后端读取库内最新资料自行评审,前端只传触发方式与本次编辑字段。
+ * trigger: 'save'=保存后自动 | 'manual'=手动重新分析。
+ */
+export async function analyzeProfileThoughtfulness(trigger: string, editedKeys: string[]): Promise<any> {
+  const normalizedTrigger = trigger == 'manual' ? 'manual' : 'save'
+  const keys: string[] = []
+  (editedKeys != null ? editedKeys : []).forEach((k) => {
+    const key = k != null ? ('' + k).trim() : ''
+    if (key != '' && keys.indexOf(key) < 0) keys.push(key)
+  })
+  const res = await request({
+    url: '/ai/profile/thoughtfulness',
+    method: 'POST',
+    headers: { 'Idempotency-Key': genIdempotencyKey() },
+    data: { trigger: normalizedTrigger, edited_keys: keys },
+    mockData: {
+      score: 68,
+      summary: '本次编辑的自我介绍比之前更具体了，值得肯定；不过基础信息还有缺项，整体用心度仍有提升空间。',
+      todos: [
+        { key: 'basic_info', label: '基础信息', advice: '家乡和收入还未填写，完整的基础信息能显著提高推荐精准度。', priority: 'high' },
+        { key: 'self_intro', label: '自我介绍', advice: '可以再加一句你期待的关系状态，让目标更清晰。', priority: 'medium' },
+        { key: 'photos', label: '我的相册', advice: '相册只有 1 张照片，建议补充到 3 张以上，展示更立体的生活。', priority: 'low' }
+      ],
+      generated_at: '2026-09-06T15:00:00+08:00'
+    }
+  })
+  if (!res.success) {
+    return { success: false, data: null, code: res.code, message: thoughtfulnessErrorMessage(res, 'AI 用心度分析失败，请稍后再试') }
+  }
+  return { success: true, data: normalizeThoughtfulness(res.data), code: 0, message: 'success' }
+}
+
 	/**
  * 语音转写:上传音频到 /voice/transcribe → 拿 task_id → 轮询 /ai/tasks/{id}
  * → status=succeeded 时从 result_payload.transcript 取转写文本。

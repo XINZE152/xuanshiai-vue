@@ -1,0 +1,153 @@
+<template>
+	<view class="ai-card">
+		<view class="ai-stale" v-if="stale && hasData && !analyzing"><text class="ai-stale-text">资料已更新，建议重新分析</text></view>
+
+		<view class="ai-head">
+			<view class="ai-badge"><text class="ai-badge-spark">✦</text><text class="ai-badge-text">AI 用心度</text></view>
+			<view class="ai-score" v-if="hasData && !analyzing && errorMessage == ''">
+				<text class="ai-score-num">{{ score }}</text><text class="ai-score-unit">分</text>
+				<text class="ai-score-tag" :class="scoreTagClass">{{ scoreTag }}</text>
+			</view>
+		</view>
+
+		<view class="ai-analyzing" v-if="analyzing">
+			<view class="ai-dots"><view></view><view></view><view></view></view>
+			<text class="ai-analyzing-text">AI 正在阅读你的资料，评估用心程度…</text>
+		</view>
+
+		<view class="ai-error" v-else-if="errorMessage != ''">
+			<text class="ai-error-text">{{ errorMessage }}</text>
+			<view class="ai-retry" @tap="onRetry"><text class="ai-retry-text">重试</text></view>
+		</view>
+
+		<view class="ai-empty" v-else-if="!hasData">
+			<text class="ai-empty-title">让 AI 评审你的资料用心程度</text>
+			<text class="ai-empty-desc">分析资料填写质量，给出具体的优化建议，让你的资料更打动人</text>
+			<view class="ai-start" @tap="onRetry"><text class="ai-start-text">开始分析</text></view>
+		</view>
+
+		<view class="ai-body" v-else>
+			<text class="ai-summary">{{ summary }}</text>
+			<view class="ai-todos" v-if="visibleTodos.length > 0">
+				<view class="ai-todo" v-for="(todo, index) in visibleTodos" :key="todo.key" @tap="onTodoTap(todo.key)">
+					<view class="ai-todo-dot" :class="'p-' + todo.priority"><text class="ai-todo-index">{{ index + 1 }}</text></view>
+					<view class="ai-todo-copy">
+						<text class="ai-todo-label">{{ todo.label }}</text>
+						<text class="ai-todo-advice">{{ todo.advice }}</text>
+					</view>
+					<text class="ai-todo-arrow">›</text>
+				</view>
+			</view>
+			<view class="ai-expand" v-if="todos.length > 3" @tap="expanded = !expanded">
+				<text class="ai-expand-text">{{ expanded ? '收起' : '展开全部 ' + todos.length + ' 条建议' }}</text>
+				<text class="ai-expand-arrow">{{ expanded ? '︿' : '﹀' }}</text>
+			</view>
+			<view class="ai-footer">
+				<text class="ai-disclaimer">AI 评审仅供参考</text>
+				<view class="ai-refresh" @tap="onRetry"><text class="ai-refresh-text">重新分析</text></view>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { ThoughtfulnessTodo } from '@/api/ai-profile.uts'
+
+	interface Props {
+		score: number
+		summary: string
+		todos: ThoughtfulnessTodo[]
+		hasData: boolean
+		analyzing: boolean
+		errorMessage: string
+		stale: boolean
+	}
+	const props = withDefaults(defineProps<Props>(), {
+		score: 0,
+		summary: '',
+		errorMessage: '',
+		stale: false
+	})
+	const emit = defineEmits<{ retry: [], jump: [key: string] }>()
+	const expanded = ref(false)
+
+	const visibleTodos = computed<ThoughtfulnessTodo[]>(() => {
+		if (expanded.value) return props.todos
+		return props.todos.slice(0, 3)
+	})
+	const scoreTag = computed(() => {
+		if (props.score >= 80) return '很用心'
+		if (props.score >= 70) return '不错'
+		if (props.score >= 50) return '待提升'
+		return '需完善'
+	})
+	const scoreTagClass = computed(() => {
+		if (props.score >= 80) return 'tag-good'
+		if (props.score >= 70) return 'tag-fair'
+		return 'tag-low'
+	})
+	const onRetry = () => emit('retry')
+	const onTodoTap = (key: string) => emit('jump', key)
+</script>
+
+<style scoped>
+	.ai-card { margin-bottom: 14px; padding: 16px 18px; background: var(--surface); border-radius: 20px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--sage-soft); }
+	.ai-stale { display: flex; flex-direction: row; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 10px; background: var(--accent-bg); }
+	.ai-stale-text { font-size: 12px; color: var(--accent2); font-weight: 600; }
+	.ai-head { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+	.ai-badge { display: flex; flex-direction: row; align-items: center; gap: 5px; }
+	.ai-badge-spark { font-size: 13px; color: var(--sage); }
+	.ai-badge-text { font-size: 16px; font-weight: 700; color: var(--ink); font-family: var(--serif); }
+	.ai-score { display: flex; flex-direction: row; align-items: baseline; gap: 3px; }
+	.ai-score-num { font-size: 26px; font-weight: 700; color: var(--sage); line-height: 1; }
+	.ai-score-unit { font-size: 12px; color: var(--muted); }
+	.ai-score-tag { margin-left: 5px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 9px; }
+	.tag-good { background: var(--sage-soft); color: var(--sage); }
+	.tag-fair { background: var(--accent-bg); color: var(--accent2); }
+	.tag-low { background: var(--warm); color: var(--ink2); }
+
+	.ai-analyzing { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 0 8px; }
+	.ai-dots { display: flex; flex-direction: row; gap: 6px; }
+	.ai-dots view { width: 7px; height: 7px; border-radius: 4px; background: var(--sage); opacity: 0.35; animation: ai-pulse 1.2s ease-in-out infinite; }
+	.ai-dots view:nth-child(2) { animation-delay: 0.18s; }
+	.ai-dots view:nth-child(3) { animation-delay: 0.36s; }
+	@keyframes ai-pulse { 0%, 100% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.15); } }
+	.ai-analyzing-text { font-size: 13px; color: var(--muted); }
+
+	.ai-error { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; background: var(--warm); }
+	.ai-error-text { font-size: 13px; line-height: 1.5; color: var(--ink2); }
+	.ai-retry { align-self: flex-start; padding: 6px 16px; border-radius: 15px; background: var(--sage); }
+	.ai-retry-text { font-size: 13px; font-weight: 600; color: var(--text-invert); }
+
+	.ai-empty { display: flex; flex-direction: column; gap: 8px; padding: 6px 0 2px; }
+	.ai-empty-title { font-size: 15px; font-weight: 700; color: var(--ink); }
+	.ai-empty-desc { font-size: 13px; line-height: 1.6; color: var(--muted); }
+	.ai-start { align-self: flex-start; margin-top: 6px; padding: 9px 22px; border-radius: 19px; background: var(--sage); box-shadow: var(--shadow-sm); }
+	.ai-start-text { font-size: 14px; font-weight: 600; color: var(--text-invert); }
+
+	.ai-body { display: flex; flex-direction: column; gap: 12px; }
+	.ai-summary { font-size: 14px; line-height: 1.7; color: var(--ink2); }
+	.ai-todos { display: flex; flex-direction: column; }
+	.ai-todo { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+	.ai-todo:first-child { border-top: none; }
+	.ai-todo-dot { flex-shrink: 0; width: 22px; height: 22px; border-radius: 11px; display: flex; align-items: center; justify-content: center; }
+	.p-high { background: var(--sage); }
+	.p-medium { background: var(--sage-soft); }
+	.p-low { background: var(--warm); }
+	.ai-todo-index { font-size: 11px; font-weight: 700; color: var(--text-invert); }
+	.ai-todo-copy { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+	.ai-todo-label { font-size: 14px; font-weight: 700; color: var(--ink); }
+	.ai-todo-advice { font-size: 13px; line-height: 1.6; color: var(--muted); }
+	.ai-todo-arrow { flex-shrink: 0; font-size: 18px; color: var(--muted); line-height: 22px; }
+
+	.ai-expand { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 4px; padding: 4px 0; }
+	.ai-expand-text { font-size: 12px; font-weight: 600; color: var(--sage); }
+	.ai-expand-arrow { font-size: 11px; color: var(--sage); }
+
+	.ai-footer { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+	.ai-disclaimer { font-size: 11px; color: var(--muted); }
+	.ai-refresh { padding: 6px 14px; border-radius: 15px; border: 1px solid var(--line); background: var(--paper); }
+	.ai-refresh-text { font-size: 12px; font-weight: 600; color: var(--ink2); }
+
+	@media (max-width: 350px) { .ai-card { padding: 14px 15px; } }
+</style>
