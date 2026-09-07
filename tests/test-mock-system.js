@@ -48,7 +48,8 @@ try {
     'mock/help.uts',
     'mock/spotlight.uts',
     'mock/ai-avatar.uts',
-    'mock/ai-advisor.uts'
+    'mock/ai-advisor.uts',
+    'mock/ai-memory.uts'
   ]
 
   mockFiles.forEach(file => {
@@ -81,7 +82,8 @@ try {
     'api/help.uts',
     'api/spotlight.uts',
     'api/ai-avatar.uts',
-    'api/ai-advisor.uts'
+    'api/ai-advisor.uts',
+    'api/ai-memory.uts'
   ]
 
   apiFiles.forEach(file => {

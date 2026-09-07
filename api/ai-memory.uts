@@ -1,0 +1,295 @@
+/**
+ * Memory Kernel v1 / Phase 3 REST 客户端。
+ *
+ * 真实模式只负责请求与字段适配，不在前端决定 owner、subject 或消费权限；
+ * USE_MOCK=true 时转到同契约的运行时 Mock。所有写操作都要求调用方持有一
+ * 个稳定的 Idempotency-Key，便于网络不确定时安全重试。
+ */
+
+import { request } from './request.uts'
+import { USE_MOCK, buildApiUrl } from './config.uts'
+import {
+	getMockMemoryViewData,
+	confirmMockMemory,
+	correctMockMemory,
+	suppressMockMemory,
+	revokeMockMemoryGrant,
+	liftMockMemorySuppression
+} from '@/mock/ai-memory.uts'
+
+export type MemorySubject = 'personal' | 'ideal_partner'
+export type MemoryClaimStatus = 'proposed' | 'confirmed' | 'superseded' | 'contradicted' | 'user_corrected' | 'expired'
+export type MemoryStatusFilter = 'active' | 'proposed' | 'confirmed' | 'superseded' | 'contradicted' | 'user_corrected' | 'expired' | 'all'
+
+export interface MemoryItem {
+	claimId: string
+	subject: MemorySubject
+	nodeType: string
+	canonicalKey: string
+	value: any
+	content: string
+	status: MemoryClaimStatus
+	confidence: number | null
+	stability: number
+	importance: number
+	sourceQuote: string | null
+	sourceRef: string | null
+	revision: number
+	updatedAt: string
+	suppressed: boolean
+	suppressionId: string | null
+}
+
+export interface MemoryGrant {
+	grantId: string
+	functionKey: string
+	purpose: string
+	dataCategory: string
+	status: 'active' | 'revoked'
+	policyRevision: string
+	grantedAt: string
+	revokedAt: string | null
+}
+
+export interface MemoryViewResponse {
+	items: MemoryItem[]
+	grants: MemoryGrant[]
+	nextCursor: string | null
+	hasMore: boolean
+}
+
+export interface MemoryConfirmResponse {
+	claimId: string
+	eventId: string
+	status: 'confirmed'
+	revision: number
+	importanceConfirmed: boolean
+}
+
+export interface MemoryCorrectResponse {
+	claimId: string
+	eventId: string
+	status: 'user_corrected'
+	revision: number
+	proposedClaimId: string | null
+}
+
+export interface MemorySuppressResponse {
+	suppressionId: string
+	eventId: string
+	status: 'suppressed'
+}
+
+export interface MemoryRevokeGrantResponse {
+	grantId: string
+	status: 'revoked' | 'already_revoked'
+	functionKey: string
+	purpose: string
+	dataCategory: string
+	invalidatedProjections: number
+}
+
+export interface MemoryLiftSuppressionResponse {
+	suppressionId: string
+	eventId: string
+	status: 'lifted'
+}
+
+function unwrap(raw: any): any {
+	if (raw != null && typeof raw == 'object' && raw.success === false) {
+		const error: any = new Error(raw.message != null ? String(raw.message) : '记忆请求失败')
+		error.code = raw.code != null ? raw.code : 'AI_MEMORY_ERROR'
+		error.status = typeof raw.code == 'number' ? raw.code : (raw.status != null ? raw.status : 0)
+		throw error
+	}
+	if (raw != null && typeof raw == 'object' && raw.success === true) return raw.data != null ? raw.data : {}
+	return raw != null && raw.data != null && raw.success == null ? raw.data : (raw ?? {})
+}
+
+function parseMockError(error: any): any {
+	if (error == null) return new Error('记忆请求失败')
+	if (error.code != null || error.status != null) return error
+	const message = error.message != null ? String(error.message) : String(error)
+	const split = message.indexOf(':')
+	const result: any = new Error(message)
+	result.code = split > 0 ? message.substring(0, split) : 'AI_MEMORY_ERROR'
+	result.status = 0
+	return result
+}
+
+function mockCall(operation: () => any): Promise<any> {
+	try {
+		return Promise.resolve(operation())
+	} catch (error) {
+		return Promise.reject(parseMockError(error))
+	}
+}
+
+function adaptItem(raw: any): MemoryItem {
+	const value = raw?.value
+	const revision = Number(raw?.revision ?? raw?.last_event_seq)
+	if (!(revision >= 1) || Math.floor(revision) != revision) {
+		throw new Error('记忆服务返回了无效 revision，已拒绝写入以保护事实版本')
+	}
+	return {
+		claimId: String(raw?.claim_id ?? raw?.claimId ?? ''),
+		subject: raw?.subject === 'ideal_partner' ? 'ideal_partner' : 'personal',
+		nodeType: String(raw?.node_type ?? raw?.nodeType ?? 'claim'),
+		canonicalKey: String(raw?.canonical_key ?? raw?.canonicalKey ?? ''),
+		value: value,
+		content: String(raw?.content ?? (typeof value == 'string' ? value : '')),
+		status: (raw?.status ?? 'proposed') as MemoryClaimStatus,
+		confidence: raw?.confidence == null ? null : Number(raw.confidence),
+		stability: Number(raw?.stability ?? 0),
+		importance: Number(raw?.importance ?? 0.5),
+		sourceQuote: raw?.source_quote ?? raw?.sourceQuote ?? null,
+		sourceRef: raw?.source_ref ?? raw?.sourceRef ?? null,
+		revision: revision,
+		updatedAt: String(raw?.updated_at ?? raw?.updatedAt ?? ''),
+		suppressed: raw?.suppressed === true,
+		suppressionId: raw?.suppression_id ?? raw?.suppressionId ?? null
+	}
+}
+
+function adaptGrant(raw: any): MemoryGrant {
+	return {
+		grantId: String(raw?.grant_id ?? raw?.grantId ?? ''),
+		functionKey: String(raw?.function_key ?? raw?.functionKey ?? ''),
+		purpose: String(raw?.purpose ?? ''),
+		dataCategory: String(raw?.data_category ?? raw?.dataCategory ?? ''),
+		status: raw?.status === 'revoked' ? 'revoked' : 'active',
+		policyRevision: String(raw?.policy_revision ?? raw?.policyRevision ?? ''),
+		grantedAt: String(raw?.granted_at ?? raw?.grantedAt ?? ''),
+		revokedAt: raw?.revoked_at ?? raw?.revokedAt ?? null
+	}
+}
+
+function adaptView(raw: any): MemoryViewResponse {
+	const list: any[] = Array.isArray(raw?.items) ? raw.items : []
+	const rawGrants: any[] = Array.isArray(raw?.grants) ? raw.grants : []
+	return {
+		items: list.map(adaptItem),
+		grants: rawGrants.map(adaptGrant),
+		nextCursor: raw?.next_cursor ?? raw?.nextCursor ?? null,
+		hasMore: raw?.has_more === true || raw?.hasMore === true
+	}
+}
+
+function adaptConfirm(raw: any): MemoryConfirmResponse {
+	return {
+		claimId: String(raw?.claim_id ?? raw?.claimId ?? ''),
+		eventId: String(raw?.event_id ?? raw?.eventId ?? ''),
+		status: 'confirmed',
+		revision: Number(raw?.revision ?? 0),
+		importanceConfirmed: raw?.importance_confirmed === true || raw?.importanceConfirmed === true
+	}
+}
+
+function adaptCorrect(raw: any): MemoryCorrectResponse {
+	return {
+		claimId: String(raw?.claim_id ?? raw?.claimId ?? ''),
+		eventId: String(raw?.event_id ?? raw?.eventId ?? ''),
+		status: 'user_corrected',
+		revision: Number(raw?.revision ?? 0),
+		proposedClaimId: raw?.proposed_claim_id ?? raw?.proposedClaimId ?? null
+	}
+}
+
+function adaptSuppress(raw: any): MemorySuppressResponse {
+	return {
+		suppressionId: String(raw?.suppression_id ?? raw?.suppressionId ?? ''),
+		eventId: String(raw?.event_id ?? raw?.eventId ?? ''),
+		status: 'suppressed'
+	}
+}
+
+function adaptRevoke(raw: any): MemoryRevokeGrantResponse {
+	return {
+		grantId: String(raw?.grant_id ?? raw?.grantId ?? ''),
+		status: raw?.status === 'already_revoked' ? 'already_revoked' : 'revoked',
+		functionKey: String(raw?.function_key ?? raw?.functionKey ?? ''),
+		purpose: String(raw?.purpose ?? ''),
+		dataCategory: String(raw?.data_category ?? raw?.dataCategory ?? ''),
+		invalidatedProjections: Number(raw?.invalidated_projections ?? raw?.invalidatedProjections ?? 0)
+	}
+}
+
+function adaptLift(raw: any): MemoryLiftSuppressionResponse {
+	return {
+		suppressionId: String(raw?.suppression_id ?? raw?.suppressionId ?? ''),
+		eventId: String(raw?.event_id ?? raw?.eventId ?? ''),
+		status: 'lifted'
+	}
+}
+
+/** 生成 1 次用户操作使用的稳定键；调用方重试时应传回同一个 key。 */
+export function genMemoryIdempotencyKey(action: string = 'memory'): string {
+	const safeAction = String(action).replace(/[^A-Za-z0-9._:-]/g, '-').substring(0, 24)
+	return 'memory-' + safeAction + '-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1000000000).toString(36)
+}
+
+function requireIdempotencyKey(key: string): string {
+	const value = key != null ? String(key).trim() : ''
+	if (value == '') return genMemoryIdempotencyKey()
+	return value.substring(0, 128)
+}
+
+/** GET /api/v1/ai/memory/view。默认只取 active，游标由服务端签发。 */
+export function getMemoryView(subject: MemorySubject | null = null, status: MemoryStatusFilter = 'active', limit: number = 20, cursor: string = ''): Promise<MemoryViewResponse> {
+	const pageSize = Math.max(1, Math.min(50, Math.floor(Number(limit)) || 20))
+	if (USE_MOCK) {
+		return mockCall(() => adaptView(getMockMemoryViewData(subject ?? '', status, pageSize, cursor)))
+	}
+	const data: any = { status: status, limit: pageSize }
+	if (subject != null && subject != '') data.subject = subject
+	if (cursor != null && cursor != '') data.cursor = cursor
+	return request({ url: buildApiUrl('/ai/memory/view'), method: 'GET', data: data }).then((raw: any) => adaptView(unwrap(raw)))
+}
+
+export function confirmMemory(claimId: string, expectedRevision: number, importance: number = 0.5, constraintType: string | null = null, suppliedKey: string = ''): Promise<MemoryConfirmResponse> {
+	const key = requireIdempotencyKey(suppliedKey)
+	const payload = { expected_revision: expectedRevision, importance: Math.max(0, Math.min(1, Number(importance))), constraint_type: constraintType }
+	if (USE_MOCK) return mockCall(() => adaptConfirm(confirmMockMemory(claimId, expectedRevision, payload.importance, constraintType, key)))
+	return request({ url: buildApiUrl('/ai/memory/' + encodeURIComponent(claimId) + '/confirm'), method: 'POST', data: payload, headers: { 'Idempotency-Key': key } }).then((raw: any) => adaptConfirm(unwrap(raw)))
+}
+
+export function correctMemory(claimId: string, expectedRevision: number, value: any, suppliedKey: string = ''): Promise<MemoryCorrectResponse> {
+	const key = requireIdempotencyKey(suppliedKey)
+	const payload = { expected_revision: expectedRevision, value: value }
+	if (USE_MOCK) return mockCall(() => adaptCorrect(correctMockMemory(claimId, expectedRevision, value, key)))
+	return request({ url: buildApiUrl('/ai/memory/' + encodeURIComponent(claimId) + '/correct'), method: 'POST', data: payload, headers: { 'Idempotency-Key': key } }).then((raw: any) => adaptCorrect(unwrap(raw)))
+}
+
+export function suppressMemory(claimId: string, reason: string = '用户在记忆管理中删除', suppliedKey: string = ''): Promise<MemorySuppressResponse> {
+	const key = requireIdempotencyKey(suppliedKey)
+	const payload = { reason: reason }
+	if (USE_MOCK) return mockCall(() => adaptSuppress(suppressMockMemory(claimId, reason, key)))
+	return request({ url: buildApiUrl('/ai/memory/' + encodeURIComponent(claimId) + '/suppress'), method: 'POST', data: payload, headers: { 'Idempotency-Key': key } }).then((raw: any) => adaptSuppress(unwrap(raw)))
+}
+
+export function revokeMemoryGrant(grantId: string, suppliedKey: string = ''): Promise<MemoryRevokeGrantResponse> {
+	const key = requireIdempotencyKey(suppliedKey)
+	if (USE_MOCK) return mockCall(() => adaptRevoke(revokeMockMemoryGrant(grantId, key)))
+	return request({ url: buildApiUrl('/ai/memory/grants/' + encodeURIComponent(grantId) + '/revoke'), method: 'POST', data: {}, headers: { 'Idempotency-Key': key } }).then((raw: any) => adaptRevoke(unwrap(raw)))
+}
+
+/** Core v1 墓碑恢复接口，管理页当前不直接展示恢复开关。 */
+export function liftMemorySuppression(suppressionId: string, suppliedKey: string = ''): Promise<MemoryLiftSuppressionResponse> {
+	const key = requireIdempotencyKey(suppliedKey)
+	if (USE_MOCK) return mockCall(() => adaptLift(liftMockMemorySuppression(suppressionId, key)))
+	return request({ url: buildApiUrl('/ai/memory/suppressions/' + encodeURIComponent(suppressionId) + '/lift'), method: 'POST', data: {}, headers: { 'Idempotency-Key': key } }).then((raw: any) => adaptLift(unwrap(raw)))
+}
+
+/** 将 HTTP / 业务错误转换成 UI 可读文案，不泄露内部 function_key。 */
+export function memoryErrorMessage(error: any, fallback: string = '操作失败，请稍后重试'): string {
+	const code = error?.code != null ? String(error.code) : ''
+	const status = Number(error?.status ?? 0)
+	if (status == 401 || code == '401') return '登录状态已失效，请重新登录'
+	if (status == 403 || code == 'AI_POLICY_DENIED') return '当前操作不符合记忆使用规则'
+	if (status == 404 || code.indexOf('_NOT_FOUND') >= 0) return '这条记忆或授权已不存在，请刷新'
+	if (status == 409 || code == 'MEMORY_REVISION_CONFLICT') return '内容已经发生变化，请刷新后再试'
+	if (status == 422 || code == 'AI_INPUT_INVALID') return '提交内容不符合要求，请检查后再试'
+	if (status < 0 || code == 'NETWORK_ERROR') return '网络异常，请重试'
+	const message = error?.message != null ? String(error.message) : ''
+	return message != '' ? message : fallback
+}

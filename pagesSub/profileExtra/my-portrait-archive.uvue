@@ -67,8 +67,15 @@
 				<view v-if="archive.idealPartner.preview" class="mpa-preview-tip">
 					<text class="mpa-preview-tip-text">草稿上有未发布的预览(rev {{ archive.idealPartner.preview.expectedRevision }})</text>
 				</view>
+			<view class="mpa-memory-entry" @tap="openMemorySheet">
+				<view class="mpa-memory-entry-copy">
+					<text class="mpa-memory-entry-title">记忆管理</text>
+					<text class="mpa-memory-entry-sub">查看、确认或停止使用 AI 从对话中整理的理解</text>
+				</view>
+				<text class="mpa-memory-entry-arrow">›</text>
 			</view>
 		</view>
+		<MemoryManagementSheet :visible="memorySheetVisible" @close="closeMemorySheet" />
 	</view>
 </template>
 
@@ -85,6 +92,7 @@
 	 * 3. 撤回授权后,主体资产卡仍可读(只把 consentActive 标 false)
 	 */
 	import { getMoxiangArchive, type MoxiangArchiveResponse, type ArchiveSubject } from '@/api/ai-moxiang.uts'
+	import MemoryManagementSheet from '@/components/MemoryManagementSheet.uvue'
 
 	function emptySubject(subject: 'personal' | 'ideal_partner'): ArchiveSubject {
 		return {
@@ -99,10 +107,12 @@
 	}
 
 	export default {
+		components: { MemoryManagementSheet },
 		data() {
 			return {
 				loading: true,
 				errorMessage: '',
+				memorySheetVisible: false,
 				archive: {
 					personal: emptySubject('personal'),
 					idealPartner: emptySubject('ideal_partner'),
@@ -144,6 +154,12 @@
 			if (!this.loading) this.loadArchive()
 		},
 		methods: {
+			openMemorySheet() {
+				this.memorySheetVisible = true
+			},
+			closeMemorySheet() {
+				this.memorySheetVisible = false
+			},
 			navBack() {
 				uni.navigateBack({ delta: 1, fail: () => {
 					uni.switchTab({ url: '/pages/profile/profile' })
@@ -207,4 +223,9 @@
 	.mpa-history-fields { color: #5a4632; }
 	.mpa-preview-tip { margin-top: 16rpx; padding: 12rpx 16rpx; background: #fdf3e0; border-radius: 8rpx; }
 	.mpa-preview-tip-text { font-size: 22rpx; color: #8a6a3a; }
+	.mpa-memory-entry { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 16rpx; margin-top: 24rpx; padding: 24rpx 28rpx; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+	.mpa-memory-entry-copy { display: flex; flex: 1; flex-direction: column; gap: 8rpx; }
+	.mpa-memory-entry-title { font-size: 30rpx; color: var(--ink); font-weight: 700; }
+	.mpa-memory-entry-sub { font-size: 24rpx; color: var(--ink2); line-height: 1.5; }
+	.mpa-memory-entry-arrow { min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; font-size: 38rpx; color: var(--accent2); }
 </style>

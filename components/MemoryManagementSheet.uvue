@@ -1,0 +1,388 @@
+<template>
+	<XsaSheet :visible="visible" title="记忆管理" :tall="true" :close-on-overlay="!busy" @close="handleClose">
+		<view class="memory-sheet">
+			<view class="memory-intro">
+				<text class="memory-intro-title">由你决定哪些理解可以被使用</text>
+				<text class="memory-intro-copy">这里展示从对话中整理出的“关于我”和“伴侣偏好”。确认后才会进入允许的 AI 使用范围；删除会停止使用并阻止同一事实再次自动提取，但不会擦除必要的审计历史。</text>
+			</view>
+
+			<view class="memory-tabs">
+				<view class="memory-tab" :class="{ active: activeSubject == 'personal' }" @tap="selectSubject('personal')"><text>关于我</text></view>
+				<view class="memory-tab" :class="{ active: activeSubject == 'ideal_partner' }" @tap="selectSubject('ideal_partner')"><text>伴侣偏好</text></view>
+			</view>
+
+			<view v-if="loading && items.length == 0" class="memory-state"><text>正在读取你的记忆…</text></view>
+			<view v-else-if="errorMessage != '' && items.length == 0" class="memory-state memory-error" @tap="retryLoad"><text>{{ errorMessage }}</text><text class="memory-retry">点击重试</text></view>
+			<view v-else-if="items.length == 0" class="memory-state"><text>暂时没有可管理的记忆</text><text class="memory-state-copy">继续和知遇聊天，新的理解会先以待确认状态出现。</text></view>
+			<scroll-view v-else class="memory-list" scroll-y="true" @scrolltolower="loadMore">
+				<view v-for="item in items" :key="item.claimId" class="memory-card">
+					<view class="memory-card-head">
+						<text class="memory-status" :class="item.status">{{ statusLabel(item.status) }}</text>
+						<text class="memory-time">{{ formatTime(item.updatedAt) }}</text>
+					</view>
+					<text class="memory-content">{{ displayValue(item) }}</text>
+					<text v-if="item.sourceQuote != null && item.sourceQuote != ''" class="memory-source">来自对话：“{{ item.sourceQuote }}”</text>
+					<view class="memory-meta">
+						<text>重要度 {{ formatPercent(item.importance) }}</text>
+						<text v-if="item.confidence != null">理解度 {{ formatPercent(item.confidence) }}</text>
+						<text>版本 {{ item.revision }}</text>
+					</view>
+					<view v-if="item.suppressed" class="memory-suppressed"><text>已停止使用：同一事实不会再次自动提取</text></view>
+					<view v-else-if="editingClaimId == item.claimId" class="memory-editor">
+						<input class="memory-input" :value="editDraft" maxlength="200" placeholder="输入更正后的内容" @input="onEditInput" @confirm="saveCorrection(item)" />
+						<view class="memory-editor-actions"><button class="memory-button secondary" :disabled="busy" @tap="cancelCorrection">取消</button><button class="memory-button primary" :disabled="busy || editDraft.trim() == ''" @tap="saveCorrection(item)">{{ busy == 'correct:' + item.claimId ? '提交中' : '保存更正' }}</button></view>
+					</view>
+					<view v-else class="memory-actions">
+						<button v-if="item.status == 'proposed'" class="memory-button primary" :disabled="busy != ''" @tap="confirmItem(item)">{{ busy == 'confirm:' + item.claimId ? '确认中' : '确认记忆' }}</button>
+						<button v-if="item.status == 'proposed' || item.status == 'confirmed'" class="memory-button secondary" :disabled="busy != ''" @tap="beginCorrection(item)">纠正</button>
+						<button v-if="item.status == 'proposed' || item.status == 'confirmed'" class="memory-button danger" :disabled="busy != ''" @tap="suppressItem(item)">{{ busy == 'suppress:' + item.claimId ? '处理中' : '停止使用' }}</button>
+					</view>
+				</view>
+				<view v-if="loadingMore" class="memory-more"><text>正在加载更多…</text></view>
+				<view v-else-if="hasMore" class="memory-more" @tap="loadMore"><text>上拉加载更多</text></view>
+			</scroll-view>
+
+			<view class="memory-grants">
+				<text class="memory-section-title">正在使用记忆的功能</text>
+				<text class="memory-section-copy">授权只影响对应功能；撤回后，该功能立即无法读取这部分记忆。</text>
+				<view v-if="grants.length == 0" class="memory-grants-empty"><text>目前没有已授权的使用方</text></view>
+				<view v-for="grant in grants" :key="grant.grantId" class="memory-grant">
+					<view class="memory-grant-copy"><text class="memory-grant-title">{{ grantLabel(grant) }}</text><text class="memory-grant-detail">{{ grantDataLabel(grant.dataCategory) }} · {{ formatTime(grant.grantedAt) }}</text></view>
+					<button v-if="grant.status == 'active'" class="memory-revoke" :disabled="busy != ''" @tap="revokeGrant(grant)">{{ busy == 'revoke:' + grant.grantId ? '撤回中' : '撤回' }}</button>
+					<text v-else class="memory-revoked">已撤回</text>
+				</view>
+			</view>
+		</view>
+	</XsaSheet>
+</template>
+
+<script setup lang="uts">
+	import XsaSheet from '@/components/XsaSheet.uvue'
+	import {
+		getMemoryView,
+		confirmMemory,
+		correctMemory,
+		suppressMemory,
+		revokeMemoryGrant,
+		genMemoryIdempotencyKey,
+		memoryErrorMessage,
+		type MemorySubject,
+		type MemoryItem,
+		type MemoryGrant
+	} from '@/api/ai-memory.uts'
+
+	interface Props { visible: boolean }
+	const props = withDefaults(defineProps<Props>(), { visible: false })
+	const emit = defineEmits<{ close: [] }>()
+
+	const activeSubject = ref<MemorySubject>('personal')
+	const items = ref([] as MemoryItem[])
+	const grants = ref([] as MemoryGrant[])
+	const nextCursor = ref('')
+	const hasMore = ref(false)
+	const loading = ref(false)
+	const loadingMore = ref(false)
+	const errorMessage = ref('')
+	const busy = ref('')
+	const editingClaimId = ref('')
+	const editDraft = ref('')
+	let componentActive = true
+	let requestVersion = 0
+	const operationKeys: any = {}
+
+	function clearView(): void {
+		items.value = []
+		grants.value = []
+		nextCursor.value = ''
+		hasMore.value = false
+		errorMessage.value = ''
+		editingClaimId.value = ''
+		editDraft.value = ''
+		const keys = Object.keys(operationKeys)
+		for (let i = 0; i < keys.length; i++) delete operationKeys[keys[i]]
+	}
+
+	function operationKey(name: string, fingerprint: string): string {
+		const previous = operationKeys[name]
+		if (previous == null || previous.fingerprint != fingerprint) {
+			operationKeys[name] = { fingerprint: fingerprint, key: genMemoryIdempotencyKey(name) }
+		}
+		return operationKeys[name].key
+	}
+
+	function discardOperationKey(name: string): void {
+		delete operationKeys[name]
+	}
+
+	function isNetworkError(error: any): boolean {
+		const code = error?.code != null ? String(error.code) : ''
+		const status = Number(error?.status ?? 0)
+		return status < 0 || code == 'NETWORK_ERROR' || (error?.message != null && String(error.message).indexOf('网络') >= 0)
+	}
+
+	function showOperationError(error: any, fallback: string): void {
+		if (Number(error?.status ?? 0) == 401 || String(error?.code ?? '') == '401') {
+			clearView()
+			uni.showToast({ title: '登录状态已失效', icon: 'none' })
+			setTimeout(() => { if (componentActive) uni.reLaunch({ url: '/pages/auth/login' }) }, 350)
+			return
+		}
+		uni.showToast({ title: memoryErrorMessage(error, fallback), icon: 'none', duration: 2400 })
+	}
+
+	async function loadView(append: boolean = false): Promise<void> {
+		if (!props.visible || !componentActive) return
+		if (append && (!hasMore.value || loadingMore.value || loading.value)) return
+		const version = requestVersion + 1
+		requestVersion = version
+		if (append) loadingMore.value = true
+		else { loading.value = true; errorMessage.value = '' }
+		try {
+			const result = await getMemoryView(activeSubject.value, 'active', 20, append ? nextCursor.value : '')
+			if (!componentActive || version != requestVersion) return
+			if (append) items.value = items.value.concat(result.items)
+			else items.value = result.items
+			grants.value = result.grants
+			nextCursor.value = result.nextCursor ?? ''
+			hasMore.value = result.hasMore
+		} catch (error) {
+			if (!componentActive || version != requestVersion) return
+			if (!append) {
+				items.value = []
+				grants.value = []
+				errorMessage.value = memoryErrorMessage(error, '记忆读取失败，请重试')
+			}
+			showOperationError(error, '记忆读取失败，请重试')
+		} finally {
+			if (componentActive && version == requestVersion) { loading.value = false; loadingMore.value = false }
+		}
+	}
+
+	function reloadAfterWrite(): void {
+		discardOperationKey('refresh')
+		loadView(false)
+	}
+
+	function selectSubject(subject: MemorySubject): void {
+		if (subject == activeSubject.value || busy.value != '') return
+		activeSubject.value = subject
+		requestVersion += 1
+		clearView()
+		loadView(false)
+	}
+
+	function retryLoad(): void { loadView(false) }
+	function loadMore(): void { loadView(true) }
+
+	function confirmItem(item: MemoryItem): void {
+		if (busy.value != '') return
+		const operation = 'confirm:' + item.claimId
+		const key = operationKey(operation, item.claimId + '|' + item.revision + '|' + item.importance)
+		busy.value = operation
+		confirmMemory(item.claimId, item.revision, item.importance, null, key).then(() => {
+			if (!componentActive) return
+			discardOperationKey(operation)
+			uni.showToast({ title: '已确认这条记忆', icon: 'success' })
+			reloadAfterWrite()
+		}).catch((error: any) => {
+			if (componentActive) showOperationError(error, '确认失败，请重试')
+			if (!isNetworkError(error)) discardOperationKey(operation)
+		}).finally(() => { if (componentActive) busy.value = '' })
+	}
+
+	function beginCorrection(item: MemoryItem): void {
+		if (busy.value != '') return
+		const value = item.value
+		if (value != null && typeof value == 'object' && !Array.isArray(value)) {
+			uni.showToast({ title: '这类结构化记忆暂不支持直接编辑', icon: 'none' })
+			return
+		}
+		editingClaimId.value = item.claimId
+		editDraft.value = displayValue(item)
+	}
+
+	function cancelCorrection(): void { editingClaimId.value = ''; editDraft.value = '' }
+	function onEditInput(event: any): void { editDraft.value = event.detail.value }
+
+	function coerceValue(item: MemoryItem): any {
+		const text = editDraft.value.trim()
+		if (typeof item.value == 'number') {
+			const numberValue = Number(text)
+			if (!Number.isFinite(numberValue)) throw new Error('AI_INPUT_INVALID: 请输入有效数字')
+			return numberValue
+		}
+		if (typeof item.value == 'boolean') {
+			if (text == '是' || text == 'true' || text == '1') return true
+			if (text == '否' || text == 'false' || text == '0') return false
+			throw new Error('AI_INPUT_INVALID: 布尔值请输入“是”或“否”')
+		}
+		if (Array.isArray(item.value)) return text.split(/[,，、]/).map((entry: string) => entry.trim()).filter((entry: string) => entry != '')
+		return text
+	}
+
+	function saveCorrection(item: MemoryItem): void {
+		if (busy.value != '' || editDraft.value.trim() == '') return
+		let value: any = null
+		try { value = coerceValue(item) } catch (error) { showOperationError(error, '更正内容无效'); return }
+		const operation = 'correct:' + item.claimId
+		const fingerprint = item.claimId + '|' + item.revision + '|' + JSON.stringify(value)
+		const key = operationKey(operation, fingerprint)
+		busy.value = operation
+		correctMemory(item.claimId, item.revision, value, key).then(() => {
+			if (!componentActive) return
+			discardOperationKey(operation)
+			cancelCorrection()
+			uni.showToast({ title: '已保存更正，请再次确认新记忆', icon: 'none', duration: 2400 })
+			reloadAfterWrite()
+		}).catch((error: any) => {
+			if (componentActive) showOperationError(error, '更正失败，请重试')
+			if (!isNetworkError(error)) discardOperationKey(operation)
+		}).finally(() => { if (componentActive) busy.value = '' })
+	}
+
+	function suppressItem(item: MemoryItem): void {
+		if (busy.value != '') return
+		uni.showModal({
+			title: '停止使用这条记忆？',
+			content: '删除会立即停止相关 AI 功能使用，并阻止同一事实再次自动提取；必要的审计历史不会被擦除。',
+			confirmText: '停止使用',
+			cancelText: '保留',
+			success: (result: any) => {
+				if (result.confirm) performSuppress(item)
+			}
+		})
+	}
+
+	function performSuppress(item: MemoryItem): void {
+		const operation = 'suppress:' + item.claimId
+		const key = operationKey(operation, item.claimId)
+		busy.value = operation
+		suppressMemory(item.claimId, '用户在记忆管理中删除', key).then(() => {
+			if (!componentActive) return
+			discardOperationKey(operation)
+			uni.showToast({ title: '已停止使用这条记忆', icon: 'success' })
+			reloadAfterWrite()
+		}).catch((error: any) => {
+			if (componentActive) showOperationError(error, '停止使用失败，请重试')
+			if (!isNetworkError(error)) discardOperationKey(operation)
+		}).finally(() => { if (componentActive) busy.value = '' })
+	}
+
+	function revokeGrant(grant: MemoryGrant): void {
+		if (busy.value != '') return
+		uni.showModal({
+			title: '撤回这项授权？',
+			content: '撤回后，该功能会立即无法读取这部分记忆；以后如需恢复，需要重新完成授权流程。',
+			confirmText: '确认撤回',
+			cancelText: '暂不撤回',
+			success: (result: any) => { if (result.confirm) performRevoke(grant) }
+		})
+	}
+
+	function performRevoke(grant: MemoryGrant): void {
+		const operation = 'revoke:' + grant.grantId
+		const key = operationKey(operation, grant.grantId)
+		busy.value = operation
+		revokeMemoryGrant(grant.grantId, key).then((result) => {
+			if (!componentActive) return
+			discardOperationKey(operation)
+			uni.showToast({ title: result.status == 'already_revoked' ? '这项授权已撤回' : '已撤回授权', icon: 'success' })
+			reloadAfterWrite()
+		}).catch((error: any) => {
+			if (componentActive) showOperationError(error, '撤回授权失败，请重试')
+			if (!isNetworkError(error)) discardOperationKey(operation)
+		}).finally(() => { if (componentActive) busy.value = '' })
+	}
+
+	function handleClose(): void {
+		if (busy.value != '') return
+		requestVersion += 1
+		clearView()
+		emit('close')
+	}
+
+	function statusLabel(status: string): string {
+		if (status == 'confirmed') return '已确认'
+		if (status == 'user_corrected') return '已更正'
+		if (status == 'suppressed') return '已停止使用'
+		return '待确认'
+	}
+
+	function displayValue(item: MemoryItem): string {
+		if (item.content != '') return item.content
+		if (item.value == null) return '未填写内容'
+		if (Array.isArray(item.value)) return item.value.map((entry: any) => String(entry)).join('、')
+		if (typeof item.value == 'boolean') return item.value ? '是' : '否'
+		if (typeof item.value == 'object') return JSON.stringify(item.value)
+		return String(item.value)
+	}
+
+	function formatPercent(value: number): string { return Math.round(Math.max(0, Math.min(1, Number(value))) * 100) + '%' }
+	function formatTime(value: string | null): string { if (value == null || value == '') return ''; return value.length >= 10 ? value.substring(0, 10) : value }
+
+	function grantLabel(grant: MemoryGrant): string {
+		if (grant.functionKey == 'search') return '搜索筛选'
+		if (grant.functionKey == 'compatibility') return '合拍度参考'
+		if (grant.functionKey == 'recommend') return '推荐理解'
+		if (grant.functionKey == 'counselor_context') return 'AI 军师'
+		if (grant.functionKey == 'persona_context') return 'AI 分身'
+		return '已授权功能'
+	}
+
+	function grantDataLabel(category: string): string {
+		if (category == 'personal_profile') return '关于我的资料'
+		if (category == 'ideal_partner_preference') return '伴侣偏好'
+		if (category == 'compatibility_features') return '合拍特征'
+		if (category == 'public_profile_summary') return '公开资料摘要'
+		return '记忆摘要'
+	}
+
+	watch(() => props.visible, (visible: boolean) => {
+		if (visible) { activeSubject.value = 'personal'; clearView(); loadView(false) }
+		else { requestVersion += 1; clearView() }
+	})
+	onUnmounted(() => { componentActive = false; requestVersion += 1; clearView() })
+</script>
+
+<style scoped>
+	.memory-sheet { display: flex; flex-direction: column; gap: 16px; }
+	.memory-intro { display: flex; flex-direction: column; gap: 6px; padding: 2px 0 4px; }
+	.memory-intro-title, .memory-section-title { font-family: var(--serif); font-size: 20px; line-height: 1.35; font-weight: 700; color: var(--ink); }
+	.memory-intro-copy, .memory-section-copy, .memory-state-copy { font-size: 13px; line-height: 1.65; color: var(--ink2); }
+	.memory-tabs { display: flex; flex-direction: row; gap: 8px; border-bottom: 1px solid var(--line); }
+	.memory-tab { min-height: 44px; flex: 1; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 14px; font-weight: 700; border-bottom: 3px solid transparent; }
+	.memory-tab.active { color: var(--accent2); border-bottom-color: var(--accent); }
+	.memory-state { min-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px; color: var(--muted); font-size: 14px; text-align: center; }
+	.memory-error { color: var(--accent2); }
+	.memory-retry { font-size: 12px; color: var(--muted); }
+	.memory-list { max-height: 46vh; min-height: 120px; }
+	.memory-card { padding: 13px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+	.memory-card-head, .memory-meta, .memory-actions, .memory-editor-actions, .memory-grant { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+	.memory-card-head { justify-content: space-between; }
+	.memory-status { padding: 4px 8px; border-radius: 999px; background: var(--warm); color: var(--accent2); font-size: 11px; font-weight: 700; }
+	.memory-status.confirmed { color: var(--sage); background: var(--sage-soft); }
+	.memory-status.user_corrected { color: var(--muted); }
+	.memory-time, .memory-meta, .memory-source, .memory-grant-detail { color: var(--muted); font-size: 11px; line-height: 1.5; }
+	.memory-content { display: block; margin-top: 10px; color: var(--ink); font-family: var(--serif); font-size: 16px; line-height: 1.55; }
+	.memory-source { display: block; margin-top: 8px; color: var(--ink2); }
+	.memory-meta { margin-top: 10px; flex-wrap: wrap; }
+	.memory-actions { margin-top: 12px; align-items: stretch; }
+	.memory-button { min-width: 0; flex: 1; min-height: 44px; margin: 0; padding: 0 8px; border-radius: 8px; font-size: 12px; font-weight: 700; line-height: 44px; }
+	.memory-button.primary { background: var(--accent); color: var(--text-invert); }
+	.memory-button.secondary { border: 1px solid var(--line); background: var(--paper); color: var(--ink); }
+	.memory-button.danger { border: 1px solid var(--line); background: var(--surface); color: var(--accent2); }
+	.memory-button[disabled], .memory-revoke[disabled] { opacity: .5; }
+	.memory-editor { margin-top: 12px; }
+	.memory-input { box-sizing: border-box; width: 100%; height: 44px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); font-size: 14px; }
+	.memory-editor-actions { margin-top: 8px; justify-content: flex-end; }
+	.memory-editor-actions .memory-button { flex: 0 1 120px; }
+	.memory-suppressed { margin-top: 10px; padding: 8px; border-radius: 8px; background: var(--warm); color: var(--muted); font-size: 12px; line-height: 1.5; }
+	.memory-more { min-height: 40px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; }
+	.memory-grants { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
+	.memory-grants-empty { padding: 12px; color: var(--muted); font-size: 13px; }
+	.memory-grant { min-height: 52px; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--line); }
+	.memory-grant-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
+	.memory-grant-title { color: var(--ink); font-size: 14px; font-weight: 700; }
+	.memory-revoke { min-width: 64px; min-height: 44px; margin: 0; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--accent2); font-size: 12px; font-weight: 700; }
+	.memory-revoked { min-width: 52px; color: var(--muted); font-size: 12px; text-align: right; }
+</style>

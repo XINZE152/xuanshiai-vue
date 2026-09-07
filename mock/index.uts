@@ -87,3 +87,14 @@ export {
   mockAdvisorAdvice,
   mockAdvisorFeedback
 } from './ai-advisor.uts'
+
+// 记忆管理（Memory Kernel v1 / Phase 3）
+export {
+  getMockMemoryViewData,
+  confirmMockMemory,
+  correctMockMemory,
+  suppressMockMemory,
+  revokeMockMemoryGrant,
+  liftMockMemorySuppression,
+  resetMockMemoryState
+} from './ai-memory.uts'

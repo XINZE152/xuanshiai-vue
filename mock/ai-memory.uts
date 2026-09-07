@@ -1,0 +1,337 @@
+/**
+ * Memory Kernel v1 / Phase 3 的端侧 Mock。
+ *
+ * 这里刻意不使用 uni storage：记忆文本属于用户数据，Mock 只在当前运行时
+ * 保留状态，避免把真实记忆误写入本地持久化空间。状态机与真实接口保持同一
+ * 个边界：双主体、乐观锁 revision、幂等重放、纠正新 Claim、删除墓碑以及
+ * 授权撤回历史。
+ */
+
+function clone(value: any): any {
+	if (value == null) return value
+	return JSON.parse(JSON.stringify(value))
+}
+
+function fail(code: string, message: string): void {
+	const error: any = new Error(code + ': ' + message)
+	error.code = code
+	error.status = code == 'MEMORY_REVISION_CONFLICT' || code == 'MEMORY_IDEMPOTENCY_CONFLICT' ? 409 : (code == 'MEMORY_CLAIM_NOT_FOUND' || code == 'MEMORY_GRANT_NOT_FOUND' ? 404 : 422)
+	throw error
+}
+
+function isoNow(): string {
+	return new Date().toISOString().replace('Z', '')
+}
+
+const seedItems: any[] = [
+	{
+		claim_id: 'clm_mock_personal_coffee',
+		subject: 'personal',
+		node_type: 'claim',
+		canonical_key: 'personal:lifestyle:coffee',
+		value: '每天早上喝一杯咖啡',
+		content: '每天早上喝一杯咖啡',
+		status: 'proposed',
+		confidence: 0.82,
+		stability: 0.9,
+		importance: 0.5,
+		source_quote: '我每天早上都要喝一杯咖啡',
+		source_ref: 'candidate:mock-coffee',
+		revision: 7,
+		updated_at: '2026-09-06T08:00:00',
+		suppressed: false,
+		suppression_id: null
+	},
+	{
+		claim_id: 'clm_mock_personal_reading',
+		subject: 'personal',
+		node_type: 'claim',
+		canonical_key: 'personal:interest:reading',
+		value: '周末喜欢阅读',
+		content: '周末喜欢阅读',
+		status: 'confirmed',
+		confidence: 0.94,
+		stability: 0.88,
+		importance: 0.7,
+		source_quote: '周末我一般会留时间看书',
+		source_ref: 'candidate:mock-reading',
+		revision: 8,
+		updated_at: '2026-09-05T18:20:00',
+		suppressed: false,
+		suppression_id: null
+	},
+	{
+		claim_id: 'clm_mock_ideal_pace',
+		subject: 'ideal_partner',
+		node_type: 'claim',
+		canonical_key: 'ideal_partner:relationship:pace',
+		value: '愿意稳定沟通，慢慢了解',
+		content: '愿意稳定沟通，慢慢了解',
+		status: 'proposed',
+		confidence: 0.76,
+		stability: 0.72,
+		importance: 0.8,
+		source_quote: '我希望关系可以稳定地慢慢建立',
+		source_ref: 'candidate:mock-pace',
+		revision: 9,
+		updated_at: '2026-09-04T12:00:00',
+		suppressed: false,
+		suppression_id: null
+	},
+	{
+		claim_id: 'clm_mock_ideal_deleted',
+		subject: 'ideal_partner',
+		node_type: 'claim',
+		canonical_key: 'ideal_partner:location:city',
+		value: '希望在同城生活',
+		content: '希望在同城生活',
+		status: 'proposed',
+		confidence: 0.68,
+		stability: 0.61,
+		importance: 0.4,
+		source_quote: '最好以后能在同一个城市生活',
+		source_ref: 'candidate:mock-city',
+		revision: 10,
+		updated_at: '2026-09-03T12:00:00',
+		suppressed: true,
+		suppression_id: 'sup_mock_city',
+	}
+]
+
+const seedGrants: any[] = [
+	{
+		grant_id: 'prj-grant:mock:search:candidate_filter:personal_profile',
+		function_key: 'search',
+		purpose: 'candidate_filter',
+		data_category: 'personal_profile',
+		status: 'active',
+		policy_revision: 'ai-policy-2026-08-07-v1',
+		granted_at: '2026-09-01T09:00:00',
+		revoked_at: null
+	},
+	{
+		grant_id: 'prj-grant:mock:counselor:counselor_context:personal_profile',
+		function_key: 'counselor_context',
+		purpose: 'counselor_context',
+		data_category: 'personal_profile',
+		status: 'active',
+		policy_revision: 'ai-policy-2026-08-07-v1',
+		granted_at: '2026-09-02T09:00:00',
+		revoked_at: null
+	},
+	{
+		grant_id: 'prj-grant:mock:persona:persona_context:personal_profile',
+		function_key: 'persona_context',
+		purpose: 'persona_context',
+		data_category: 'personal_profile',
+		status: 'revoked',
+		policy_revision: 'ai-policy-2026-08-07-v1',
+		granted_at: '2026-08-28T09:00:00',
+		revoked_at: '2026-09-03T10:00:00'
+	}
+]
+
+let items: any[] = clone(seedItems)
+let grants: any[] = clone(seedGrants)
+let nextRevision = 11
+let nextClaimNo = 1
+const idempotencyRecords: any = {}
+
+function nextEventRevision(): number {
+	const value = nextRevision
+	nextRevision += 1
+	return value
+}
+
+function requireKey(key: string): string {
+	const value = key != null ? String(key).trim() : ''
+	if (value == '' || value.length > 128) fail('AI_INPUT_INVALID', '缺少有效的 Idempotency-Key')
+	return value
+}
+
+function replayOrRun(key: string, fingerprint: string, operation: () => any): any {
+	const normalized = requireKey(key)
+	const previous = idempotencyRecords[normalized]
+	if (previous != null) {
+		if (previous.fingerprint != fingerprint) fail('MEMORY_IDEMPOTENCY_CONFLICT', '同一幂等键不能用于不同操作')
+		return clone(previous.result)
+	}
+	const result = operation()
+	idempotencyRecords[normalized] = { fingerprint: fingerprint, result: clone(result) }
+	return clone(result)
+}
+
+function findClaim(claimId: string): any {
+	for (let i = 0; i < items.length; i++) {
+		if (items[i].claim_id == claimId) return items[i]
+	}
+	return null
+}
+
+function requireClaim(claimId: string): any {
+	const claim = findClaim(claimId)
+	if (claim == null) fail('MEMORY_CLAIM_NOT_FOUND', '记忆条目不存在或已不可见')
+	return claim
+}
+
+function checkRevision(claim: any, expectedRevision: number): void {
+	if (!Number.isFinite(expectedRevision) || expectedRevision < 1 || claim.revision != expectedRevision) {
+		fail('MEMORY_REVISION_CONFLICT', '这条记忆已经发生变化，请刷新后再确认')
+	}
+}
+
+function isStatusMatch(item: any, status: string): boolean {
+	if (status == '' || status == 'all') return true
+	if (status == 'active') return item.status == 'proposed' || item.status == 'confirmed'
+	return item.status == status
+}
+
+function cursorOffset(cursor: string): number {
+	if (cursor == '') return 0
+	const match = /^mock-memory-cursor-(\d+)$/.exec(cursor)
+	if (match == null) fail('AI_INPUT_INVALID', '分页游标无效，请从第一页重新加载')
+	return Number(match[1])
+}
+
+/** GET /ai/memory/view 的 Mock payload。 */
+export function getMockMemoryViewData(subject: string = '', status: string = 'active', limit: number = 20, cursor: string = ''): any {
+	const allowedStatuses = ['active', 'proposed', 'confirmed', 'superseded', 'contradicted', 'user_corrected', 'expired', 'all']
+	if (subject != '' && subject != 'personal' && subject != 'ideal_partner') fail('AI_INPUT_INVALID', '记忆主体无效')
+	if (allowedStatuses.indexOf(status) < 0) fail('AI_INPUT_INVALID', '记忆状态无效')
+	const pageSize = Math.max(1, Math.min(50, Math.floor(Number(limit)) || 20))
+	const offset = cursorOffset(cursor)
+	const filtered: any[] = []
+	for (let i = 0; i < items.length; i++) {
+		const item = items[i]
+		if (item.suppressed === true) continue
+		if (subject != '' && item.subject != subject) continue
+		if (!isStatusMatch(item, status)) continue
+		filtered.push(clone(item))
+	}
+	const page = filtered.slice(offset, offset + pageSize)
+	const nextOffset = offset + page.length
+	return {
+		items: page,
+		grants: clone(grants),
+		next_cursor: nextOffset < filtered.length ? 'mock-memory-cursor-' + nextOffset : null,
+		has_more: nextOffset < filtered.length
+	}
+}
+
+/** POST /ai/memory/{claim_id}/confirm 的 Mock。 */
+export function confirmMockMemory(claimId: string, expectedRevision: number, importance: number, constraintType: string | null, key: string): any {
+	return replayOrRun(key, 'confirm|' + claimId + '|' + expectedRevision + '|' + importance + '|' + (constraintType ?? ''), () => {
+		const claim = requireClaim(claimId)
+		checkRevision(claim, expectedRevision)
+		if (claim.status != 'proposed') fail('MEMORY_CLAIM_STATE_DENIED', '只有待确认的记忆可以确认')
+		claim.status = 'confirmed'
+		claim.importance = Math.max(0, Math.min(1, Number(importance)))
+		claim.revision = nextEventRevision()
+		claim.updated_at = isoNow()
+		return { claim_id: claimId, event_id: 'evt_mock_confirm_' + claim.revision, status: 'confirmed', revision: claim.revision, importance_confirmed: true }
+	})
+}
+
+/** POST /ai/memory/{claim_id}/correct 的 Mock。 */
+export function correctMockMemory(claimId: string, expectedRevision: number, value: any, key: string): any {
+	return replayOrRun(key, 'correct|' + claimId + '|' + expectedRevision + '|' + JSON.stringify(value), () => {
+		const claim = requireClaim(claimId)
+		checkRevision(claim, expectedRevision)
+		if (claim.status != 'proposed' && claim.status != 'confirmed') fail('MEMORY_CLAIM_STATE_DENIED', '当前状态不能纠正')
+		const revision = nextEventRevision()
+		claim.status = 'user_corrected'
+		claim.revision = revision
+		claim.updated_at = isoNow()
+		const newClaimId = 'clm_mock_corrected_' + nextClaimNo
+		nextClaimNo += 1
+		items.push({
+			claim_id: newClaimId,
+			subject: claim.subject,
+			node_type: 'claim',
+			canonical_key: claim.canonical_key,
+			value: clone(value),
+			content: typeof value == 'string' ? value : JSON.stringify(value),
+			status: 'proposed',
+			confidence: null,
+			stability: claim.stability,
+			importance: claim.importance,
+			source_quote: null,
+			source_ref: 'user:correction:' + claimId,
+			revision: revision,
+			updated_at: isoNow(),
+			suppressed: false,
+			suppression_id: null
+		})
+		return { claim_id: claimId, event_id: 'evt_mock_correct_' + revision, status: 'user_corrected', revision: revision, proposed_claim_id: newClaimId }
+	})
+}
+
+/** POST /ai/memory/{claim_id}/suppress 的 Mock。 */
+export function suppressMockMemory(claimId: string, reason: string, key: string): any {
+	return replayOrRun(key, 'suppress|' + claimId + '|' + reason, () => {
+		const claim = requireClaim(claimId)
+		const existing = items.find((item: any) => item.canonical_key == claim.canonical_key && item.suppressed === true)
+		if (existing != null) return { suppression_id: existing.suppression_id, event_id: 'evt_mock_suppress_existing', status: 'suppressed' }
+		const suppressionId = 'sup_mock_' + claimId
+		claim.suppressed = true
+		claim.suppression_id = suppressionId
+		claim.updated_at = isoNow()
+		return { suppression_id: suppressionId, event_id: 'evt_mock_suppress_' + claimId, status: 'suppressed', reason: reason }
+	})
+}
+
+/** POST /ai/memory/grants/{grant_id}/revoke 的 Mock。 */
+export function revokeMockMemoryGrant(grantId: string, key: string): any {
+	return replayOrRun(key, 'revoke|' + grantId, () => {
+		let grant: any = null
+		for (let i = 0; i < grants.length; i++) {
+			if (grants[i].grant_id == grantId) { grant = grants[i]; break }
+		}
+		if (grant == null) fail('MEMORY_GRANT_NOT_FOUND', '授权不存在或已不可见')
+		if (grant.status == 'revoked') {
+			return {
+				grant_id: grantId,
+				status: 'already_revoked',
+				function_key: grant.function_key,
+				purpose: grant.purpose,
+				data_category: grant.data_category,
+				invalidated_projections: 0
+			}
+		}
+		grant.status = 'revoked'
+		grant.revoked_at = isoNow()
+		return {
+			grant_id: grantId,
+			status: 'revoked',
+			function_key: grant.function_key,
+			purpose: grant.purpose,
+			data_category: grant.data_category,
+			invalidated_projections: 1
+		}
+	})
+}
+
+/** Core v1 的墓碑解除仅供后续管理入口使用，当前 UI 不暴露“重新开启”。 */
+export function liftMockMemorySuppression(suppressionId: string, key: string): any {
+	return replayOrRun(key, 'lift|' + suppressionId, () => {
+		let claim: any = null
+		for (let i = 0; i < items.length; i++) {
+			if (items[i].suppression_id == suppressionId) { claim = items[i]; break }
+		}
+		if (claim == null) fail('MEMORY_SUPPRESSION_NOT_FOUND', '删除记录不存在')
+		claim.suppressed = false
+		claim.suppression_id = null
+		claim.updated_at = isoNow()
+		return { suppression_id: suppressionId, event_id: 'evt_mock_lift_' + suppressionId, status: 'lifted' }
+	})
+}
+
+/** 供未来测试/调试重置 Mock；不写入持久化存储。 */
+export function resetMockMemoryState(): void {
+	items = clone(seedItems)
+	grants = clone(seedGrants)
+	nextRevision = 11
+	nextClaimNo = 1
+	const keys = Object.keys(idempotencyRecords)
+	for (let i = 0; i < keys.length; i++) delete idempotencyRecords[keys[i]]
+}

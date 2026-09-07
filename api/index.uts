@@ -237,7 +237,7 @@ export {
   submitFeedback
 } from './help.uts'
 
-// AI 分身（当前为本地 Mock，不进入真人消息系统）
+// AI 分身（Mock 仅用于本地演示；非 Mock 走后端获授权公开资料接口，不进入真人消息系统）
 export {
   AI_AVATAR_STORAGE_PREFIX,
   AI_AVATAR_OWNER_STORAGE_PREFIX,
@@ -384,3 +384,29 @@ export {
   getProfilePreview,
   getMoxiangArchive
 } from './ai-moxiang.uts'
+
+// 记忆管理（Memory Kernel v1 / Phase 3）
+export {
+  getMemoryView,
+  confirmMemory,
+  correctMemory,
+  suppressMemory,
+  revokeMemoryGrant,
+  liftMemorySuppression,
+  genMemoryIdempotencyKey,
+  memoryErrorMessage
+} from './ai-memory.uts'
+
+export type {
+  MemorySubject,
+  MemoryClaimStatus,
+  MemoryStatusFilter,
+  MemoryItem,
+  MemoryGrant,
+  MemoryViewResponse,
+  MemoryConfirmResponse,
+  MemoryCorrectResponse,
+  MemorySuppressResponse,
+  MemoryRevokeGrantResponse,
+  MemoryLiftSuppressionResponse
+} from './ai-memory.uts'
