@@ -253,7 +253,7 @@ try {
     ['管理中心我服务的进入资料待审我的页', managementPageContent.includes("name == '查看我服务的'") && managementPageContent.includes("openPendingReview('mine')") && reviewContent.includes("props.initialTab == 'mine'")],
     ['录入按钮打开完整会员档案表单', reviewContent.includes("subview == 'entry'") && reviewContent.includes('entryTextFields') && reviewContent.includes('上传头像') && reviewContent.includes('确认')],
     ['录入表单校验姓名、昵称、手机与身高体重', reviewContent.includes('请填写昵称') && reviewContent.includes('请填写姓名') && reviewContent.includes('请填写正确的手机号') && reviewContent.includes('请填写正确的身高') && reviewContent.includes('请填写正确的体重')],
-    ['录入提交使用红娘后台真实会员创建接口', matchmakerApiContent.includes("url: '/admin/matchmaker/members', method: 'POST'") && matchmakerApiContent.includes("url: '/admin/matchmaker/members/' + encodeURIComponent(memberId)")],
+    ['录入提交使用工作台域真实会员创建接口', matchmakerApiContent.includes("url: '/matchmaker/workbench/members', method: 'POST'") && !matchmakerApiContent.includes("url: '/admin/matchmaker/members', method: 'POST'")],
     ['筛选使用页面级右侧抽屉', reviewContent.includes('filterVisible') && reviewContent.includes('class="filter-layer"') && reviewContent.includes('.filter-layer { position: fixed') && reviewContent.includes('.filter-drawer')],
     ['筛选覆盖资料待审全部条件', ['籍贯', '现居', '性别', '年龄', '身高', '学历', '职业', '收入', '婚况', '购房', '购车', '吸烟', '喝酒', '认证', '线上VIP', '线下VIP'].every(label => reviewContent.includes("label: '" + label + "'"))],
     ['线下VIP展开可选不限与只看VIP', reviewContent.includes("key: 'vipOffline'") && reviewContent.includes("label: '只看VIP'") && reviewContent.includes("label: '不限'")],

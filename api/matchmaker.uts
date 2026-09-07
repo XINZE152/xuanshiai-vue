@@ -277,38 +277,29 @@ export async function getMatchmakerReviewMembers(data: any | null = null) {
   return request({ url: '/matchmaker/workbench/members', method: 'GET', data: query })
 }
 
-/** 红娘后台录入会员；服务端创建基础账号后，再补齐可写的公开资料字段。 */
+/** 红娘后台录入会员；走工作台域接口，单次调用完成建档+待审+分派。 */
 export async function createMatchmakerWorkspaceMember(data: any) {
   const source = data != null ? data : {}
   const maritalText = source.maritalStatus != null ? String(source.maritalStatus) : ''
-  const isMarried = maritalText == '已婚' ? 1 : (maritalText == '离异' || maritalText == '离婚' ? 2 : (maritalText == '丧偶' ? 3 : null))
-  const remarkParts: string[] = []
-  if (source.realName != null && String(source.realName).trim() != '') remarkParts.push('姓名：' + String(source.realName).trim())
-  if (source.codeMode == 'custom' && source.memberCode != null && String(source.memberCode).trim() != '') remarkParts.push('录入编号：' + String(source.memberCode).trim())
-  if (source.religion != null && String(source.religion).trim() != '') remarkParts.push('宗教：' + String(source.religion).trim())
-  if (source.drinking != null && String(source.drinking).trim() != '') remarkParts.push('饮酒：' + String(source.drinking).trim())
-  if (source.marriagePlan != null && String(source.marriagePlan).trim() != '') remarkParts.push('结婚计划：' + String(source.marriagePlan).trim())
-  if (source.income != null && String(source.income).trim() != '') remarkParts.push('收入：' + String(source.income).trim())
-  if (source.status != null) remarkParts.push('相亲状态：' + (String(source.status) == 'PAUSED' ? '暂停相亲' : '公开相亲'))
-  const created = await request({
-    url: '/admin/matchmaker/members', method: 'POST', data: {
-      phone: String(source.phone || '').trim(), nickname: String(source.nickname || '').trim(), gender: Number(source.gender), birthday: source.birthday || null,
-      is_married: isMarried, avatar: source.avatarUrl != null && String(source.avatarUrl).indexOf('http') == 0 ? String(source.avatarUrl) : null,
-      remark: remarkParts.join('\n')
+  const isMarried = maritalText == '已婚' ? 1 : (maritalText == '离异' || maritalText == '离婚' ? 2 : (maritalText == '丧偶' ? 3 : 1))
+  const heightText = source.height != null && String(source.height).trim() != '' ? Number(source.height) : null
+  const weightText = source.weight != null && String(source.weight).trim() != '' ? Number(source.weight) : null
+  const incomeText = source.income != null && String(source.income).trim() != '' ? Number(String(source.income).replace(/[^0-9.]/g, '')) : null
+  return request({
+    url: '/matchmaker/workbench/members', method: 'POST', data: {
+      phone: String(source.phone || '').trim(), nickname: String(source.nickname || '').trim(), real_name: String(source.realName || '').trim() || null,
+      gender: Number(source.gender), birthday: source.birthday || null, is_married: isMarried,
+      wechat: String(source.wechat || '').trim() || null, height: heightText, weight: weightText,
+      hometown: String(source.hometown || '').trim() || null, residence: String(source.residence || '').trim() || null,
+      household: String(source.household || '').trim() || null, ethnicity: String(source.ethnicity || '').trim() || null,
+      zodiac: String(source.zodiac || '').trim() || null, education: String(source.education || '').trim() || null,
+      job: String(source.occupation || '').trim() || null, income: !isNaN(incomeText) && incomeText != null && incomeText > 0 ? incomeText : null,
+      house: String(source.housing || '').trim() || null, car: String(source.vehicle || '').trim() || null,
+      smoking: String(source.smoking || '').trim() || null, drinking: String(source.drinking || '').trim() || null,
+      religion: String(source.religion || '').trim() || null, marriage_plan: String(source.marriagePlan || '').trim() || null,
+      tags: String(source.tags || '').trim() || null, remark: String(source.remark != null ? source.remark : (source.memberCode != null && source.codeMode == 'custom' ? '录入编号：' + String(source.memberCode).trim() : '')).trim() || null
     }
   })
-  if (!created.success || created.data == null || created.data.id == null) return created
-  const memberId = String(created.data.id)
-  const patchData: any = {
-    nickname: String(source.nickname || '').trim(), gender: Number(source.gender), birthday: source.birthday || null, is_married: isMarried,
-    height: source.height, weight: source.weight, zodiac: String(source.zodiac || '').trim(), household: String(source.household || '').trim(), ethnicity: String(source.ethnicity || '').trim(),
-    house: String(source.housing || '').trim(), car: String(source.vehicle || '').trim(), smoking: String(source.smoking || '').trim(), hometown: String(source.hometown || '').trim(), residence: String(source.residence || '').trim(),
-    education: String(source.education || '').trim(), job: String(source.occupation || '').trim(), wechat: String(source.wechat || '').trim(), remark: remarkParts.join('\n')
-  }
-  const tagText = source.tags != null ? String(source.tags).trim() : ''
-  if (tagText != '') patchData.tags = [tagText]
-  if (source.avatarUrl != null && String(source.avatarUrl).indexOf('http') == 0) patchData.avatar = String(source.avatarUrl)
-  return request({ url: '/admin/matchmaker/members/' + encodeURIComponent(memberId), method: 'PATCH', data: patchData })
 }
 
 /** 查询当前红娘工作台资料（含 user_id，供"我的"过滤与改派预选）。 */
@@ -483,6 +474,7 @@ export async function getMatchmakerWorkspaceMeetingRequests() {
       items: items.map((item: any) => ({
         id: item.id != null ? String(item.id) : '',
         status: item.status != null ? String(item.status) : 'SUBMITTED',
+        matchmakerName: item.matchmaker_name != null && String(item.matchmaker_name) != '' ? String(item.matchmaker_name) : '待分派',
         note: item.note != null ? String(item.note) : '',
         createdAt: formatWorkspaceTime(item.created_at),
         updatedAt: formatWorkspaceTime(item.updated_at),
@@ -496,6 +488,35 @@ export async function getMatchmakerWorkspaceMeetingRequests() {
     code: useDemoFallback ? 0 : result.code,
     message: useDemoFallback ? '本地测试数据' : result.message
   }
+}
+
+/** 添加牵线记录：双方须为工作范围内会员，成功需完成时间、失败需原因。 */
+export async function createMatchmakerIntroduction(data: any) {
+  const source = data != null ? data : {}
+  return request({
+    url: '/matchmaker/workbench/introductions', method: 'POST', data: {
+      from_user_id: Number(source.fromUserId), to_user_id: Number(source.toUserId),
+      applied_at: source.appliedAt || null, finished_at: source.finishedAt || null,
+      result: String(source.result || 'SUCCEEDED'), failure_reason: String(source.failureReason || '').trim() || null
+    }
+  })
+}
+
+/** 更新牵线状态；仅牵线失败需要携带失败原因。 */
+export async function updateMatchmakerIntroductionStatus(id: string, status: string, failureReason: string) {
+  const data: any = { status: status }
+  if (status == 'FAILED' && failureReason.trim().length > 0) data.failure_reason = failureReason.trim()
+  return request({ url: '/matchmaker/workbench/introductions/' + encodeURIComponent(id) + '/status', method: 'PATCH', data: data })
+}
+
+/** 更新约见申请处理状态：待处理 SUBMITTED / 已处理 ACCEPTED、DECLINED、CLOSED。 */
+export async function updateMatchmakerMeetingStatus(id: string, status: string) {
+  return request({ url: '/matchmaker/workbench/meeting-requests/' + encodeURIComponent(id) + '/status', method: 'PATCH', data: { status: status } })
+}
+
+/** 删除约见申请记录（连同其约见安排），仅限服务范围内。 */
+export async function deleteMatchmakerMeetingRequest(id: string) {
+  return request({ url: '/matchmaker/workbench/meeting-requests/' + encodeURIComponent(id), method: 'DELETE' })
 }
 
 /** 审核仅影响公开资料状态，实名认证与学历认证继续由平台认证流程管理。 */

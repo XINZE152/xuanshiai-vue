@@ -21,16 +21,16 @@
 			v-if="pendingReviewVisible"
 			:initial-tab="pendingReviewInitialTab"
 		/>
-		<scroll-view v-else-if="workspaceVisible" scroll-y class="workspace-scroller" :show-scrollbar="false">
+		<scroll-view v-else-if="workspaceVisible" scroll-y class="workspace-scroller" :show-scrollbar="false" :scroll-top="workspaceScrollTop">
 			<view class="workspace-content">
 				<view class="workspace-heading">
 					<text class="workspace-title">{{ workspaceTitle }}</text>
-					<text class="workspace-copy">仅展示服务端已提供的数据，未开放能力不会创建本地记录。</text>
+					<text class="workspace-copy">{{ workspaceKind == 'entry' ? '提交后自动分派到您名下，信息仅用于平台牵线服务。' : '仅展示服务端已提供的数据，未开放能力不会创建本地记录。' }}</text>
 				</view>
-				<view class="workspace-tabs">
+				<view v-if="workspaceKind != 'entry'" class="workspace-tabs">
 					<view v-for="item in workspaceTabs" :key="item" class="workspace-tab" :class="{ active: workspaceActiveTab == item }" @click="selectWorkspaceTab(item)"><text>{{ item }}</text></view>
 				</view>
-				<view class="workspace-search"><text class="workspace-search-glyph">⌕</text><input :placeholder="workspaceSearchPlaceholder" :value="workspaceKeyword" @input="onWorkspaceKeywordInput"/><view class="workspace-search-submit" @click="runWorkspaceSearch"><text class="workspace-search-glyph">⌕</text></view></view>
+				<view v-if="workspaceKind != 'entry'" class="workspace-search"><text class="workspace-search-glyph">⌕</text><input :placeholder="workspaceSearchPlaceholder" :value="workspaceKeyword" @input="onWorkspaceKeywordInput"/><view class="workspace-search-submit" @click="runWorkspaceSearch"><text class="workspace-search-glyph">⌕</text></view></view>
 
 				<view v-if="workspaceKind == 'commission'">
 					<view class="workspace-cash"><text>资金结算</text><text class="workspace-cash-value">--</text><text>分成、账本和提现不在本期范围内。</text></view>
@@ -121,19 +121,119 @@
 					<view v-if="workspaceMatchesLoading" class="workspace-state"><text>正在加载牵线记录…</text></view>
 					<view v-else-if="workspaceMatchesError.length > 0" class="workspace-state"><text>{{ workspaceMatchesError }}</text><text class="workspace-state-action" @click="loadWorkspaceMatches">重新加载</text></view>
 					<view v-else-if="workspaceVisibleMatches.length == 0" class="workspace-state"><text>没有符合条件的牵线记录</text></view>
-					<view v-else><view v-for="row in workspaceVisibleMatches" :key="row.id" class="workspace-match-card"><view class="workspace-match-card-top"><text>创建时间：{{ row.time }}</text><text class="workspace-match-status" :class="'workspace-match-status-' + row.statusTone">{{ row.statusLabel }}</text></view><view class="workspace-match-person"><image :src="row.fromUser.avatar" mode="aspectFill"/><view><text>{{ row.fromUser.name }} · {{ row.fromUser.gender }}</text><text>会员编号：{{ row.fromUser.id }}</text></view></view><view class="workspace-match-person"><image :src="row.toUser.avatar" mode="aspectFill"/><view><text>{{ row.toUser.name }} · {{ row.toUser.gender }}</text><text>会员编号：{{ row.toUser.id }}</text></view></view><text v-if="row.failureReason.length > 0" class="workspace-match-reason">结束说明：{{ row.failureReason }}</text><text class="workspace-match-owner">服务红娘：{{ row.owner }}</text></view></view>
+					<view v-else><view v-for="row in workspaceVisibleMatches" :key="row.id" class="workspace-match-card"><view class="workspace-match-card-top"><text>申请时间：{{ row.time }}</text><view class="workspace-match-status-btn" :class="'t-' + row.status" @click="openMatchStatusSheet(row)"><text>{{ row.statusLabel }}</text><view class="workspace-match-status-arrow"><i></i></view></view></view><view class="workspace-match-person"><view class="workspace-match-person-side"><view class="workspace-match-avatar-wrap"><image :src="row.fromUser.avatar" mode="aspectFill"/><text class="workspace-match-role role-applicant">申请人</text></view><view class="workspace-match-person-copy"><view class="workspace-match-person-name"><text>{{ row.fromUser.name }}</text><text class="workspace-match-gender" :class="row.fromUser.gender == '女' ? 'female' : 'male'">{{ row.fromUser.gender == '女' ? '♀' : '♂' }}</text></view><text class="workspace-match-person-code">编号：{{ row.fromUser.id }}</text></view></view><view class="workspace-match-contact" @click="showToast('联系方式在双方同意后开放')"><text>联系Ta</text></view></view><view class="workspace-match-person"><view class="workspace-match-person-side"><view class="workspace-match-avatar-wrap"><image :src="row.toUser.avatar" mode="aspectFill"/><text class="workspace-match-role role-target">牵线人</text></view><view class="workspace-match-person-copy"><view class="workspace-match-person-name"><text>{{ row.toUser.name }}</text><text class="workspace-match-gender" :class="row.toUser.gender == '女' ? 'female' : 'male'">{{ row.toUser.gender == '女' ? '♀' : '♂' }}</text></view><text class="workspace-match-person-code">编号：{{ row.toUser.id }}</text></view></view><view class="workspace-match-contact" @click="showToast('联系方式在双方同意后开放')"><text>联系Ta</text></view></view><text v-if="row.failureReason.length > 0" class="workspace-match-reason">失败原因：{{ row.failureReason }}</text><text class="workspace-match-owner">服务红娘：{{ row.owner }}</text></view></view>
 				</view>
-
 				<view v-else-if="workspaceKind == 'meeting'">
-					<view class="workspace-meeting-overview"><view><text class="workspace-meeting-overview-value">{{ workspaceVisibleMeetings.length }}</text><text class="workspace-meeting-overview-label">当前筛选约见</text></view><text>仅展示当前服务范围内的公开资料与安排状态</text></view>
+					<view class="workspace-meeting-intro"><view class="workspace-meeting-intro-head"><text class="workspace-meeting-intro-mark">T</text><text class="workspace-meeting-intro-title">须知</text></view><text class="workspace-meeting-intro-text">在这里您可以看到所有会员在平台上点击"申请安排见面"提交的记录，平台和红娘可以通过该信息进行精准销售或牵线服务，利用本功能可大大提升将会员引导到线下门店面谈的成功率。</text></view>
 					<view v-if="workspaceMeetingsUsingDemoData" class="workspace-demo-notice"><text>当前显示本地测试数据；服务端产生记录后将自动切换为真实数据。</text></view>
 					<view v-if="workspaceMeetingsLoading" class="workspace-state"><text>正在加载约见申请…</text></view>
 					<view v-else-if="workspaceMeetingsError.length > 0" class="workspace-state"><text>{{ workspaceMeetingsError }}</text><text class="workspace-state-action" @click="loadWorkspaceMeetings">重新加载</text></view>
 					<view v-else-if="workspaceVisibleMeetings.length == 0" class="workspace-state"><text>没有符合条件的约见申请</text></view>
-					<view v-else><view v-for="row in workspaceVisibleMeetings" :key="row.id" class="workspace-meeting-card"><view class="workspace-meeting-card-top"><text>申请编号：{{ row.id }}</text><text class="workspace-meeting-status" :class="'workspace-meeting-status-' + row.statusTone">{{ row.statusLabel }}</text></view><view class="workspace-meeting-pair"><view class="workspace-meeting-person"><image :src="row.applicant.avatar" mode="aspectFill"/><view><text>{{ row.applicant.name }}</text><text>{{ row.applicant.gender }} · {{ row.applicant.id }}</text></view></view><view class="workspace-meeting-link"><text>约见</text></view><view class="workspace-meeting-person"><image :src="row.target.avatar" mode="aspectFill"/><view><text>{{ row.target.name }}</text><text>{{ row.target.gender }} · {{ row.target.id }}</text></view></view></view><view v-if="row.meeting != null" class="workspace-meeting-arrangement"><text>约见安排</text><view><text>{{ row.meeting.scheduledAt }}</text><text>{{ row.meeting.location }}</text></view></view><text v-else class="workspace-meeting-detail">{{ row.detail }}</text><text v-if="row.meeting != null" class="workspace-meeting-detail">{{ row.detail }}</text><text class="workspace-meeting-time">提交于 {{ row.createdAt }}</text></view></view>
+					<view v-else><view v-for="row in workspaceVisibleMeetings" :key="row.id" class="workspace-meeting-card"><view class="workspace-meeting-pair"><view class="workspace-meeting-person"><view class="workspace-meeting-avatar-wrap"><image :src="row.applicant.avatar" mode="aspectFill"/><text class="workspace-meeting-gender" :class="row.applicant.gender == '女' ? 'female' : 'male'">{{ row.applicant.gender == '女' ? '♀' : '♂' }}</text></view><text class="workspace-meeting-name">{{ row.applicant.name }}</text><text class="workspace-meeting-person-code">编号：{{ row.applicant.id }}</text></view><view class="workspace-meeting-wish"><text>想约见</text></view><view class="workspace-meeting-person"><view class="workspace-meeting-avatar-wrap"><image :src="row.target.avatar" mode="aspectFill"/><text class="workspace-meeting-gender" :class="row.target.gender == '女' ? 'female' : 'male'">{{ row.target.gender == '女' ? '♀' : '♂' }}</text></view><text class="workspace-meeting-name">{{ row.target.name }}</text><text class="workspace-meeting-person-code">编号：{{ row.target.id }}</text></view></view><view class="workspace-meeting-meta"><view class="workspace-meeting-meta-line"><text class="workspace-meeting-meta-glyph">🕐</text><text>提交时间：{{ row.createdAt }}</text></view><view class="workspace-meeting-meta-line"><text class="workspace-meeting-meta-glyph">👤</text><text>服务红娘：{{ row.owner }}</text></view></view><view v-if="row.meeting != null" class="workspace-meeting-arrangement"><text>约见安排</text><view><text>{{ row.meeting.scheduledAt }}</text><text>{{ row.meeting.location }}</text></view></view><view class="workspace-meeting-foot"><view class="workspace-meeting-status-btn" :class="row.phase == 'PROCESSING' ? 'pending' : 'done'" @click="openMeetingStatusSheet(row)"><text>{{ row.phase == 'PROCESSING' ? '待处理' : '已处理' }}</text><view class="workspace-meeting-status-arrow"><i></i></view></view><view class="workspace-meeting-delete" @click="openMeetingDeleteSheet(row)"><text>删除记录</text></view></view></view></view>
+					<view v-if="workspaceKind == 'meeting' && workspaceMeetingsLoaded && workspaceVisibleMeetings.length > 0" class="workspace-scroll-top" @click="scrollWorkspaceTop"><text class="workspace-scroll-top-arrow">↑</text></view>
 				</view>
 
-				<view v-else-if="workspaceKind == 'entry'" class="workspace-entry-card"><text>{{ workspaceTitle }}</text><text class="workspace-muted">录入会员、牵线和约见需等待对应服务端流程开放；当前不会保存本地模拟记录。</text></view>
+				<view v-else-if="workspaceKind == 'entry' && workspaceTitle == '录入会员'" class="workspace-entry-page">
+					<view class="workspace-entry-hero">
+						<view class="workspace-entry-hero-copy">
+							<text class="workspace-entry-hero-title">分派提示</text>
+							<text class="workspace-entry-hero-sub">录入的会员进入待审核名单并挂到您名下，审核通过后开始参与匹配推荐</text>
+						</view>
+						<view class="workspace-entry-demo" @click="fillMemberDemo"><text>{{ memberEntryFilled ? '清空示例' : '填充示例' }}</text></view>
+					</view>
+
+					<view class="workspace-entry-formcard">
+						<view class="workspace-entry-card-head"><text class="workspace-entry-step">1</text><view class="workspace-entry-card-head-copy"><text class="workspace-entry-card-title">基础信息</text><text class="workspace-entry-card-require">昵称、姓名、手机为必填</text></view></view>
+						<view class="workspace-entry-row"><text class="workspace-entry-label">昵称</text><input :value="memberEntry.nickname" @input="memberEntry.nickname = $event.detail.value" placeholder="会员展示昵称" :maxlength="20"/></view>
+						<view class="workspace-entry-row"><text class="workspace-entry-label">姓名</text><input :value="memberEntry.realName" @input="memberEntry.realName = $event.detail.value" placeholder="真实姓名（保密存储）" :maxlength="20"/></view>
+						<view class="workspace-entry-row"><text class="workspace-entry-label">性别</text><view class="workspace-entry-chips"><view v-for="g in memberGenderOptions" :key="g.value" class="workspace-entry-chip" :class="{ active: memberEntry.gender == g.value }" @click="memberEntry.gender = g.value"><text>{{ g.label }}</text></view></view></view>
+						<view class="workspace-entry-row last"><text class="workspace-entry-label">手机</text><input :value="memberEntry.phone" @input="memberEntry.phone = $event.detail.value" placeholder="11 位手机号" type="number" :maxlength="11"/></view>
+					</view>
+
+					<view class="workspace-entry-formcard">
+						<view class="workspace-entry-card-head"><text class="workspace-entry-step">2</text><view class="workspace-entry-card-head-copy"><text class="workspace-entry-card-title">身体与属地</text><text class="workspace-entry-card-require">选填</text></view></view>
+						<picker mode="date" :value="memberEntry.birthday" start="1950-01-01" end="2007-12-31" @change="memberEntry.birthday = $event.detail.value"><view class="workspace-entry-row"><text class="workspace-entry-label">生日</text><view class="workspace-entry-picker"><text>{{ memberEntry.birthday }}</text><i></i></view></view></picker>
+						<view class="workspace-entry-row"><text class="workspace-entry-label">身高</text><input :value="memberEntry.height" @input="memberEntry.height = $event.detail.value" placeholder="cm，如 165" type="number" :maxlength="3"/></view>
+						<view class="workspace-entry-row"><text class="workspace-entry-label">体重</text><input :value="memberEntry.weight" @input="memberEntry.weight = $event.detail.value" placeholder="kg，如 50" type="number" :maxlength="3"/></view>
+						<view class="workspace-entry-row"><text class="workspace-entry-label">家乡</text><input :value="memberEntry.hometown" @input="memberEntry.hometown = $event.detail.value" placeholder="如：江苏省 南京市"/></view>
+						<view class="workspace-entry-row"><text class="workspace-entry-label">现居</text><input :value="memberEntry.residence" @input="memberEntry.residence = $event.detail.value" placeholder="如：江苏省 南京市"/></view>
+						<view class="workspace-entry-row last"><text class="workspace-entry-label">户口</text><input :value="memberEntry.household" @input="memberEntry.household = $event.detail.value" placeholder="户口所在地"/></view>
+					</view>
+
+					<view class="workspace-entry-formcard">
+						<view class="workspace-entry-card-head"><text class="workspace-entry-step">3</text><view class="workspace-entry-card-head-copy"><text class="workspace-entry-card-title">教育与婚况</text><text class="workspace-entry-card-require">点选即填</text></view></view>
+						<view class="workspace-entry-block"><text class="workspace-entry-block-label">学历</text><view class="workspace-entry-chips"><view v-for="e in memberEducationOptions" :key="e" class="workspace-entry-chip" :class="{ active: memberEntry.education == e }" @click="memberEntry.education = memberEntry.education == e ? '' : e"><text>{{ e }}</text></view></view></view>
+						<view class="workspace-entry-block"><text class="workspace-entry-block-label">婚况</text><view class="workspace-entry-chips"><view v-for="m in memberMaritalOptions" :key="m" class="workspace-entry-chip" :class="{ active: memberEntry.maritalStatus == m }" @click="memberEntry.maritalStatus = m"><text>{{ m }}</text></view></view></view>
+						<view class="workspace-entry-row"><text class="workspace-entry-label">职业</text><input :value="memberEntry.occupation" @input="memberEntry.occupation = $event.detail.value" placeholder="如：平面设计师"/></view>
+						<view class="workspace-entry-row"><text class="workspace-entry-label">月收入</text><input :value="memberEntry.income" @input="memberEntry.income = $event.detail.value" placeholder="数字，如 10000" type="number" :maxlength="6"/></view>
+						<view class="workspace-entry-row"><text class="workspace-entry-label">民族</text><input :value="memberEntry.ethnicity" @input="memberEntry.ethnicity = $event.detail.value" placeholder="如：汉族"/></view>
+						<view class="workspace-entry-row last"><text class="workspace-entry-label">属相</text><input :value="memberEntry.zodiac" @input="memberEntry.zodiac = $event.detail.value" placeholder="如：鼠"/></view>
+					</view>
+
+					<view class="workspace-entry-formcard">
+						<view class="workspace-entry-card-head"><text class="workspace-entry-step">4</text><view class="workspace-entry-card-head-copy"><text class="workspace-entry-card-title">联系与生活习惯</text><text class="workspace-entry-card-require">选填</text></view></view>
+						<view class="workspace-entry-row"><text class="workspace-entry-label">微信</text><input :value="memberEntry.wechat" @input="memberEntry.wechat = $event.detail.value" placeholder="微信号"/></view>
+						<view class="workspace-entry-block"><text class="workspace-entry-block-label">购房</text><view class="workspace-entry-chips"><view v-for="h in memberYesNoOptions" :key="h" class="workspace-entry-chip" :class="{ active: memberEntry.housing == h }" @click="memberEntry.housing = h"><text>{{ h }}</text></view></view></view>
+						<view class="workspace-entry-block"><text class="workspace-entry-block-label">购车</text><view class="workspace-entry-chips"><view v-for="v in memberYesNoOptions" :key="v" class="workspace-entry-chip" :class="{ active: memberEntry.vehicle == v }" @click="memberEntry.vehicle = v"><text>{{ v }}</text></view></view></view>
+						<view class="workspace-entry-block"><text class="workspace-entry-block-label">吸烟</text><view class="workspace-entry-chips"><view v-for="s in memberSmokeOptions" :key="s" class="workspace-entry-chip" :class="{ active: memberEntry.smoking == s }" @click="memberEntry.smoking = s"><text>{{ s }}</text></view></view></view>
+						<view class="workspace-entry-block last"><text class="workspace-entry-block-label">喝酒</text><view class="workspace-entry-chips"><view v-for="d in memberDrinkOptions" :key="d" class="workspace-entry-chip" :class="{ active: memberEntry.drinking == d }" @click="memberEntry.drinking = d"><text>{{ d }}</text></view></view></view>
+					</view>
+
+					<view class="workspace-entry-formcard">
+						<view class="workspace-entry-card-head"><text class="workspace-entry-step">5</text><view class="workspace-entry-card-head-copy"><text class="workspace-entry-card-title">补充说明</text><text class="workspace-entry-card-require">选填</text></view></view>
+						<view class="workspace-entry-row"><text class="workspace-entry-label">宗教</text><input :value="memberEntry.religion" @input="memberEntry.religion = $event.detail.value" placeholder="如：无"/></view>
+						<view class="workspace-entry-row"><text class="workspace-entry-label">结婚计划</text><input :value="memberEntry.marriagePlan" @input="memberEntry.marriagePlan = $event.detail.value" placeholder="如：两年内"/></view>
+						<view class="workspace-entry-row"><text class="workspace-entry-label">标签</text><input :value="memberEntry.tags" @input="memberEntry.tags = $event.detail.value" placeholder="用 | 分隔，如：温和|爱运动"/></view>
+						<view class="workspace-entry-block last"><text class="workspace-entry-block-label">备注</text><textarea class="workspace-entry-textarea" :value="memberEntry.remark" @input="memberEntry.remark = $event.detail.value" placeholder="性格、兴趣爱好、择偶要求等补充信息" :maxlength="500" auto-height/></view>
+					</view>
+
+					<view v-if="memberEntryError.length > 0" class="workspace-form-error"><text>{{ memberEntryError }}</text></view>
+
+					<view class="workspace-entry-submit" :class="{ disabled: memberEntrySubmitting }" @click="submitMemberEntry"><text>{{ memberEntrySubmitting ? '提交中…' : '完成录入' }}</text></view>
+					<view class="workspace-entry-foot"><text>提交后进入待审核状态，仅用于平台牵线服务</text></view>
+				</view>
+
+				<view v-else-if="workspaceKind == 'entry' && workspaceTitle == '录入客源线索'" class="workspace-entry-page">
+					<view class="workspace-entry-hero">
+						<view class="workspace-entry-hero-copy">
+							<text class="workspace-entry-hero-title">分派提示</text>
+							<text class="workspace-entry-hero-sub">您录入的客源将挂到您名下，平台核实后即可开始跟进</text>
+						</view>
+						<view class="workspace-entry-demo" @click="fillLeadDemo"><text>{{ leadDemoFilled ? '清空示例' : '填充示例' }}</text></view>
+					</view>
+
+					<view class="workspace-entry-formcard">
+						<view class="workspace-entry-card-head"><text class="workspace-entry-step">1</text><view class="workspace-entry-card-head-copy"><text class="workspace-entry-card-title">联系方式</text><text class="workspace-entry-card-require">电话、微信至少填一项</text></view></view>
+						<view class="workspace-entry-row"><text class="workspace-entry-label">称呼</text><input :value="leadFormName" @input="leadFormName = $event.detail.value" placeholder="如：李阿姨介绍的小雅" :maxlength="20"/></view>
+						<view class="workspace-entry-row"><text class="workspace-entry-label">电话</text><input :value="leadFormPhone" @input="leadFormPhone = $event.detail.value" placeholder="11 位手机号" type="number" :maxlength="11"/></view>
+						<view class="workspace-entry-row last"><text class="workspace-entry-label">微信</text><input :value="leadFormWechat" @input="leadFormWechat = $event.detail.value" placeholder="微信号，可与电话相同"/></view>
+					</view>
+
+					<view class="workspace-entry-formcard">
+						<view class="workspace-entry-card-head"><text class="workspace-entry-step">2</text><view class="workspace-entry-card-head-copy"><text class="workspace-entry-card-title">客源画像</text><text class="workspace-entry-card-require">选填，帮助快速判断意向</text></view></view>
+						<view class="workspace-entry-block">
+							<text class="workspace-entry-block-label">来源渠道</text>
+							<view class="workspace-entry-chips">
+								<view v-for="c in leadSourceOptions" :key="c" class="workspace-entry-chip" :class="{ active: leadFormSource == c }" @click="leadFormSource = leadFormSource == c ? '' : c"><text>{{ c }}</text></view>
+							</view>
+						</view>
+						<view class="workspace-entry-block">
+							<text class="workspace-entry-block-label">意向程度</text>
+							<view class="workspace-entry-chips">
+								<view v-for="lv in leadEntryIntentionOptions" :key="lv.value" class="workspace-entry-chip" :class="{ active: leadFormIntention == lv.value }" @click="leadFormIntention = lv.value"><text>{{ lv.label }}</text></view>
+							</view>
+						</view>
+						<view class="workspace-entry-block last">
+							<text class="workspace-entry-block-label">补充描述</text>
+							<textarea class="workspace-entry-textarea" :value="leadFormRemark" @input="leadFormRemark = $event.detail.value" placeholder="职业、学历、身高、婚况、收入、择偶需求等，便于后续匹配推荐" :maxlength="500" auto-height/>
+						</view>
+					</view>
+
+					<view v-if="leadFormError.length > 0" class="workspace-form-error"><text>{{ leadFormError }}</text></view>
+
+					<view class="workspace-entry-submit" :class="{ disabled: leadFormSubmitting }" @click="submitLeadForm"><text>{{ leadFormSubmitting ? '提交中…' : '确定提交' }}</text></view>
+					<view class="workspace-entry-foot"><text>提交即表示信息经本人确认，仅用于平台牵线服务</text></view>
+				</view>
 
 				<view v-else-if="workspaceKind == 'member'">
 					<view v-if="workspaceMembersLoading" class="workspace-state"><text>正在加载会员数据…</text></view>
@@ -152,7 +252,7 @@
 
 				<view v-else><view v-for="row in workspaceGenericRows" :key="row.title" class="workspace-generic-card"><view><text>{{ row.icon }}</text></view><view><text>{{ row.title }}</text><text>{{ row.desc }}</text></view><text @click="showToast(row.action)">{{ row.action }} ></text></view></view>
 			</view>
-			<view v-if="workspaceKind != 'match' && workspaceKind != 'meeting'" class="workspace-add" @click="workspaceKind == 'lead' ? openLeadAddSheet() : showToast('新增记录表单已打开')"><text>+</text><text>添加</text></view>
+			<view v-if="workspaceKind != 'meeting' && workspaceKind != 'entry'" class="workspace-add" :class="{ 'match-add': workspaceKind == 'match' }" @click="workspaceKind == 'lead' ? openLeadAddSheet() : (workspaceKind == 'match' ? openMatchAddSheet() : showToast('新增记录表单已打开'))"><text>+</text><text>添加</text></view>
 		</scroll-view>
 		<MatchmakerManagementCenter
 			v-else-if="managementCenterVisible && managementCenterSnapshot != null"
@@ -513,6 +613,62 @@
 			</view>
 		</XsaSheet>
 
+		<!-- 约见申请：审核状态 / 删除确认 -->
+		<XsaSheet :visible="matchStatusSheetVisible" title="牵线状态" @close="matchStatusSheetVisible = false">
+			<view class="workspace-match-status-form">
+				<view class="workspace-match-status-choices">
+					<view v-for="opt in matchStatusOptions" :key="opt.value" class="workspace-match-status-choice" :class="{ active: matchStatusChoice == opt.value }" @click="matchStatusChoice = opt.value"><text>{{ opt.label }}</text></view>
+				</view>
+				<textarea v-if="matchStatusChoice == 'FAILED'" class="workspace-entry-textarea" :value="matchFailureReason" @input="matchFailureReason = $event.detail.value" placeholder="请填写失败原因，如：超出时间未完成牵线，次数已退回" :maxlength="500" auto-height/>
+				<view class="workspace-match-status-submit" :class="{ disabled: matchStatusSubmitting }" @click="submitMatchStatus"><text>{{ matchStatusSubmitting ? '提交中…' : '提交' }}</text></view>
+			</view>
+		</XsaSheet>
+				<XsaSheet :visible="matchAddSheetVisible" title="添加牵线记录" @close="matchAddSheetVisible = false">
+			<view class="workspace-match-add-form">
+				<view class="workspace-match-add-row" @click="openMatchAddPicker('from')"><text class="workspace-match-add-label">牵线会员</text><view class="workspace-match-add-picker"><text :class="{ placeholder: matchAddFromName == '' }">{{ matchAddFromName == '' ? '请选择' : matchAddFromName }}</text><i></i></view></view>
+				<view class="workspace-match-add-row" @click="openMatchAddPicker('to')"><text class="workspace-match-add-label">被牵线会员</text><view class="workspace-match-add-picker"><text :class="{ placeholder: matchAddToName == '' }">{{ matchAddToName == '' ? '请选择' : matchAddToName }}</text><i></i></view></view>
+				<picker mode="date" :value="matchAddAppliedAt" start="2020-01-01" end="2030-12-31" @change="matchAddAppliedAt = $event.detail.value"><view class="workspace-match-add-row"><text class="workspace-match-add-label">牵线申请时间</text><view class="workspace-match-add-picker"><text :class="{ placeholder: matchAddAppliedAt == '' }">{{ matchAddAppliedAt == '' ? '请选择' : matchAddAppliedAt }}</text><i></i></view></view></picker>
+				<picker mode="date" :value="matchAddFinishedAt" start="2020-01-01" end="2030-12-31" @change="matchAddFinishedAt = $event.detail.value"><view class="workspace-match-add-row last"><text class="workspace-match-add-label">牵线完成时间</text><view class="workspace-match-add-picker"><text :class="{ placeholder: matchAddFinishedAt == '' }">{{ matchAddFinishedAt == '' ? '请选择' : matchAddFinishedAt }}</text><i></i></view></view></picker>
+				<view class="workspace-match-add-row last"><text class="workspace-match-add-label">牵线结果</text><view class="workspace-match-add-result"><view class="workspace-match-add-radio" :class="{ active: matchAddResult == 'SUCCEEDED' }" @click="matchAddResult = 'SUCCEEDED'"><text v-if="matchAddResult == 'SUCCEEDED'">✓</text></view><text :class="{ 'radio-on': matchAddResult == 'SUCCEEDED' }">牵线成功</text><view class="workspace-match-add-radio" :class="{ active: matchAddResult == 'FAILED' }" @click="matchAddResult = 'FAILED'"><text v-if="matchAddResult == 'FAILED'">✓</text></view><text :class="{ 'radio-on': matchAddResult == 'FAILED' }">牵线失败</text></view></view>
+				<textarea v-if="matchAddResult == 'FAILED'" class="workspace-entry-textarea" :value="matchAddFailureReason" @input="matchAddFailureReason = $event.detail.value" placeholder="请填写失败原因（必填）" :maxlength="500" auto-height/>
+				<view class="workspace-match-add-note"><text class="workspace-match-add-note-mark">T</text><text>牵线成功：从牵线会员的账号中扣除1次牵线次数；
+牵线失败：不扣除牵线次数。</text></view>
+				<view v-if="matchAddError.length > 0" class="workspace-form-error"><text>{{ matchAddError }}</text></view>
+				<view class="workspace-match-add-submit" :class="{ disabled: matchAddSubmitting }" @click="submitMatchAdd"><text>{{ matchAddSubmitting ? '提交中…' : '提交' }}</text></view>
+			</view>
+		</XsaSheet>
+
+		<!-- 会员选择弹层（添加牵线记录用） -->
+		<XsaSheet :visible="matchAddPickerVisible" :title="matchAddPickerKind == 'from' ? '选择牵线会员' : '选择被牵线会员'" @close="matchAddPickerVisible = false">
+			<view v-if="matchAddLoading" class="workspace-state"><text>正在加载会员…</text></view>
+			<view v-else-if="matchAddCandidates.length == 0" class="workspace-state"><text>服务范围内暂无会员</text></view>
+			<view v-else class="workspace-option-list">
+				<view v-for="m in matchAddCandidates" :key="m.id" class="workspace-option" :class="{ selected: isMatchAddPicked(m.id) }" @click="pickMatchAddMember(m)">
+					<text>{{ m.name }}（{{ m.gender }} · {{ m.id }}）</text>
+					<text v-if="isMatchAddPicked(m.id)" class="workspace-option-check">✓</text>
+				</view>
+			</view>
+		</XsaSheet>
+
+<XsaSheet :visible="meetingStatusSheetVisible" title="审核状态" @close="meetingStatusSheetVisible = false">
+			<view class="workspace-meeting-status-form">
+				<view class="workspace-meeting-status-pair">
+					<view class="workspace-meeting-status-pill" :class="{ active: meetingStatusChoice == 'SUBMITTED' }" @click="meetingStatusChoice = 'SUBMITTED'"><text>待处理</text></view>
+					<view class="workspace-meeting-status-pill" :class="{ active: meetingStatusChoice == 'ACCEPTED' }" @click="meetingStatusChoice = 'ACCEPTED'"><text>已处理</text></view>
+				</view>
+				<view class="workspace-match-status-submit" :class="{ disabled: meetingStatusSubmitting }" @click="submitMeetingStatus"><text>{{ meetingStatusSubmitting ? '提交中…' : '提交' }}</text></view>
+			</view>
+		</XsaSheet>
+		<XsaSheet :visible="meetingDeleteSheetVisible" title="删除记录" @close="meetingDeleteSheetVisible = false">
+			<view class="workspace-meeting-status-form">
+				<text v-if="meetingDeleteRow != null" class="workspace-confirm-tip">确定删除 #{{ meetingDeleteRow.id }}（{{ meetingDeleteRow.applicant.name }} × {{ meetingDeleteRow.target.name }}）的约见申请吗？关联的约见安排会一并删除，删除后不可恢复。</text>
+				<view class="workspace-sheet-actions">
+					<view class="workspace-sheet-btn ghost" @click="meetingDeleteSheetVisible = false"><text>取消</text></view>
+					<view class="workspace-sheet-btn" :class="{ disabled: meetingDeleteSubmitting }" @click="submitMeetingDelete"><text>{{ meetingDeleteSubmitting ? '删除中…' : '确认删除' }}</text></view>
+				</view>
+			</view>
+		</XsaSheet>
+
 		<!-- 线索：弃海 / 入库确认 -->
 		<XsaSheet :visible="leadConfirmSheetVisible" :title="leadConfirmKind == 'abandon' ? '放入弃海' : (leadConfirmKind == 'restore' ? '恢复客源' : '一键入库')" @close="leadConfirmSheetVisible = false">
 			<view class="workspace-lead-confirm">
@@ -555,6 +711,11 @@ import {
 	convertWorkspaceLead,
 	updateWorkspaceLead,
 	createWorkspaceLead,
+	createMatchmakerWorkspaceMember,
+	updateMatchmakerMeetingStatus,
+	updateMatchmakerIntroductionStatus,
+	createMatchmakerIntroduction,
+	deleteMatchmakerMeetingRequest,
 	getMatchmakerWorkspaceIntroductions,
 	getMatchmakerWorkspaceMeetingRequests,
 	submitMatchmakerApplication
@@ -608,7 +769,7 @@ const workspaceDefaultTabs = ['全部', '进行中', '已完成']
 const workspaceCommissionTabs = ['分成明细', '分成标准']
 const workspaceLeadTabs = ['客源线索', '弃海客源']
 const workspaceMatchTabs = ['全部', '待牵线', '牵线中', '成功', '失败']
-const workspaceMeetingTabs = ['全部', '处理中', '待见面', '已完成', '已结束']
+const workspaceMeetingTabs = ['全部', '待处理', '待见面', '已完成', '已结束']
 const workspaceTabs = computed(() => {
 	if (workspaceKind.value == 'commission') return workspaceCommissionTabs
 	if (workspaceKind.value == 'lead') return workspaceLeadTabs
@@ -718,7 +879,7 @@ const workspaceVisibleMatches = computed(() => {
 })
 const workspaceVisibleMeetings = computed(() => {
 	let rows = workspaceMeetings.value
-	if (workspaceActiveTab.value == '处理中') rows = rows.filter((item: any) => item.phase == 'PROCESSING')
+	if (workspaceActiveTab.value == '待处理') rows = rows.filter((item: any) => item.phase == 'PROCESSING')
 	if (workspaceActiveTab.value == '待见面') rows = rows.filter((item: any) => item.phase == 'UPCOMING')
 	if (workspaceActiveTab.value == '已完成') rows = rows.filter((item: any) => item.phase == 'COMPLETED')
 	if (workspaceActiveTab.value == '已结束') rows = rows.filter((item: any) => item.phase == 'ENDED')
@@ -1256,8 +1417,107 @@ const leadFormPhone = ref('')
 const leadFormWechat = ref('')
 const leadFormSource = ref('')
 const leadFormRemark = ref('')
+const leadFormIntention = ref(1)
 const leadFormError = ref('')
 const leadFormSubmitting = ref(false)
+// 录入视图示例数据：一键填充全表单便于联调，再点一次清空。
+const leadDemoFilled = computed(() => leadFormName.value != '' || leadFormPhone.value != '' || leadFormWechat.value != '' || leadFormRemark.value != '')
+const leadSourceOptions = ['朋友推荐', '活动咨询', '社群报名', '线上表单', '门店到访', '其他']
+const leadEntryIntentionOptions = [
+	{ value: 1, label: '初步了解' },
+	{ value: 2, label: '有意愿' },
+	{ value: 3, label: '意向强烈' }
+]
+const fillLeadDemo = () => {
+	if (leadDemoFilled.value) {
+		leadFormName.value = ''
+		leadFormPhone.value = ''
+		leadFormWechat.value = ''
+		leadFormSource.value = ''
+		leadFormRemark.value = ''
+		leadFormIntention.value = 1
+		leadFormError.value = ''
+		return
+	}
+	leadFormName.value = '林晚意（示例）'
+	leadFormPhone.value = '13922223333'
+	leadFormWechat.value = 'wx_demo_linyi'
+	leadFormSource.value = '朋友推荐'
+	leadFormIntention.value = 2
+	leadFormRemark.value = '27 岁，本科，平面设计师，身高 163cm，未婚。性格温和，希望找同城、有稳定工作的对象。'
+	leadFormError.value = ''
+}
+
+// ===== 录入会员：分区表单 + 示例填充，提交走工作台域创建接口。 =====
+const emptyMemberEntry = (): any => ({
+	nickname: '', realName: '', gender: 1, phone: '', wechat: '',
+	birthday: '1996-08-12', height: '', weight: '', hometown: '', residence: '', household: '',
+	education: '', maritalStatus: '未婚', occupation: '', income: '', ethnicity: '', zodiac: '',
+	housing: '', vehicle: '', smoking: '不吸烟', drinking: '不喝酒', religion: '', marriagePlan: '', tags: '', remark: ''
+})
+const memberEntry = ref<any>(emptyMemberEntry())
+const memberEntrySubmitting = ref(false)
+const memberEntryError = ref('')
+const memberGenderOptions = [{ value: 1, label: '男' }, { value: 2, label: '女' }]
+const memberEducationOptions = ['高中及以下', '大专', '本科', '硕士', '博士']
+const memberMaritalOptions = ['未婚', '离异', '丧偶']
+const memberYesNoOptions = ['有房', '无房', '有车', '无车']
+const memberSmokeOptions = ['不吸烟', '偶尔吸', '经常吸']
+const memberDrinkOptions = ['不喝酒', '社交场合', '经常喝']
+const memberEntryFilled = computed(() => {
+	const d = memberEntry.value
+	return String(d.nickname).trim() != '' || String(d.phone).trim() != '' || String(d.realName).trim() != ''
+})
+const fillMemberDemo = () => {
+	if (memberEntryFilled.value) {
+		memberEntry.value = emptyMemberEntry()
+		memberEntryError.value = ''
+		return
+	}
+	memberEntry.value = {
+		nickname: '钱多多（示例）', realName: '钱多多', gender: 2, phone: '13922224444', wechat: 'wx_demo_qdd',
+		birthday: '1996-08-12', height: '164', weight: '50', hometown: '江苏省 南京市', residence: '江苏省 南京市', household: '江苏省 南京市',
+		education: '本科', maritalStatus: '未婚', occupation: '平面设计师', income: '10000', ethnicity: '汉族', zodiac: '鼠',
+		housing: '有房', vehicle: '无车', smoking: '不吸烟', drinking: '不喝酒', religion: '无', marriagePlan: '两年内', tags: '温和|爱运动', remark: '示例录入：性格温和，喜欢运动和摄影，希望找同城、有稳定工作的对象。'
+	}
+	memberEntryError.value = ''
+}
+const submitMemberEntry = async () => {
+	if (memberEntrySubmitting.value) return
+	const d = memberEntry.value
+	const nickname = String(d.nickname).trim()
+	const realName = String(d.realName).trim()
+	const phone = String(d.phone).trim()
+	if (nickname.length == 0) { memberEntryError.value = '请填写昵称'; return }
+	if (realName.length == 0) { memberEntryError.value = '请填写姓名'; return }
+	if (!/^1[3-9]\d{9}$/.test(phone)) { memberEntryError.value = '请填写正确的 11 位手机号'; return }
+	if (String(d.height).trim() != '' && (isNaN(Number(d.height)) || Number(d.height) < 100 || Number(d.height) > 250)) { memberEntryError.value = '身高需在 100-250cm 之间'; return }
+	if (String(d.weight).trim() != '' && (isNaN(Number(d.weight)) || Number(d.weight) < 40 || Number(d.weight) > 120)) { memberEntryError.value = '体重需在 40-120kg 之间'; return }
+	memberEntrySubmitting.value = true
+	memberEntryError.value = ''
+	try {
+		const result = await createMatchmakerWorkspaceMember({
+			nickname: nickname, realName: realName, gender: Number(d.gender), phone: phone,
+			wechat: String(d.wechat).trim(), birthday: d.birthday, height: String(d.height).trim(),
+			weight: String(d.weight).trim(), hometown: String(d.hometown).trim(), residence: String(d.residence).trim(),
+			household: String(d.household).trim(), education: String(d.education).trim(), maritalStatus: String(d.maritalStatus).trim(),
+			occupation: String(d.occupation).trim(), income: String(d.income).trim(), ethnicity: String(d.ethnicity).trim(),
+			zodiac: String(d.zodiac).trim(), housing: String(d.housing).trim(), vehicle: String(d.vehicle).trim(),
+			smoking: String(d.smoking).trim(), drinking: String(d.drinking).trim(), religion: String(d.religion).trim(),
+			marriagePlan: String(d.marriagePlan).trim(), tags: String(d.tags).trim(), remark: String(d.remark).trim()
+		})
+		if (!result.success) {
+			memberEntryError.value = result.message != null && String(result.message).length > 0 ? String(result.message) : '录入失败，请稍后重试'
+			return
+		}
+		showToast('会员已录入，等待审核')
+		memberEntry.value = emptyMemberEntry()
+	} catch (e) {
+		memberEntryError.value = '网络异常，请稍后重试'
+	} finally {
+		memberEntrySubmitting.value = false
+	}
+}
 const openLeadAddSheet = () => {
 	leadFormIsEdit.value = false
 	leadFormLeadId.value = ''
@@ -1313,7 +1573,7 @@ const submitLeadForm = async () => {
 	leadFormSubmitting.value = true
 	leadFormError.value = ''
 	try {
-		const payload = { name: name, phone: phone, wechat: wechat, source: leadFormSource.value.trim(), remark: leadFormRemark.value.trim() }
+		const payload = { name: name, phone: phone, wechat: wechat, source: leadFormSource.value.trim(), intentionLevel: leadFormIntention.value, remark: leadFormRemark.value.trim() }
 		const result = leadFormIsEdit.value
 			? await updateWorkspaceLead(leadFormLeadId.value, payload)
 			: await createWorkspaceLead(payload)
@@ -1322,6 +1582,12 @@ const submitLeadForm = async () => {
 			return
 		}
 		leadFormSheetVisible.value = false
+		leadFormName.value = ''
+		leadFormPhone.value = ''
+		leadFormWechat.value = ''
+		leadFormSource.value = ''
+		leadFormRemark.value = ''
+		leadFormIntention.value = 1
 		showToast(leadFormIsEdit.value ? '线索已更新' : '线索已添加，等待跟进')
 		await loadWorkspaceLeads()
 	} catch (e) {
@@ -1422,8 +1688,16 @@ const getIntroductionFallbackAvatar = (memberId: any, gender: string, memberName
 	const seedText = String(memberId || '') + ':' + String(memberName || '')
 	let seed = 0
 	for (let i = 0; i < seedText.length; i++) seed = (seed * 31 + seedText.charCodeAt(i)) >>> 0
-	const maleAvatars = ['/static/portraits/profile-man-light.jpg', '/static/portraits/profile-man-sea.jpg', '/static/portraits/profile-man-alt.jpg']
-	const femaleAvatars = ['/static/portraits/profile-woman-main.jpg', '/static/portraits/profile-woman-community.jpg', '/static/portraits/profile-woman-alt.jpg', '/static/portraits/custom-matchmaker-hero.jpg']
+	// 82 张动漫头像池（static/avatars），男会员取 001-041，女会员取 042-082。
+	const maleAvatars: string[] = []
+	const femaleAvatars: string[] = []
+	for (let i = 1; i <= 41; i++) {
+		const padded = i < 10 ? '00' + String(i) : (i < 100 ? '0' + String(i) : String(i))
+		maleAvatars.push('/static/avatars/matchmaking-anime-' + padded + '.jpg')
+		const fj = i + 41
+		const fpadded = fj < 100 ? '0' + String(fj) : String(fj)
+		femaleAvatars.push('/static/avatars/matchmaking-anime-' + fpadded + '.jpg')
+	}
 	const neutralAvatars = maleAvatars.concat(femaleAvatars)
 	const normalizedGender = String(gender || '')
 	const avatars = normalizedGender == '男' || normalizedGender == 'MALE' ? maleAvatars : (normalizedGender == '女' || normalizedGender == 'FEMALE' ? femaleAvatars : neutralAvatars)
@@ -1542,6 +1816,8 @@ const loadWorkspaceMeetings = async () => {
 				statusTone: presentation.statusTone,
 				detail: presentation.detail,
 				createdAt: item.createdAt != null ? String(item.createdAt).substring(0, 16) : '',
+				owner: item.matchmakerName != null && String(item.matchmakerName) != '' ? String(item.matchmakerName) : '待分派',
+				note: item.note != null ? String(item.note) : '',
 				meeting: meeting != null ? {
 					status: meeting.status != null ? String(meeting.status) : '',
 					scheduledAt: meeting.scheduledAt != null ? String(meeting.scheduledAt).substring(0, 16) : '',
@@ -1570,6 +1846,201 @@ const loadWorkspaceMeetings = async () => {
 	} finally {
 		workspaceMeetingsLoading.value = false
 	}
+}
+
+// ===== 牵线管理：添加牵线记录 =====
+const matchAddSheetVisible = ref(false)
+const matchAddPickerVisible = ref(false)
+const matchAddPickerKind = ref('from')
+const matchAddFromId = ref('')
+const matchAddFromName = ref('')
+const matchAddToId = ref('')
+const matchAddToName = ref('')
+const matchAddAppliedAt = ref('')
+const matchAddFinishedAt = ref('')
+const matchAddResult = ref('SUCCEEDED')
+const matchAddFailureReason = ref('')
+const matchAddError = ref('')
+const matchAddSubmitting = ref(false)
+const matchAddLoading = ref(false)
+const matchAddCandidates = ref<any[]>([])
+const openMatchAddSheet = () => {
+	matchAddFromId.value = ''
+	matchAddFromName.value = ''
+	matchAddToId.value = ''
+	matchAddToName.value = ''
+	matchAddAppliedAt.value = ''
+	matchAddFinishedAt.value = ''
+	matchAddResult.value = 'SUCCEEDED'
+	matchAddFailureReason.value = ''
+	matchAddError.value = ''
+	matchAddSheetVisible.value = true
+}
+const openMatchAddPicker = async (kind: string) => {
+	matchAddPickerKind.value = kind
+	matchAddPickerVisible.value = true
+	if (matchAddCandidates.value.length == 0) {
+		matchAddLoading.value = true
+		try {
+			await loadWorkspaceMembers()
+			const rows = workspaceMembers.value
+			const options: any[] = []
+			for (let i = 0; i < rows.length; i++) {
+				const row = rows[i]
+				options.push({ id: String(row.id), name: String(row.name || '未命名会员'), gender: String(row.gender || '未填写') })
+			}
+			matchAddCandidates.value = options
+		} catch (e) {
+			showToast('会员列表加载失败')
+		} finally {
+			matchAddLoading.value = false
+		}
+	}
+}
+const isMatchAddPicked = (id: string) => {
+	return (matchAddPickerKind.value == 'from' && matchAddToId.value == id) || (matchAddPickerKind.value == 'to' && matchAddFromId.value == id)
+}
+const pickMatchAddMember = (m: any) => {
+	if (matchAddPickerKind.value == 'from') {
+		matchAddFromId.value = m.id
+		matchAddFromName.value = m.name
+	} else {
+		matchAddToId.value = m.id
+		matchAddToName.value = m.name
+	}
+	matchAddPickerVisible.value = false
+}
+const submitMatchAdd = async () => {
+	if (matchAddSubmitting.value) return
+	if (matchAddFromId.value.length == 0) { matchAddError.value = '请选择牵线会员'; return }
+	if (matchAddToId.value.length == 0) { matchAddError.value = '请选择被牵线会员'; return }
+	if (matchAddFromId.value == matchAddToId.value) { matchAddError.value = '牵线双方不能是同一人'; return }
+	if (matchAddResult.value == 'SUCCEEDED' && matchAddFinishedAt.value == '') { matchAddError.value = '牵线成功需要选择牵线完成时间'; return }
+	if (matchAddResult.value == 'FAILED' && matchAddFailureReason.value.trim().length == 0) { matchAddError.value = '牵线失败需要填写失败原因'; return }
+	matchAddSubmitting.value = true
+	matchAddError.value = ''
+	try {
+		const result = await createMatchmakerIntroduction({
+			fromUserId: matchAddFromId.value, toUserId: matchAddToId.value,
+			appliedAt: matchAddAppliedAt.value || '', finishedAt: matchAddFinishedAt.value || '',
+			result: matchAddResult.value, failureReason: matchAddFailureReason.value
+		})
+		if (!result.success) {
+			matchAddError.value = result.message != null && String(result.message).length > 0 ? String(result.message) : '添加失败，请稍后重试'
+			return
+		}
+		matchAddSheetVisible.value = false
+		showToast('牵线记录已添加')
+		await loadWorkspaceMatches()
+	} catch (e) {
+		matchAddError.value = '网络异常，请稍后重试'
+	} finally {
+		matchAddSubmitting.value = false
+	}
+}
+
+// ===== 牵线管理：牵线状态弹窗（失败必填原因，其他状态无备注） =====
+const matchStatusSheetVisible = ref(false)
+const matchStatusRow = ref<any>(null)
+const matchStatusChoice = ref('IN_PROGRESS')
+const matchFailureReason = ref('')
+const matchStatusSubmitting = ref(false)
+const matchStatusOptions = [
+	{ value: 'IN_PROGRESS', label: '牵线中' },
+	{ value: 'PENDING', label: '待牵线' },
+	{ value: 'SUCCEEDED', label: '牵线成功' },
+	{ value: 'FAILED', label: '牵线失败' }
+]
+const openMatchStatusSheet = (row: any) => {
+	matchStatusRow.value = row
+	matchStatusChoice.value = String(row.status) == 'PENDING' ? 'IN_PROGRESS' : String(row.status)
+	matchFailureReason.value = ''
+	matchStatusSheetVisible.value = true
+}
+const submitMatchStatus = async () => {
+	const row = matchStatusRow.value
+	if (row == null || matchStatusSubmitting.value) return
+	if (matchStatusChoice.value == 'FAILED' && matchFailureReason.value.trim().length == 0) {
+		showToast('牵线失败需要填写失败原因')
+		return
+	}
+	matchStatusSubmitting.value = true
+	try {
+		const result = await updateMatchmakerIntroductionStatus(String(row.id), matchStatusChoice.value, matchFailureReason.value)
+		if (!result.success) {
+			showToast(result.message != null && String(result.message).length > 0 ? String(result.message) : '状态更新失败')
+			return
+		}
+		matchStatusSheetVisible.value = false
+		showToast('牵线状态已更新')
+		await loadWorkspaceMatches()
+	} catch (e) {
+		showToast('网络异常，请稍后重试')
+	} finally {
+		matchStatusSubmitting.value = false
+	}
+}
+
+// ===== 约见申请：审核状态弹窗 / 删除确认 / 回顶部 =====
+const meetingStatusSheetVisible = ref(false)
+const meetingStatusRow = ref<any>(null)
+const meetingStatusChoice = ref('ACCEPTED')
+const meetingStatusSubmitting = ref(false)
+const meetingDeleteSheetVisible = ref(false)
+const meetingDeleteRow = ref<any>(null)
+const meetingDeleteSubmitting = ref(false)
+// 已处理选项映射服务端状态；待处理回 SUBMITTED 用于误操作还原。
+const openMeetingStatusSheet = (row: any) => {
+	meetingStatusRow.value = row
+	meetingStatusChoice.value = row.phase == 'PROCESSING' ? 'ACCEPTED' : 'SUBMITTED'
+	meetingStatusSheetVisible.value = true
+}
+const submitMeetingStatus = async () => {
+	const row = meetingStatusRow.value
+	if (row == null || meetingStatusSubmitting.value) return
+	meetingStatusSubmitting.value = true
+	try {
+		const result = await updateMatchmakerMeetingStatus(String(row.id), meetingStatusChoice.value)
+		if (!result.success) {
+			showToast(result.message != null && String(result.message).length > 0 ? String(result.message) : '状态更新失败')
+			return
+		}
+		meetingStatusSheetVisible.value = false
+		showToast('状态已更新')
+		await loadWorkspaceMeetings()
+	} catch (e) {
+		showToast('网络异常，请稍后重试')
+	} finally {
+		meetingStatusSubmitting.value = false
+	}
+}
+const openMeetingDeleteSheet = (row: any) => {
+	meetingDeleteRow.value = row
+	meetingDeleteSheetVisible.value = true
+}
+const submitMeetingDelete = async () => {
+	const row = meetingDeleteRow.value
+	if (row == null || meetingDeleteSubmitting.value) return
+	meetingDeleteSubmitting.value = true
+	try {
+		const result = await deleteMatchmakerMeetingRequest(String(row.id))
+		if (!result.success) {
+			showToast(result.message != null && String(result.message).length > 0 ? String(result.message) : '删除失败')
+			return
+		}
+		meetingDeleteSheetVisible.value = false
+		showToast('记录已删除')
+		await loadWorkspaceMeetings()
+	} catch (e) {
+		showToast('网络异常，请稍后重试')
+	} finally {
+		meetingDeleteSubmitting.value = false
+	}
+}
+const workspaceScrollTop = ref(0)
+const scrollWorkspaceTop = () => {
+	// scroll-top 仅在值变化时触发滚动；0 与 0.1 交替保证重复点击同样回到顶部。
+	workspaceScrollTop.value = workspaceScrollTop.value == 0 ? 0.1 : 0
 }
 
 const openWorkspace = async (title: string, kind: string, initialTab: string = '') => {
@@ -2011,9 +2482,161 @@ const submitApplication = async () => {
 .workspace-info-card,.workspace-match-card { margin-top: 18rpx; padding: 22rpx; border-radius: 20rpx; background: var(--surface); display: flex; flex-direction: column; gap: 16rpx; color: var(--ink); font-size: 28rpx; font-weight: 800; box-shadow: var(--shadow-sm); }.workspace-info-card > view:not(.workspace-actions):not(.workspace-member-header) { padding-bottom: 13rpx; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; color: var(--ink2); font-size: 21rpx; font-weight: 400; }.workspace-info-card > view:not(.workspace-actions):not(.workspace-member-header) text:last-child { color: var(--ink); }.workspace-actions { display: flex; gap: 9rpx; }.workspace-actions text { flex: 1; padding: 12rpx 4rpx; border-radius: 14rpx; background: var(--warm); color: var(--accent2); text-align: center; font-size: 18rpx; font-weight: 700; }
 .workspace-state { margin-top: 18rpx; min-height: 180rpx; padding: 28rpx; border-radius: 20rpx; background: var(--surface); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 18rpx; color: var(--muted); font-size: 22rpx; box-shadow: var(--shadow-sm); }.workspace-state-action { padding: 12rpx 24rpx; border-radius: 999rpx; background: var(--sage-soft); color: var(--accent2); font-size: 21rpx; font-weight: 700; }
 .workspace-filter-note { padding: 12rpx; color: var(--accent2); font-size: 22rpx; line-height: 1.5; }.workspace-demo-notice { margin: 4rpx 12rpx 12rpx; padding: 12rpx 14rpx; border-radius: 14rpx; background: var(--accent-bg); color: var(--accent2); font-size: 19rpx; line-height: 1.45; }.workspace-match-card { font-size: 21rpx; font-weight: 400; }.workspace-match-card-top { display: flex; justify-content: space-between; align-items: center; color: var(--muted); }.workspace-match-status { padding: 7rpx 13rpx; border-radius: 999rpx; font-size: 18rpx; font-weight: 800; line-height: 1.2; }.workspace-match-status-pending { background: var(--accent-bg); color: var(--accent2); }.workspace-match-status-progress { background: var(--match-sky); color: var(--match-deep); }.workspace-match-status-succeeded { background: var(--sage-soft); color: var(--sage); }.workspace-match-status-failed { background: var(--match-blush); color: var(--match-coral); }.workspace-match-person { min-height: 64rpx; display: flex; align-items: center; gap: 14rpx; }.workspace-match-person > view { flex: 1; display: flex; flex-direction: column; gap: 4rpx; }.workspace-match-person > view text:first-child { color: var(--ink); font-size: 23rpx; font-weight: 700; }.workspace-match-person > view text:last-child { color: var(--muted); font-size: 19rpx; }.workspace-match-reason { padding: 14rpx; border-radius: 14rpx; background: var(--match-blush); color: var(--ink2); font-size: 20rpx; line-height: 1.5; }.workspace-match-owner { color: var(--muted); font-size: 19rpx; }
+
+/* 牵线管理（按设计稿）：申请时间+黄色状态胶囊、双列头像带角色标、联系Ta、牵线状态弹窗。 */
+.workspace-match-card { gap: 20rpx; padding: 26rpx 26rpx; }
+.workspace-match-card .workspace-match-card-top { margin-bottom: 2rpx; }
+.workspace-match-status-btn { height: 60rpx; padding: 0 22rpx; border-radius: 999rpx; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 10rpx; }
+.workspace-match-status-btn text { color: var(--paper); font-size: 22rpx; font-weight: 800; }
+.workspace-match-status-btn.t-PENDING { background: var(--review-orange); }
+.workspace-match-status-btn.t-IN_PROGRESS { background: var(--accent2); }
+.workspace-match-status-btn.t-SUCCEEDED { background: var(--sage); }
+.workspace-match-status-btn.t-FAILED { background: var(--match-coral); }
+.workspace-match-status-arrow { width: 28rpx; height: 28rpx; border-radius: 50%; background: rgba(255, 255, 255, .3); display: flex; align-items: center; justify-content: center; }
+.workspace-match-status-arrow i { width: 10rpx; height: 10rpx; border-top: 3rpx solid var(--paper); border-right: 3rpx solid var(--paper); transform: rotate(45deg); margin-left: -3rpx; }
+.workspace-match-status-btn:active { opacity: .8; transform: scale(.97); }
+.workspace-match-card .workspace-match-person { display: flex; flex-direction: row; align-items: center; gap: 14rpx; padding: 14rpx 0; border-top: 1rpx solid var(--line); }
+.workspace-match-person-side { flex: 1; min-width: 0; display: flex; flex-direction: row; align-items: center; gap: 16rpx; }
+.workspace-match-avatar-wrap { position: relative; width: 96rpx; height: 96rpx; flex-shrink: 0; }
+.workspace-match-avatar-wrap image { width: 96rpx; height: 96rpx; border-radius: 50%; background: var(--warm); }
+.workspace-match-role { position: absolute; left: 50%; bottom: -10rpx; transform: translateX(-50%); padding: 2rpx 14rpx; border-radius: 999rpx; font-size: 17rpx; font-weight: 700; white-space: nowrap; }
+.workspace-match-role.role-applicant { background: var(--accent-bg); color: var(--accent2); }
+.workspace-match-role.role-target { background: var(--match-blush); color: var(--match-coral); }
+.workspace-match-person-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6rpx; }
+.workspace-match-person-name { display: flex; flex-direction: row; align-items: center; gap: 8rpx; min-width: 0; }
+.workspace-match-person-name > text:first-child { max-width: 220rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 26rpx; font-weight: 800; }
+.workspace-match-gender { padding: 1rpx 10rpx; border-radius: 6rpx; font-size: 17rpx; font-weight: 800; flex-shrink: 0; }
+.workspace-match-gender.male { background: var(--match-sky); color: var(--paper); }
+.workspace-match-gender.female { background: var(--match-blush); color: var(--paper); }
+.workspace-match-person-code { color: var(--muted); font-size: 20rpx; }
+.workspace-match-contact { min-width: 132rpx; height: 64rpx; border-radius: 14rpx; background: var(--accent-bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.workspace-match-contact text { color: var(--accent2); font-size: 22rpx; font-weight: 800; }
+.workspace-match-contact:active { opacity: .75; }
+.workspace-match-status-form { display: flex; flex-direction: column; gap: 20rpx; }
+.workspace-match-status-choices { display: flex; flex-direction: column; gap: 16rpx; }
+.workspace-match-status-choice { min-height: 92rpx; border-radius: 18rpx; background: var(--paper); border: 1rpx solid var(--line); display: flex; align-items: center; justify-content: center; }
+.workspace-match-status-choice text { color: var(--ink2); font-size: 27rpx; font-weight: 700; }
+.workspace-match-status-choice.active { background: var(--accent-bg); border-color: var(--accent2); }
+.workspace-match-status-choice.active text { color: var(--accent2); font-weight: 800; }
+.workspace-match-status-choice:active { opacity: .78; }
+.workspace-match-status-submit { min-height: 88rpx; border-radius: 999rpx; background: linear-gradient(90deg, var(--accent), var(--accent2)); display: flex; align-items: center; justify-content: center; }
+.workspace-match-status-submit text { color: var(--paper); font-size: 27rpx; font-weight: 800; }
+.workspace-match-status-submit.disabled { opacity: .55; }
+.workspace-match-status-submit:active { opacity: .85; }
+
+/* 添加牵线记录：行式表单 + 单选 + 扣次说明 + 紫色提交；悬浮按钮 match 态用主紫。 */
+.workspace-add.match-add { bottom: 60rpx; width: 96rpx; height: 96rpx; background: linear-gradient(180deg, var(--accent), var(--accent2)); gap: 0; }
+.workspace-match-add-form { display: flex; flex-direction: column; gap: 6rpx; }
+.workspace-match-add-row { min-height: 100rpx; border-bottom: 1rpx solid var(--line); display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 16rpx; }
+.workspace-match-add-row.last { border-bottom: none; }
+.workspace-match-add-label { color: var(--ink); font-size: 27rpx; font-weight: 800; flex-shrink: 0; }
+.workspace-match-add-picker { flex: 1; min-width: 0; display: flex; flex-direction: row; align-items: center; justify-content: flex-end; gap: 10rpx; }
+.workspace-match-add-picker text { color: var(--ink2); font-size: 24rpx; max-width: 340rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-match-add-picker text.placeholder { color: var(--muted); }
+.workspace-match-add-picker i { width: 12rpx; height: 12rpx; border-top: 2rpx solid var(--muted); border-right: 2rpx solid var(--muted); transform: rotate(45deg); flex-shrink: 0; }
+.workspace-match-add-result { flex: 1; min-width: 0; display: flex; flex-direction: row; align-items: center; justify-content: flex-end; gap: 10rpx; }
+.workspace-match-add-result > text { color: var(--ink2); font-size: 24rpx; }
+.workspace-match-add-result > text.radio-on { color: var(--ink); font-weight: 700; }
+.workspace-match-add-radio { width: 36rpx; height: 36rpx; border-radius: 50%; border: 1rpx solid var(--line); background: var(--surface); display: flex; align-items: center; justify-content: center; }
+.workspace-match-add-radio.active { background: var(--accent2); border-color: var(--accent2); }
+.workspace-match-add-radio.active text { color: var(--paper); font-size: 20rpx; font-weight: 900; }
+.workspace-match-add-note { margin: 16rpx 0 6rpx; padding: 16rpx 18rpx; border-radius: 12rpx; background: var(--match-mist); display: flex; flex-direction: row; gap: 10rpx; }
+.workspace-match-add-note-mark { width: 28rpx; height: 28rpx; border-radius: 50%; background: var(--accent2); color: var(--paper); font-size: 17rpx; font-weight: 800; text-align: center; line-height: 28rpx; flex-shrink: 0; }
+.workspace-match-add-note > text:last-child { flex: 1; color: var(--ink2); font-size: 20rpx; line-height: 1.6; }
+.workspace-match-add-submit { margin-top: 10rpx; min-height: 92rpx; border-radius: 16rpx; background: linear-gradient(90deg, var(--accent), var(--accent2)); display: flex; align-items: center; justify-content: center; }
+.workspace-match-add-submit text { color: var(--paper); font-size: 28rpx; font-weight: 800; }
+.workspace-match-add-submit.disabled { opacity: .55; }
+.workspace-match-add-submit:active { opacity: .85; }
 .workspace-meeting-overview { margin-top: 4rpx; padding: 21rpx 22rpx; border-radius: 20rpx; background: var(--match-mist); display: flex; flex-direction: column; gap: 8rpx; color: var(--accent2); font-size: 20rpx; line-height: 1.45; }.workspace-meeting-overview > view { display: flex; align-items: baseline; gap: 12rpx; }.workspace-meeting-overview-value { color: var(--match-deep); font-family: var(--serif); font-size: 48rpx; line-height: 1; font-weight: 700; }.workspace-meeting-overview-label { color: var(--ink2); font-size: 22rpx; font-weight: 700; }.workspace-meeting-card { margin-top: 18rpx; padding: 22rpx; border-radius: 20rpx; background: var(--match-paper); display: flex; flex-direction: column; gap: 18rpx; box-shadow: var(--match-shadow); }.workspace-meeting-card-top { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 19rpx; }.workspace-meeting-status { padding: 7rpx 13rpx; border-radius: 999rpx; font-size: 18rpx; font-weight: 800; line-height: 1.2; }.workspace-meeting-status-submitted { background: var(--accent-bg); color: var(--accent2); }.workspace-meeting-status-processing { background: var(--match-sky); color: var(--match-deep); }.workspace-meeting-status-upcoming { background: var(--sage-soft); color: var(--sage); }.workspace-meeting-status-completed { background: var(--match-mist); color: var(--accent2); }.workspace-meeting-status-ended { background: var(--match-blush); color: var(--match-coral); }.workspace-meeting-pair { padding: 18rpx 0; border-top: 1rpx solid var(--match-line); border-bottom: 1rpx solid var(--match-line); display: flex; align-items: center; gap: 10rpx; }.workspace-meeting-person { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10rpx; }.workspace-meeting-person image { width: 58rpx; height: 58rpx; border-radius: 50%; flex-shrink: 0; }.workspace-meeting-person > view { min-width: 0; display: flex; flex-direction: column; gap: 3rpx; }.workspace-meeting-person > view text:first-child { color: var(--ink); font-size: 22rpx; font-weight: 800; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.workspace-meeting-person > view text:last-child { color: var(--muted); font-size: 18rpx; }.workspace-meeting-link { width: 58rpx; height: 38rpx; border-radius: 999rpx; background: var(--surface); display: flex; align-items: center; justify-content: center; color: var(--accent2); font-size: 17rpx; font-weight: 800; flex-shrink: 0; }.workspace-meeting-arrangement { padding: 16rpx; border-radius: 14rpx; background: var(--surface); display: flex; flex-direction: column; gap: 8rpx; }.workspace-meeting-arrangement > text { color: var(--accent2); font-size: 19rpx; font-weight: 800; }.workspace-meeting-arrangement > view { display: flex; justify-content: space-between; gap: 14rpx; color: var(--ink2); font-size: 20rpx; }.workspace-meeting-arrangement > view text:last-child { flex: 1; min-width: 0; text-align: right; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.workspace-meeting-detail { color: var(--ink2); font-size: 20rpx; line-height: 1.5; }.workspace-meeting-time { color: var(--muted); font-size: 18rpx; }
+
+/* 约见申请（按设计稿）：浅紫须知卡 + 白卡双列大头像 + 灰盒元信息 + 实心胶囊操作 + 圆形回顶。 */
+.workspace-meeting-intro { margin-top: 4rpx; padding: 30rpx 30rpx; border-radius: 24rpx; background: var(--accent-bg); display: flex; flex-direction: column; gap: 14rpx; }
+.workspace-meeting-intro-head { display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
+.workspace-meeting-intro-mark { width: 34rpx; height: 34rpx; border-radius: 50%; background: var(--accent2); color: var(--paper); font-size: 19rpx; font-weight: 800; text-align: center; line-height: 34rpx; }
+.workspace-meeting-intro-title { color: var(--ink); font-size: 28rpx; font-weight: 800; }
+.workspace-meeting-intro-text { color: var(--ink2); font-size: 23rpx; line-height: 1.7; }
+.workspace-meeting-card { margin-top: 20rpx; padding: 30rpx 26rpx 26rpx; border-radius: 24rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 20rpx; }
+.workspace-meeting-pair { display: flex; flex-direction: row; align-items: center; gap: 12rpx; padding: 0; border-top: none; border-bottom: none; }
+.workspace-meeting-pair .workspace-meeting-person { flex-direction: column; align-items: center; }
+.workspace-meeting-person { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 8rpx; }
+.workspace-meeting-avatar-wrap { position: relative; width: 110rpx; height: 110rpx; }
+.workspace-meeting-avatar-wrap image { width: 110rpx; height: 110rpx; border-radius: 50%; background: var(--warm); }
+.workspace-meeting-gender { position: absolute; right: -2rpx; bottom: -2rpx; width: 34rpx; height: 34rpx; border-radius: 50%; border: 3rpx solid var(--surface); box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 18rpx; font-weight: 800; color: var(--paper); }
+.workspace-meeting-gender.male { background: var(--match-sky); color: var(--match-deep); }
+.workspace-meeting-gender.female { background: var(--match-blush); color: var(--match-coral); }
+.workspace-meeting-name { max-width: 200rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 27rpx; font-weight: 800; }
+.workspace-meeting-person-code { color: var(--muted); font-size: 21rpx; }
+.workspace-meeting-wish { padding: 10rpx 24rpx; border-radius: 999rpx; background: var(--accent-bg); flex-shrink: 0; }
+.workspace-meeting-wish text { color: var(--accent2); font-size: 23rpx; font-weight: 800; }
+.workspace-meeting-meta { padding: 20rpx 22rpx; border-radius: 16rpx; background: var(--warm); display: flex; flex-direction: column; gap: 10rpx; }
+.workspace-meeting-meta-line { display: flex; flex-direction: row; align-items: center; gap: 10rpx; }
+.workspace-meeting-meta-glyph { font-size: 20rpx; }
+.workspace-meeting-meta-line text { color: var(--ink2); font-size: 22rpx; }
+.workspace-meeting-foot { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 16rpx; margin-top: 4rpx; }
+.workspace-meeting-status-btn { height: 72rpx; padding: 0 30rpx; border-radius: 999rpx; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 12rpx; }
+.workspace-meeting-status-btn text { color: var(--paper); font-size: 25rpx; font-weight: 800; }
+.workspace-meeting-status-arrow { width: 30rpx; height: 30rpx; border-radius: 50%; background: rgba(255, 255, 255, .28); display: flex; align-items: center; justify-content: center; }
+.workspace-meeting-status-arrow i { width: 11rpx; height: 11rpx; border-top: 3rpx solid var(--paper); border-right: 3rpx solid var(--paper); transform: rotate(45deg); margin-left: -4rpx; }
+.workspace-meeting-status-btn.pending { background: var(--accent2); }
+.workspace-meeting-status-btn.done { background: var(--match-coral); }
+.workspace-meeting-status-btn:active { opacity: .8; transform: scale(.97); }
+.workspace-meeting-delete { height: 72rpx; padding: 0 34rpx; border-radius: 999rpx; background: var(--warm); display: flex; align-items: center; justify-content: center; }
+.workspace-meeting-delete text { color: var(--ink2); font-size: 24rpx; font-weight: 700; }
+.workspace-meeting-delete:active { opacity: .75; }
+.workspace-scroll-top { position: fixed; right: 30rpx; bottom: 130rpx; z-index: 20; width: 108rpx; height: 108rpx; border-radius: 50%; background: var(--surface); box-shadow: 0 8rpx 30rpx rgba(70, 70, 105, .16); display: flex; align-items: center; justify-content: center; }
+.workspace-scroll-top-arrow { color: var(--ink2); font-size: 40rpx; font-weight: 900; line-height: 1; }
+.workspace-scroll-top:active { opacity: .8; transform: scale(.95); }
+
+
+.workspace-meeting-status-form { display: flex; flex-direction: column; gap: 20rpx; }
+
+.workspace-meeting-status-pair { display: flex; flex-direction: row; gap: 20rpx; }
+.workspace-meeting-status-pill { flex: 1; min-width: 0; min-height: 92rpx; border-radius: 999rpx; background: var(--paper); border: 1rpx solid var(--line); display: flex; align-items: center; justify-content: center; }
+.workspace-meeting-status-pill text { color: var(--ink2); font-size: 27rpx; font-weight: 700; }
+.workspace-meeting-status-pill.active { background: var(--accent-bg); border-color: var(--accent2); }
+.workspace-meeting-status-pill.active text { color: var(--accent2); font-weight: 800; }
+.workspace-meeting-status-pill:active { opacity: .78; }
 .workspace-member-header { display: flex; align-items: center; gap: 15rpx; }.workspace-member-header > view { display: flex; flex-direction: column; gap: 6rpx; color: var(--muted); font-size: 20rpx; font-weight: 400; }.workspace-member-header > view text:first-child { color: var(--ink); font-size: 28rpx; font-weight: 800; }
-.workspace-entry-card { margin-top: 18rpx; padding: 26rpx; border-radius: 20rpx; background: var(--surface); display: flex; flex-direction: column; gap: 18rpx; color: var(--ink); font-size: 28rpx; font-weight: 800; box-shadow: var(--shadow-sm); }.workspace-entry-card > view:not(.workspace-entry-submit) { min-height: 72rpx; padding-bottom: 12rpx; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 20rpx; color: var(--ink2); font-size: 22rpx; font-weight: 400; }.workspace-entry-card input { flex: 1; text-align: right; font-size: 22rpx; color: var(--ink); }.workspace-entry-submit { height: 72rpx; border-radius: 999rpx; background: var(--accent); display: flex; align-items: center; justify-content: center; color: var(--paper); font-size: 24rpx; font-weight: 800; }
+.workspace-entry-card { margin-top: 18rpx; padding: 26rpx; border-radius: 20rpx; background: var(--surface); display: flex; flex-direction: column; gap: 18rpx; color: var(--ink); font-size: 28rpx; font-weight: 800; box-shadow: var(--shadow-sm); }
+
+/* 录入客源线索：分步卡片 + chips 单选 + 示例填充，复用工作台 Token。 */
+.workspace-entry-page { display: flex; flex-direction: column; gap: 20rpx; padding-bottom: 40rpx; }
+.workspace-entry-hero { padding: 22rpx 26rpx; border-radius: 20rpx; background: var(--match-mist); display: flex; flex-direction: row; align-items: center; gap: 18rpx; }
+.workspace-entry-hero-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8rpx; }
+.workspace-entry-hero-title { color: var(--accent2); font-size: 25rpx; font-weight: 800; }
+.workspace-entry-hero-sub { color: var(--ink2); font-size: 21rpx; line-height: 1.5; }
+.workspace-entry-demo { padding: 14rpx 24rpx; border-radius: 999rpx; background: var(--surface); box-shadow: var(--shadow-sm); flex-shrink: 0; }
+.workspace-entry-demo text { color: var(--accent2); font-size: 22rpx; font-weight: 800; }
+.workspace-entry-demo:active { opacity: .75; transform: scale(.98); }
+.workspace-entry-formcard { margin-top: 0; padding: 26rpx; border-radius: 20rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; }
+.workspace-entry-card-head { display: flex; flex-direction: row; align-items: center; gap: 14rpx; padding-bottom: 6rpx; }
+.workspace-entry-step { width: 40rpx; height: 40rpx; border-radius: 12rpx; background: var(--accent); color: var(--paper); font-size: 21rpx; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.workspace-entry-card-head-copy { flex: 1; min-width: 0; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12rpx; }
+.workspace-entry-card-title { color: var(--ink); font-size: 27rpx; font-weight: 800; }
+.workspace-entry-card-require { color: var(--muted); font-size: 20rpx; }
+.workspace-entry-row { display: flex; flex-direction: row; align-items: center; gap: 14rpx; min-height: 92rpx; border-bottom: 1px solid var(--line); }
+.workspace-entry-row.last { border-bottom: none; }
+.workspace-entry-label { width: 84rpx; color: var(--ink2); font-size: 24rpx; font-weight: 700; flex-shrink: 0; }
+.workspace-entry-row input { flex: 1; min-width: 0; color: var(--ink); font-size: 25rpx; }
+.workspace-entry-picker { flex: 1; display: flex; flex-direction: row; align-items: center; justify-content: flex-end; gap: 10rpx; }
+.workspace-entry-picker text { color: var(--ink2); font-size: 25rpx; }
+.workspace-entry-picker i { width: 12rpx; height: 12rpx; border-top: 2rpx solid var(--muted); border-right: 2rpx solid var(--muted); transform: rotate(45deg); }
+.workspace-entry-block { padding: 20rpx 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 14rpx; }
+.workspace-entry-block.last { border-bottom: none; padding-bottom: 4rpx; }
+.workspace-entry-block-label { color: var(--ink2); font-size: 22rpx; font-weight: 700; }
+.workspace-entry-chips { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12rpx; }
+.workspace-entry-chip { padding: 10rpx 24rpx; border-radius: 999rpx; background: var(--surface); border: 1px solid var(--match-line); }
+.workspace-entry-chip text { color: var(--ink2); font-size: 21rpx; font-weight: 700; }
+.workspace-entry-chip.active { background: var(--match-deep); border-color: var(--match-deep); }
+.workspace-entry-chip.active text { color: var(--paper); }
+.workspace-entry-chip:active { opacity: .75; }
+.workspace-entry-textarea { width: 100%; min-height: 130rpx; padding: 16rpx; border-radius: 12rpx; background: var(--surface); border: 1px solid var(--match-line); color: var(--ink); font-size: 23rpx; line-height: 1.6; box-sizing: border-box; }
+.workspace-entry-submit { margin-top: 6rpx; min-height: 88rpx; border-radius: 999rpx; background: var(--accent); display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm); }
+.workspace-entry-submit text { color: var(--paper); font-size: 27rpx; font-weight: 800; }
+.workspace-entry-submit.disabled { opacity: .55; }
+.workspace-entry-submit:active { opacity: .8; transform: scale(.99); }
+.workspace-entry-foot { display: flex; justify-content: center; }
+.workspace-entry-foot text { color: var(--muted); font-size: 20rpx; text-align: center; }.workspace-entry-card > view:not(.workspace-entry-submit) { min-height: 72rpx; padding-bottom: 12rpx; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 20rpx; color: var(--ink2); font-size: 22rpx; font-weight: 400; }.workspace-entry-card input { flex: 1; text-align: right; font-size: 22rpx; color: var(--ink); }.workspace-entry-submit { height: 72rpx; border-radius: 999rpx; background: var(--accent); display: flex; align-items: center; justify-content: center; color: var(--paper); font-size: 24rpx; font-weight: 800; }
 .workspace-generic-card { margin-top: 18rpx; padding: 24rpx; border-radius: 20rpx; background: var(--surface); display: flex; align-items: center; gap: 16rpx; box-shadow: var(--shadow-sm); }.workspace-generic-card > view:first-child { width: 58rpx; height: 58rpx; border-radius: 14rpx; background: var(--accent-bg); color: var(--accent2); display: flex; align-items: center; justify-content: center; font-size: 25rpx; }.workspace-generic-card > view:nth-child(2) { flex: 1; display: flex; flex-direction: column; gap: 4rpx; }.workspace-generic-card > view:nth-child(2) text:first-child { font-size: 24rpx; font-weight: 800; }.workspace-generic-card > view:nth-child(2) text:last-child { color: var(--muted); font-size: 18rpx; }.workspace-generic-card > text:last-child { color: var(--accent2); font-size: 20rpx; }
 .workspace-add { position: fixed; right: 22rpx; bottom: 38rpx; width: 84rpx; height: 84rpx; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; color: var(--paper); font-size: 17rpx; font-weight: 800; box-shadow: var(--shadow-sm); }.workspace-add text:first-child { font-size: 30rpx; line-height: 28rpx; }
 
