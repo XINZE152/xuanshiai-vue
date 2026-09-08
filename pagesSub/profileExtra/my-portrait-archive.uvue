@@ -67,6 +67,7 @@
 				<view v-if="archive.idealPartner.preview" class="mpa-preview-tip">
 					<text class="mpa-preview-tip-text">草稿上有未发布的预览(rev {{ archive.idealPartner.preview.expectedRevision }})</text>
 				</view>
+			</view>
 			<view class="mpa-memory-entry" @tap="openMemorySheet">
 				<view class="mpa-memory-entry-copy">
 					<text class="mpa-memory-entry-title">记忆管理</text>
