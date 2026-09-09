@@ -94,6 +94,7 @@
 	.step-title { color: var(--ink); font-size: 13px; font-weight: 700; line-height: 1.5; }
 	.step-desc { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.65; }
 	.analysis-progress, .analysis-error { margin-top: 18px; padding: 14px; border-radius: 12px; background: var(--paper); display: flex; flex-direction: column; }
+	.analysis-error { max-height: 120px; overflow: hidden; }
 	.progress-line { height: 2px; overflow: hidden; background: var(--line); }
 	.progress-line-inner { width: 38%; height: 2px; background: var(--sage); animation: analysis-reading 1.2s ease-in-out infinite; }
 	@keyframes analysis-reading { 0% { transform: translateX(-110%); } 100% { transform: translateX(370%); } }
@@ -102,7 +103,7 @@
 	.is-running .progress-title { animation: analysis-phase-in 0.22s ease-out; }
 	@keyframes analysis-phase-in { from { opacity: 0.25; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 	.analysis-error { background: var(--warm); }
-	.analysis-error-copy { color: var(--ink2); }
+	.analysis-error-copy { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; word-break: break-all; color: var(--ink2); }
 	.analysis-footer { margin-top: 15px; padding-top: 12px; display: flex; flex-direction: row; align-items: flex-end; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line); }
 	.analysis-disclaimer { flex: 1; min-width: 0; color: var(--muted); font-size: 10px; line-height: 1.5; text-align: left; }
 	.analysis-action { flex-shrink: 0; min-width: 102px; height: 34px; padding: 0 12px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; border-radius: 17px; background: var(--sage); box-shadow: var(--shadow-sm); }

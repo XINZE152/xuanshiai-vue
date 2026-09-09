@@ -428,7 +428,12 @@ function thoughtfulnessErrorMessage(res: any, fallback: string): string {
   if (code == 402) return 'AI 用心度分析次数已用完，请稍后再试'
   if (code == 429) return 'AI 分析请求较多，请稍后再试'
   if (code == 503) return 'AI 服务暂时不可用，请稍后再试'
-  return res.message != null ? '' + res.message : fallback
+  const rawMessage = res.message != null ? '' + res.message : ''
+  // 测试服务器在 AI 尚未接入时可能把 Python traceback 放进 detail,不能透传给用户。
+  if (code >= 500 || rawMessage.indexOf('Traceback') >= 0 || rawMessage.indexOf('Internal Server Error') >= 0) {
+    return 'AI 分析服务尚未接入，当前暂时无法生成分析'
+  }
+  return rawMessage != '' ? rawMessage : fallback
 }
 
 /**
