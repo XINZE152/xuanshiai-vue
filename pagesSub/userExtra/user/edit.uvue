@@ -30,7 +30,8 @@
 				<text v-if="missingCompletionSummary != ''" class="progress-missing">待完善：{{ missingCompletionSummary }}</text>
 			</view>
 
-			<XsaProfileAiCard :score="aiScore" :summary="aiSummary" :todos="aiTodos" :has-data="aiHasData" :analyzing="aiAnalyzing" :error-message="aiError" :stale="aiStale" @retry="onAiRetry" @jump="onAiJump" />
+			<XsaProfileAiFirstAnalysis v-if="aiFirstAnalysisVisible" :analyzing="aiAnalyzing" :error-message="aiError" @close="closeAiFirstAnalysis" @start="startAiFirstAnalysis" />
+			<XsaProfileAiCard v-else :score="aiScore" :summary="aiSummary" :todos="aiTodos" :has-data="aiHasData" :analyzing="aiAnalyzing" :error-message="aiError" :stale="aiStale" @retry="onAiRetry" @start="openAiFirstAnalysis" @jump="onAiJump" />
 
 			<view class="section-card avatar-section">
 				<view class="section-heading">
@@ -296,7 +297,9 @@
 	import { getOwnProfile, updateOwnProfile, updateOwnNickname, getOwnPreferences, uploadUserProfileMedia, deleteUserProfilePhoto, getMeProfile, getProfileCompletion, getAgreementVersions, acceptAgreement } from '@/api'
 	import { getLatestThoughtfulness, analyzeProfileThoughtfulness, normalizeThoughtfulness, ThoughtfulnessResult } from '@/api/ai-profile.uts'
 	import XsaProfileAiCard from '@/components/XsaProfileAiCard.uvue'
+	import XsaProfileAiFirstAnalysis from '@/components/XsaProfileAiFirstAnalysis.uvue'
 	import { resolveMediaUrl } from '@/api/config.uts'
+	import { sleep } from '@/utils/sleep.uts'
 	import locationJson from '@/data/location.json'
 
 	const loading = ref(true)
@@ -527,6 +530,9 @@
 	const aiAnalyzing = ref(false)
 	const aiError = ref('')
 	const aiResult = ref<ThoughtfulnessResult | null>(null)
+	const aiAnalysisStartedAt = ref(0)
+	// AI 用心度默认先展示初次使用说明；分析成功后自动回到结果卡。
+	const aiFirstAnalysisVisible = ref(true)
 	const aiStale = ref(false)
 	const aiJumpAnchor = ref('')
 	const pendingAiEditedKeys = ref([] as string[])
@@ -535,6 +541,13 @@
 	const aiScore = computed(() => aiResult.value != null ? aiResult.value!.score : 0)
 	const aiSummary = computed(() => aiResult.value != null ? aiResult.value!.summary : '')
 	const aiTodos = computed(() => aiResult.value != null ? aiResult.value!.todos : [])
+	const readableAiError = (error: any): string => {
+		try {
+			if (error != null && error.errMsg != null) return '' + error.errMsg
+			if (error != null && error.message != null) return '' + error.message
+		} catch (e) {}
+		return ''
+	}
 
 	const payloadHash = (payload: any): string => {
 		try {
@@ -586,27 +599,46 @@
 		}
 	}
 
-	const triggerThoughtfulness = async (trigger: string, editedKeys: string[]) => {
-		if (aiAnalyzing.value) return
+	const triggerThoughtfulness = async (trigger: string, editedKeys: string[]): Promise<boolean> => {
+		if (aiAnalyzing.value) return false
 		aiAnalyzing.value = true
+		aiAnalysisStartedAt.value = Date.now()
 		aiError.value = ''
 		try {
+			// 先让小程序完成 loading 视图渲染，再发起可能立即失败的请求。
+			await sleep(80)
 			const res = await analyzeProfileThoughtfulness(trigger, editedKeys)
 			if (!res.success || res.data == null) {
-				if (aiResult.value == null) aiError.value = res.message != null ? '' + res.message : 'AI 用心度分析失败，请稍后再试'
-				return
+				aiError.value = res.message != null ? '' + res.message : 'AI 用心度分析失败，请稍后再试'
+				return false
 			}
 			aiResult.value = res.data as ThoughtfulnessResult
 			aiStale.value = false
 			persistThoughtfulness()
+			if (trigger == 'manual') uni.showToast({ title: 'AI 分析已更新', icon: 'success' })
+			return true
 		} catch (e) {
-			if (aiResult.value == null) aiError.value = '网络异常，AI 用心度分析失败'
+			console.error('[EditProfile] thoughtfulness analyze failed', e)
+			const detail = readableAiError(e)
+			aiError.value = detail != '' ? 'AI 分析请求失败：' + detail : '网络异常，请确认本地后端已启动后重试'
+			return false
 		} finally {
+			const remaining = 650 - (Date.now() - aiAnalysisStartedAt.value)
+			if (remaining > 0) await sleep(remaining)
 			aiAnalyzing.value = false
 		}
 	}
 
 	const onAiRetry = () => { triggerThoughtfulness('manual', []) }
+	const openAiFirstAnalysis = () => {
+		aiError.value = ''
+		aiFirstAnalysisVisible.value = true
+	}
+	const closeAiFirstAnalysis = () => { if (!aiAnalyzing.value) aiFirstAnalysisVisible.value = false }
+	const startAiFirstAnalysis = async () => {
+		const success = await triggerThoughtfulness('manual', [])
+		if (success) aiFirstAnalysisVisible.value = false
+	}
 
 	const onAiJump = (key: string) => {
 		const anchors: any = {

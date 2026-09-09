@@ -93,6 +93,7 @@ async function httpRequest(options: any) {
   }
 
   let body: any = null
+	const timeout = options.timeout != null ? Number(options.timeout) : API_CONFIG.timeout
   const data = options.data
   if (method == 'GET' || method == 'DELETE') {
     if (data != null && typeof data === 'object') {
@@ -126,7 +127,7 @@ async function httpRequest(options: any) {
       method: method as any,
       data: body,
       header: headers,
-      timeout: API_CONFIG.timeout,
+      timeout: timeout,
       success: (res: any) => {
         const status = res.statusCode != null ? (res.statusCode as number) : 0
         const raw = res.data

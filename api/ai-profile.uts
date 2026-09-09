@@ -421,11 +421,12 @@ export function normalizeThoughtfulness(raw: any): ThoughtfulnessResult {
   }
 }
 
-/** 用心度接口统一错误文案(401/402/503 语义与 polishPaperPlaneText 一致) */
+/** 用心度接口统一错误文案(401/402/429/503 语义与 polishPaperPlaneText 一致) */
 function thoughtfulnessErrorMessage(res: any, fallback: string): string {
   const code = res.code != null ? Number(res.code) : 0
   if (code == 401) return '请先登录后再使用 AI 用心度评审'
   if (code == 402) return 'AI 用心度分析次数已用完，请稍后再试'
+  if (code == 429) return 'AI 分析请求较多，请稍后再试'
   if (code == 503) return 'AI 服务暂时不可用，请稍后再试'
   return res.message != null ? '' + res.message : fallback
 }
@@ -463,16 +464,24 @@ export async function getLatestThoughtfulness(): Promise<any> {
  */
 export async function analyzeProfileThoughtfulness(trigger: string, editedKeys: string[]): Promise<any> {
   const normalizedTrigger = trigger == 'manual' ? 'manual' : 'save'
+  const sourceKeys: string[] = editedKeys != null ? editedKeys : []
   const keys: string[] = []
-  (editedKeys != null ? editedKeys : []).forEach((k) => {
+  sourceKeys.forEach((k) => {
     const key = k != null ? ('' + k).trim() : ''
     if (key != '' && keys.indexOf(key) < 0) keys.push(key)
   })
   const res = await request({
     url: '/ai/profile/thoughtfulness',
     method: 'POST',
+		// 后端会同步等待 DeepSeek；默认 15 秒不足以覆盖其 30 秒服务超时。
+		timeout: 45000,
     headers: { 'Idempotency-Key': genIdempotencyKey() },
-    data: { trigger: normalizedTrigger, edited_keys: keys },
+    data: {
+      trigger: normalizedTrigger,
+      edited_keys: keys,
+      // 每次手动分析都是新的模型运行，避免代理/服务端误把它当成旧结果重放。
+      analysis_run_id: genIdempotencyKey()
+    },
     mockData: {
       score: 68,
       summary: '本次编辑的自我介绍比之前更具体了，值得肯定；不过基础信息还有缺项，整体用心度仍有提升空间。',

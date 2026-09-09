@@ -1,0 +1,114 @@
+<template>
+	<view class="analysis-card">
+		<view class="analysis-card-heading"><view class="analysis-kicker"><text class="analysis-kicker-mark">✦</text><text class="analysis-kicker-text">AI 用心度 · 初次使用</text></view><view class="analysis-close" :class="{ disabled: analyzing }" @tap="onClose" @click="onClose"><text class="analysis-close-text">×</text></view></view>
+		<view class="analysis-content">
+				<view class="analysis-intro">
+					<view class="analysis-copy-column">
+						<text class="analysis-title">先写下真实的你，<br />再一起慢慢完善。</text>
+						<text class="analysis-copy">保存资料后，AI 会参考编辑页中全部已保存的内容，给出整体反馈与具体建议。</text>
+					</view>
+					<view class="paper-stack" aria-hidden="true">
+						<view class="paper-back"></view>
+						<view class="paper-front"><text class="paper-title">关于我</text><view class="paper-line"></view><view class="paper-line"></view><view class="paper-line paper-line-short"></view></view>
+						<view class="paper-seal"><text class="paper-seal-text">阅</text></view>
+					</view>
+				</view>
+
+				<view class="analysis-steps">
+					<view class="analysis-step"><text class="step-index">1</text><view class="step-copy"><text class="step-title">按自己的节奏完善资料</text><text class="step-desc">头像、相册、基本信息、自我介绍、兴趣、问答等编辑页内容，都可作为分析参考。</text></view></view>
+					<view class="analysis-step"><text class="step-index">2</text><view class="step-copy"><text class="step-title">保存后生成整体建议</text><text class="step-desc">AI 只参考已保存的资料，帮你找出最值得继续表达的细节。</text></view></view>
+				</view>
+
+				<view v-if="analyzing" class="analysis-progress is-running">
+					<view class="progress-line"><view class="progress-line-inner"></view></view>
+					<text class="progress-title" :key="analysisPhase">{{ analysisPhase }}</text>
+					<text class="progress-copy">完成后会返回资料用心度和完善建议</text>
+				</view>
+
+				<view v-else-if="errorMessage != ''" class="analysis-error">
+					<text class="analysis-error-title">这次还没有生成分析</text>
+					<text class="analysis-error-copy">{{ errorMessage }}</text>
+				</view>
+		</view>
+		<view class="analysis-footer"><text class="analysis-disclaimer">AI 分析仅供参考，不影响资料审核结果</text><view class="analysis-action" :class="{ disabled: analyzing }" @tap="onStart" @click="onStart"><text class="analysis-action-text">{{ analyzing ? '正在分析…' : (errorMessage != '' ? '重新开始分析' : '开始分析') }}</text><text v-if="!analyzing" class="analysis-action-arrow">↗</text></view></view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	interface Props { analyzing: boolean, errorMessage: string }
+	const props = withDefaults(defineProps<Props>(), { analyzing: false, errorMessage: '' })
+	const emit = defineEmits<{ close: [], start: [] }>()
+	const analysisPhase = ref('正在阅读已保存的资料')
+	let phaseTimer: any = null
+	const phases = ['正在阅读已保存的资料', '正在整理资料中的细节', '正在生成可以执行的建议']
+	const stopPhaseAnimation = () => {
+		if (phaseTimer != null) {
+			clearInterval(phaseTimer)
+			phaseTimer = null
+		}
+	}
+	const startPhaseAnimation = () => {
+		stopPhaseAnimation()
+		analysisPhase.value = phases[0]
+		let index = 0
+		phaseTimer = setInterval(() => {
+			index = (index + 1) % phases.length
+			analysisPhase.value = phases[index]
+		}, 1400)
+	}
+	watch(() => props.analyzing, (value: boolean) => {
+		if (value) startPhaseAnimation()
+		else stopPhaseAnimation()
+	})
+	onUnmounted(() => stopPhaseAnimation())
+	const onClose = () => { if (!props.analyzing) emit('close') }
+	const onStart = () => { if (!props.analyzing) emit('start') }
+</script>
+
+<style scoped>
+	.analysis-card { margin-bottom: 14px; padding: 16px 18px; background: var(--surface); border-radius: 20px; box-shadow: var(--shadow-sm); }
+	.analysis-card-heading { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+	.analysis-close { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 14px; background: var(--paper); }
+	.analysis-close-text { font-size: 20px; line-height: 1; color: var(--muted); }
+	.analysis-close.disabled { opacity: 0.45; }
+	.analysis-content { padding-top: 13px; }
+	.analysis-kicker { display: flex; flex-direction: row; align-items: center; gap: 6px; color: var(--accent2); }
+	.analysis-kicker-mark { font-size: 14px; line-height: 1; }
+	.analysis-kicker-text { font-size: 10px; font-weight: 700; letter-spacing: 2px; }
+	.analysis-intro { display: flex; flex-direction: row; align-items: center; gap: 14px; margin-top: 16px; }
+	.analysis-copy-column { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+	.analysis-title { color: var(--ink); font-family: var(--serif); font-size: 21px; font-weight: 700; line-height: 1.4; letter-spacing: -1px; }
+	.analysis-copy { margin-top: 9px; color: var(--ink2); font-size: 12px; line-height: 1.75; }
+	.paper-stack { position: relative; flex-shrink: 0; width: 72px; height: 96px; }
+	.paper-back { position: absolute; left: 2px; top: 8px; width: 60px; height: 77px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); transform: rotate(-9deg); }
+	.paper-front { position: absolute; right: 3px; top: 3px; width: 60px; height: 77px; padding: 12px 9px; border-radius: 6px; background: var(--paper); transform: rotate(8deg); }
+	.paper-title { display: block; color: var(--sage); font-family: var(--serif); font-size: 13px; }
+	.paper-line { height: 1px; margin-top: 10px; background: var(--line); }
+	.paper-line-short { width: 62%; }
+	.paper-seal { position: absolute; right: 0; bottom: 0; z-index: 2; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: 3px solid var(--canvas); border-radius: 14px; background: var(--sage); }
+	.paper-seal-text { color: var(--text-invert); font-family: var(--serif); font-size: 12px; }
+	.analysis-steps { margin-top: 24px; border-top: 1px solid var(--line); }
+	.analysis-step { display: flex; flex-direction: row; align-items: flex-start; gap: 12px; padding: 15px 0; border-bottom: 1px solid var(--line); }
+	.step-index { width: 18px; flex-shrink: 0; color: var(--sage); font-size: 11px; font-weight: 700; line-height: 1.6; }
+	.step-copy { flex: 1; display: flex; flex-direction: column; }
+	.step-title { color: var(--ink); font-size: 13px; font-weight: 700; line-height: 1.5; }
+	.step-desc { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.65; }
+	.analysis-progress, .analysis-error { margin-top: 18px; padding: 14px; border-radius: 12px; background: var(--paper); display: flex; flex-direction: column; }
+	.progress-line { height: 2px; overflow: hidden; background: var(--line); }
+	.progress-line-inner { width: 38%; height: 2px; background: var(--sage); animation: analysis-reading 1.2s ease-in-out infinite; }
+	@keyframes analysis-reading { 0% { transform: translateX(-110%); } 100% { transform: translateX(370%); } }
+	.progress-title, .analysis-error-title { margin-top: 12px; color: var(--ink); font-size: 13px; font-weight: 700; }
+	.progress-copy, .analysis-error-copy { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.65; }
+	.is-running .progress-title { animation: analysis-phase-in 0.22s ease-out; }
+	@keyframes analysis-phase-in { from { opacity: 0.25; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+	.analysis-error { background: var(--warm); }
+	.analysis-error-copy { color: var(--ink2); }
+	.analysis-footer { margin-top: 15px; padding-top: 12px; display: flex; flex-direction: row; align-items: flex-end; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line); }
+	.analysis-disclaimer { flex: 1; min-width: 0; color: var(--muted); font-size: 10px; line-height: 1.5; text-align: left; }
+	.analysis-action { flex-shrink: 0; min-width: 102px; height: 34px; padding: 0 12px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; border-radius: 17px; background: var(--sage); box-shadow: var(--shadow-sm); }
+	.analysis-action-text { color: var(--text-invert); font-size: 11px; font-weight: 700; }
+	.analysis-action-arrow { color: var(--text-invert); font-size: 14px; }
+	.analysis-action.disabled { opacity: 0.55; }
+	@media (max-width: 350px) { .analysis-title { font-size: 20px; } .paper-stack { width: 66px; } }
+	@media (prefers-reduced-motion: reduce) { .progress-line-inner, .is-running .progress-title { animation: none; } }
+</style>
