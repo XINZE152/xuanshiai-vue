@@ -2,7 +2,7 @@
 	<view class="tag-edit-page">
 		<view class="nav-bar" :style="{ paddingTop: statusBarHeight + 'px' }">
 			<view class="nav-back" @tap="goBack"><text class="nav-back-icon">‹</text></view>
-			<text class="nav-title">编辑我的标签</text>
+			<text class="nav-title">编辑兴趣标签</text>
 			<view class="nav-back-placeholder"></view>
 		</view>
 
@@ -14,7 +14,7 @@
 				</view>
 				<view class="selected-row">
 					<view class="selected-chip" v-for="tag in selectedItems" :key="tag.id" @tap="removeTag(tag.id)">
-						<text class="selected-emoji">{{ tag.emoji }}</text>
+						<text v-if="tag.emoji != ''" class="selected-emoji">{{ tag.emoji }}</text>
 						<text class="selected-text">{{ tag.label }}</text>
 						<text class="selected-remove">×</text>
 					</view>
@@ -25,8 +25,30 @@
 				</view>
 			</view>
 
-		<view class="tag-workspace">
-			<scroll-view scroll-y class="category-sidebar" enhanced show-scrollbar="false">
+		<text class="empty-hint">兴趣和性格一起选，选满 3 个可完善资料</text>
+            <view v-if="legacyLabels.length > 0" class="legacy-notice">
+                <text>以下旧标签不再用于介绍兴趣和性格：{{ legacyLabels.join('、') }}。保存后将从标签中移除，请按需要在基本资料或择偶标准中填写。</text>
+            </view>
+            <view v-if="loading || loadError != ''" class="load-state">
+                <text>{{ loading ? '正在加载标签和已选资料…' : loadError }}</text>
+                <view v-if="!loading" class="retry-action" @tap="load"><text>重新加载</text></view>
+            </view>
+        <view v-if="loaded && customEnabled" class="custom-editor">
+            <view class="custom-editor-head">
+                <text class="custom-title">自定义标签</text>
+                <text class="custom-count">{{ customLabels.length }}/{{ maxCustomTags }}</text>
+            </view>
+            <view class="custom-editor-row">
+                <view class="custom-input"><XsaInput v-model="customDraft" :placeholder="'输入' + customMinLength + '-' + customMaxLength + '个字符'" :maxlength="customMaxLength" :clearable="true" /></view>
+                <view class="custom-add" :class="{ disabled: customDraft.trim() == '' || saving || saved }" @tap="addCustomTag"><text>添加</text></view>
+            </view>
+            <text class="custom-hint">最多添加 {{ maxCustomTags }} 个，与系统标签共用 {{ maxTags }} 个名额</text>
+        </view>
+        <view v-if="loaded" class="tag-search">
+            <XsaInput v-model="searchQuery" placeholder="搜索兴趣标签" :maxlength="40" :clearable="true" />
+        </view>
+        <view v-if="loaded" class="tag-workspace">
+			<scroll-view v-if="!searchActive" scroll-y class="category-sidebar" enhanced show-scrollbar="false">
 				<view v-for="category in visibleCategories" :key="category.id" class="category-side-item" :class="{ active: activeCategoryId === category.id }" @tap="selectCategory(category.id)">
 					<view class="category-side-mark"></view>
 					<text class="category-side-name">{{ category.name }}</text>
@@ -34,18 +56,20 @@
 				</view>
 			</scroll-view>
 
-			<scroll-view scroll-y class="tag-panel" enhanced show-scrollbar="false">
+			<scroll-view :key="activeCategoryId + ':' + searchQuery" scroll-y class="tag-panel" enhanced show-scrollbar="false">
 				<view class="category-heading">
-					<text class="category-title">{{ activeCategory.name }}</text>
-					<text class="category-count">可多选</text>
+					<text class="category-title">{{ searchActive ? '搜索结果' : activeCategory.name }}</text>
+					<text class="category-count">{{ displayTags.length }} 项 · 可多选</text>
 				</view>
 				<view class="tag-grid">
-					<view v-for="tag in activeCategory.tags" :key="tag.id" class="tag-item" :class="{ selected: isTagSelected(activeCategory.id, tag.label) }" @tap="toggleTag(activeCategory.id, tag.label)">
+					<view v-for="tag in displayTags" :key="tag.id" class="tag-item" :class="{ selected: isTagSelected(activeCategory.id, tag.label) }" @tap="toggleTag(activeCategory.id, tag.label)">
 						<text v-if="tag.emoji != ''" class="tag-emoji">{{ tag.emoji }}</text>
 						<text class="tag-text">{{ tag.label }}</text>
+                        <text v-if="searchActive" class="tag-category">{{ categoryNameForTag(tag.label) }}</text>
 						<view v-if="isTagSelected(activeCategory.id, tag.label)" class="tag-check"><text>✓</text></view>
 					</view>
 				</view>
+				<text v-if="searchActive && displayTags.length === 0" class="empty-hint">没有找到相关标签，试试其他关键词</text>
 				<view class="tag-bottom-spacer"></view>
 			</scroll-view>
 		</view>
@@ -55,130 +79,224 @@
 
 <script setup lang="uts">
 import { getOwnProfile, getProfileTagOptions, updateOwnProfile } from '@/api'
+import XsaInput from '@/components/XsaInput.uvue'
 
 type TagItem = { id: string, label: string, emoji: string }
 type TagCategory = { id: string, name: string, tags: TagItem[] }
-
 const systemInfo = uni.getSystemInfoSync()
 const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
 const categories = ref<TagCategory[]>([])
-const maxTags = 5
+const maxTags = ref(10)
+const customEnabled = ref(false)
+const maxCustomTags = ref(3)
+const customMinLength = ref(2)
+const customMaxLength = ref(10)
+const customDraft = ref('')
+const customLabels = ref<string[]>([])
 const activeCategoryId = ref('')
-const tagMode = ref('interest')
+const searchQuery = ref('')
+const searchActive = computed((): boolean => searchQuery.value.trim().length > 0)
 const selectedLabels = ref<string[]>([])
+const legacyLabels = ref<string[]>([])
+const initialLabels = ref<string[]>([])
 const saving = ref(false)
-
-const visibleCategories = computed((): TagCategory[] => categories.value.filter((category: TagCategory) => tagMode.value === 'personality' ? category.id === 'personality' : category.id !== 'personality'))
+const saved = ref(false)
+const loading = ref(false)
+const loaded = ref(false)
+const loadError = ref('')
+const visibleCategories = computed((): TagCategory[] => categories.value)
 const activeCategory = computed((): TagCategory => {
-	for (const category of visibleCategories.value) if (category.id === activeCategoryId.value) return category
-	return visibleCategories.value.length > 0 ? visibleCategories.value[0] : { id: '', name: '', tags: [] }
+    for (const category of categories.value) if (category.id === activeCategoryId.value) return category
+    return { id: '', name: '', tags: [] }
 })
-const selectedItems = computed((): TagItem[] => {
-	const result: TagItem[] = []
-	for (const category of visibleCategories.value) {
-		for (const tag of category.tags) if (selectedLabels.value.indexOf(tag.label) >= 0) result.push(tag)
-	}
-	return result
+const selectedItems = computed((): TagItem[] => selectedLabels.value.map((label: string): TagItem => ({ id: label, label: label, emoji: '' })))
+const displayTags = computed((): TagItem[] => {
+    if (!searchActive.value) return activeCategory.value.tags
+    const query = searchQuery.value.trim().toLowerCase()
+    const matches: TagItem[] = []
+    for (const category of categories.value) {
+        for (const tag of category.tags) if (tag.label.toLowerCase().indexOf(query) >= 0) matches.push(tag)
+    }
+    return matches
 })
-const canSave = computed(() => selectedLabels.value.length >= 3 && selectedLabels.value.length <= maxTags)
-
-const selectCategory = (categoryId: string) => { activeCategoryId.value = categoryId }
+const categoryNameForTag = (label: string): string => {
+    for (const category of categories.value) {
+        for (const tag of category.tags) if (tag.label === label) return category.name
+    }
+    return customLabels.value.indexOf(label) >= 0 ? '自定义' : ''
+}
+const canSave = computed(() => loaded.value && !loading.value && !saved.value && selectedLabels.value.length <= maxTags.value)
+const hasChanges = computed(() => selectedLabels.value.join('|') !== initialLabels.value.join('|'))
+const selectCategory = (categoryId: string) => { activeCategoryId.value = categoryId; searchQuery.value = '' }
 const isTagSelected = (_categoryId: string, label: string): boolean => selectedLabels.value.indexOf(label) >= 0
 const categorySelectedCount = (categoryId: string): number => {
-	for (const category of categories.value) {
-		if (category.id !== categoryId) continue
-		return category.tags.filter((tag: TagItem) => selectedLabels.value.indexOf(tag.label) >= 0).length
-	}
-	return 0
+    for (const category of categories.value) {
+        if (category.id === categoryId) return category.tags.filter((tag: TagItem) => selectedLabels.value.indexOf(tag.label) >= 0).length
+    }
+    return 0
 }
 const toggleTag = (_categoryId: string, label: string) => {
-	const next = selectedLabels.value.slice()
-	const index = next.indexOf(label)
-	if (index >= 0) next.splice(index, 1)
-	else if (next.length < maxTags) next.push(label)
-	selectedLabels.value = next
+    if (!loaded.value || saving.value || saved.value) return
+    const next = selectedLabels.value.slice()
+    const index = next.indexOf(label)
+    if (index >= 0) next.splice(index, 1)
+    else if (next.length < maxTags.value) next.push(label)
+    else { uni.showToast({ title: '最多选择' + maxTags.value + '个，可先移除一个', icon: 'none' }); return }
+    selectedLabels.value = next
 }
-const removeTag = (tagId: string) => {
-	for (const category of categories.value) {
-		for (const tag of category.tags) {
-			if (tag.id !== tagId) continue
-			selectedLabels.value = selectedLabels.value.filter((label: string) => label !== tag.label)
-			return
-		}
-	}
+const removeTag = (label: string) => {
+    if (saving.value || saved.value) return
+    selectedLabels.value = selectedLabels.value.filter((item: string) => item !== label)
+    customLabels.value = customLabels.value.filter((item: string) => item !== label)
 }
-const clearTags = () => { selectedLabels.value = [] }
-
+const clearTags = () => {
+    if (!loaded.value || saving.value || saved.value) return
+    selectedLabels.value = []
+    customLabels.value = []
+}
+const addCustomTag = () => {
+    if (!loaded.value || !customEnabled.value || saving.value || saved.value) return
+    const normalized = customDraft.value.trim().replace(/\s+/g, ' ')
+    if (normalized.length < customMinLength.value || normalized.length > customMaxLength.value) {
+        uni.showToast({ title: '请输入' + customMinLength.value + '-' + customMaxLength.value + '个字符', icon: 'none' })
+        return
+    }
+    if (!/^[\u4e00-\u9fffA-Za-z0-9·+&\- ]+$/.test(normalized) || /^\d+$/.test(normalized)) {
+        uni.showToast({ title: '仅支持中英文、数字和常用连接符，且不能为纯数字', icon: 'none' })
+        return
+    }
+    const lowered = normalized.toLowerCase()
+    const forbidden = ['找对象', '找伴侣', '寻找伴侣', '长期伴侣', '另一半', '恋爱', '结婚', '婚姻', '生育', '身高', '体重', '年龄', '学历', '本科', '硕士', '博士', '收入', '职业', '房产', '资产', '微信', '电话', '手机', 'qq', 'vx', 'v信', 'wx', 'wechat', '加我', '约炮', '包养', '未成年', '政治', '宗教', '疾病']
+    if (normalized.replace(/\D/g, '').length >= 6 || forbidden.some((word: string): boolean => lowered.indexOf(word) >= 0)) {
+        uni.showToast({ title: '请填写本人的兴趣、生活偏好或性格', icon: 'none' })
+        return
+    }
+    if (selectedLabels.value.some((label: string): boolean => label.toLowerCase() === lowered)) {
+        uni.showToast({ title: '这个标签已经添加过了', icon: 'none' })
+        return
+    }
+    for (const category of categories.value) {
+        for (const tag of category.tags) {
+            if (tag.label.toLowerCase() === lowered) {
+                toggleTag(category.id, tag.label)
+                customDraft.value = ''
+                uni.showToast({ title: '已选择同名系统标签', icon: 'none' })
+                return
+            }
+        }
+    }
+    if (customLabels.value.length >= maxCustomTags.value) {
+        uni.showToast({ title: '自定义标签最多添加' + maxCustomTags.value + '个', icon: 'none' })
+        return
+    }
+    if (selectedLabels.value.length >= maxTags.value) {
+        uni.showToast({ title: '最多选择' + maxTags.value + '个，可先移除一个', icon: 'none' })
+        return
+    }
+    customLabels.value = customLabels.value.concat([normalized])
+    selectedLabels.value = selectedLabels.value.concat([normalized])
+    customDraft.value = ''
+}
 const load = async () => {
-	try {
-		const optionsResponse = await getProfileTagOptions()
-		if (!optionsResponse.success || optionsResponse.data == null) {
-			uni.showToast({ title: '标签选项加载失败', icon: 'none' })
-			return
-		}
-		const rawCategories = Array.isArray(optionsResponse.data.categories) ? optionsResponse.data.categories as any[] : []
-		const mapped: TagCategory[] = []
-		for (const rawCategory of rawCategories) {
-			const key = rawCategory.key != null ? '' + rawCategory.key : ''
-			const options = Array.isArray(rawCategory.options) ? rawCategory.options as string[] : []
-			mapped.push({
-				id: key,
-				name: rawCategory.label != null ? '' + rawCategory.label : key,
-				tags: options.map((label: string, index: number): TagItem => ({ id: key + '-' + index, label, emoji: '' }))
-			})
-		}
-		categories.value = mapped
-		const visible = visibleCategories.value
-		activeCategoryId.value = visible.length > 0 ? visible[0].id : ''
-
-		const profileResponse = await getOwnProfile()
-		if (profileResponse.success && profileResponse.data != null) {
-			const profile = profileResponse.data as any
-			const values = tagMode.value === 'personality' ? profile.personality_tags : profile.interest_tags
-			selectedLabels.value = Array.isArray(values) ? (values as string[]).slice(0, maxTags) : []
-		}
-	} catch (error) {
-		console.error('[TagEdit] load failed', error)
-		uni.showToast({ title: '标签选项加载失败', icon: 'none' })
-	}
+    if (loading.value || saving.value) return
+    loading.value = true
+    loaded.value = false
+    loadError.value = ''
+    try {
+        const optionsResponse = await getProfileTagOptions()
+        if (!optionsResponse.success || optionsResponse.data == null) {
+            loadError.value = '标签选项加载失败，请重试'
+            return
+        }
+        const data = optionsResponse.data
+        if (data.version !== 'personal-v2' || data.max_tags !== 10 || !Array.isArray(data.categories) || data.categories.length === 0) {
+            loadError.value = '标签服务正在更新，请稍后重试'
+            return
+        }
+        const customPolicy = data.custom
+        customEnabled.value = customPolicy != null && customPolicy.enabled === true
+        if (customEnabled.value) {
+            maxCustomTags.value = Number(customPolicy.max_tags)
+            customMinLength.value = Number(customPolicy.min_length)
+            customMaxLength.value = Number(customPolicy.max_length)
+        }
+        const mapped: TagCategory[] = []
+        const allowed: string[] = []
+        for (const raw of data.categories as any[]) {
+            if (typeof raw.key !== 'string' || !Array.isArray(raw.options)) {
+                loadError.value = '标签目录不完整，请重试'
+                return
+            }
+            const tags: TagItem[] = []
+            for (const label of raw.options as string[]) {
+                if (allowed.indexOf(label) >= 0) continue
+                allowed.push(label)
+                tags.push({ id: label, label: label, emoji: '' })
+            }
+            mapped.push({ id: raw.key, name: raw.label, tags: tags })
+        }
+        const profileResponse = await getOwnProfile()
+        if (!profileResponse.success || profileResponse.data == null || !Array.isArray(profileResponse.data.personal_tags)) {
+            loadError.value = '已选资料加载失败，请重试后再编辑'
+            return
+        }
+        const profile = profileResponse.data
+        const selected: string[] = []
+        const legacy: string[] = Array.isArray(profile.legacy_tags) ? (profile.legacy_tags as string[]).slice() : []
+        const storedCustom: string[] = customEnabled.value && Array.isArray(profile.custom_tags) ? (profile.custom_tags as string[]).slice(0, maxCustomTags.value) : []
+        for (const label of profile.personal_tags as string[]) {
+            if (allowed.indexOf(label) >= 0 || storedCustom.indexOf(label) >= 0) {
+                if (selected.indexOf(label) < 0) selected.push(label)
+            } else if (legacy.indexOf(label) < 0) legacy.push(label)
+        }
+        categories.value = mapped
+        activeCategoryId.value = mapped[0].id
+        maxTags.value = data.max_tags
+        selectedLabels.value = selected
+        customLabels.value = storedCustom.filter((label: string): boolean => selected.indexOf(label) >= 0)
+        initialLabels.value = selected.slice()
+        legacyLabels.value = legacy
+        loaded.value = true
+        if (selected.length > maxTags.value) uni.showToast({ title: '原有标签较多，请整理至10个以内', icon: 'none' })
+    } catch (error) {
+        loadError.value = '网络异常，请重试'
+    } finally {
+        loading.value = false
+    }
 }
-
 const saveAndBack = async () => {
-	if (saving.value || !canSave.value) return
-	saving.value = true
-	try {
-		const payload: any = {}
-		if (tagMode.value === 'personality') payload.personality_tags = selectedLabels.value.slice(0, maxTags)
-		else payload.interest_tags = selectedLabels.value.slice(0, maxTags)
-		const response = await updateOwnProfile(payload)
-		if (!response.success) {
-			uni.showToast({ title: response.message != null ? '' + response.message : '标签保存失败', icon: 'none' })
-			return
-		}
-		const responseProfile = response.data != null && response.data.profile != null ? response.data.profile : response.data
-		const savedValues = responseProfile != null
-			? (tagMode.value === 'personality' ? responseProfile.personality_tags : responseProfile.interest_tags)
-			: null
-		if (!Array.isArray(savedValues) || savedValues.length < 3) {
-			uni.showToast({ title: '后台未保存标签，请重试', icon: 'none' })
-			return
-		}
-		const eventChannel = getOpenerEventChannel()
-		if (eventChannel != null) eventChannel.emit('tagsSaved', { type: tagMode.value, tags: (savedValues as string[]).slice(0, maxTags) })
-		uni.showToast({ title: '标签已保存', icon: 'success' })
-		setTimeout(() => goBack(), 500)
-	} finally {
-		saving.value = false
-	}
+    if (saving.value || !canSave.value) return
+    saving.value = true
+    const submitted = selectedLabels.value.slice()
+    try {
+        const response = await updateOwnProfile({ personal_tags: submitted })
+        if (!response.success) {
+            uni.showToast({ title: response.message != null ? '' + response.message : '标签保存失败', icon: 'none' })
+            return
+        }
+        const profile = response.data != null && response.data.profile != null ? response.data.profile : response.data
+        const values = profile != null ? profile.personal_tags : null
+        if (!Array.isArray(values) || values.length !== submitted.length || submitted.some((label: string) => (values as string[]).indexOf(label) < 0)) {
+            uni.showToast({ title: '标签保存结果不一致，请重试', icon: 'none' })
+            return
+        }
+        saved.value = true
+        const eventChannel = getOpenerEventChannel()
+        if (eventChannel != null) eventChannel.emit('tagsSaved', { tags: values })
+        uni.showToast({ title: '标签已保存', icon: 'success' })
+        setTimeout(() => uni.navigateBack({ delta: 1 }), 500)
+    } catch (error) {
+        uni.showToast({ title: '网络异常，已保留本次选择，请重试', icon: 'none' })
+    } finally {
+        saving.value = false
+    }
 }
-
-const goBack = () => { uni.navigateBack({ delta: 1 }) }
-
-onLoad((options: any) => {
-	const type = options != null && options.type != null ? '' + options.type : 'interest'
-	tagMode.value = type === 'personality' ? 'personality' : 'interest'
-})
-onMounted(() => { load() })
+const goBack = () => {
+    if (saving.value) return
+    if (!hasChanges.value || saved.value) { uni.navigateBack({ delta: 1 }); return }
+    uni.showModal({ title: '还未保存标签', content: '离开后将放弃本次选择。', confirmText: '离开', cancelText: '继续编辑', success: (res: any) => { if (res.confirm) uni.navigateBack({ delta: 1 }) } })
+}
+onLoad(() => { load() })
 </script>
 
 <style scoped>
@@ -188,12 +306,12 @@ onMounted(() => { load() })
 .nav-back, .nav-back-placeholder { width: 72rpx; height: 72rpx; flex-shrink: 0; }
 .nav-back { display: flex; align-items: center; justify-content: center; }
 .nav-back-icon { color: var(--ink); font-size: 56rpx; font-weight: 700; line-height: 1; }
-.tag-content { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 24rpx 24rpx 0; box-sizing: border-box; }
+.tag-content { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 24rpx 24rpx env(safe-area-inset-bottom); gap: 12rpx; box-sizing: border-box; }
 .selected-section { display: flex; flex-direction: column; gap: 16rpx; padding: 22rpx; background: var(--surface); border: 1px solid var(--line); border-radius: 16rpx; box-shadow: var(--shadow-sm); }
 .selected-header { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
 .section-label { color: var(--ink); font-size: 28rpx; font-weight: 700; }
 .clear-action { color: var(--accent2); font-size: 24rpx; font-weight: 700; }
-.selected-row { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12rpx; min-height: 54rpx; align-items: center; }
+.selected-row { max-height: 180rpx; overflow-y: auto; display: flex; flex-direction: row; flex-wrap: wrap; gap: 12rpx; min-height: 54rpx; align-items: center; }
 .selected-actions { display: flex; flex-direction: row; justify-content: flex-end; }
 .selected-save { min-width: 140rpx; height: 60rpx; display: flex; align-items: center; justify-content: center; border-radius: 30rpx; background: var(--accent); color: var(--text-invert); font-size: 24rpx; font-weight: 700; }
 .selected-save.disabled { opacity: 0.45; pointer-events: none; }
@@ -202,7 +320,21 @@ onMounted(() => { load() })
 .selected-text { font-size: 22rpx; font-weight: 600; }
 .selected-remove { margin-left: 2rpx; color: var(--accent2); font-size: 26rpx; line-height: 1; }
 .empty-hint { color: var(--muted); font-size: 24rpx; }
-.tag-workspace { flex: 1; min-height: 0; display: flex; flex-direction: row; gap: 14rpx; margin-top: 20rpx; }
+.legacy-notice { flex-shrink: 0; max-height: 140rpx; overflow-y: auto; padding: 12rpx; color: var(--ink2); background: var(--warm); font-size: 22rpx; border-radius: 12rpx; }
+.load-state { padding: 40rpx 20rpx; color: var(--muted); font-size: 26rpx; }
+.retry-action { padding: 20rpx; color: var(--accent2); }
+.custom-editor { flex-shrink: 0; display: flex; flex-direction: column; gap: 10rpx; padding: 16rpx; border: 1px solid var(--line); border-radius: 14rpx; background: var(--surface); }
+.custom-editor-head, .custom-editor-row { display: flex; flex-direction: row; align-items: center; }
+.custom-editor-head { justify-content: space-between; }
+.custom-title { color: var(--ink); font-size: 25rpx; font-weight: 700; }
+.custom-count, .custom-hint { color: var(--muted); font-size: 21rpx; }
+.custom-editor-row { gap: 12rpx; }
+.custom-input { flex: 1; min-width: 0; }
+.custom-add { width: 112rpx; height: 76rpx; display: flex; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 14rpx; color: var(--text-invert); background: var(--accent); font-size: 24rpx; font-weight: 700; }
+.custom-add.disabled { opacity: 0.45; pointer-events: none; }
+.tag-item:active, .selected-save:active, .custom-add:active { opacity: 0.75; }
+.tag-search { flex-shrink: 0; }
+.tag-workspace { flex: 1; min-height: 0; display: flex; flex-direction: row; gap: 14rpx; }
 .category-sidebar { width: 160rpx; height: 100%; flex: 0 0 160rpx; padding: 14rpx 0; box-sizing: border-box; border: 1px solid var(--line); border-radius: 14rpx; background: var(--surface); }
 .category-side-item { position: relative; min-height: 84rpx; margin-bottom: 8rpx; display: flex; flex-direction: row; align-items: center; gap: 8rpx; padding: 8rpx 12rpx; box-sizing: border-box; color: var(--muted); }
 .category-side-item.active { color: var(--ink); background: var(--accent-bg); }
@@ -215,7 +347,8 @@ onMounted(() => { load() })
 .category-title { color: var(--ink); font-size: 30rpx; font-weight: 700; }
 .category-count { color: var(--muted); font-size: 22rpx; }
 .tag-grid { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between; gap: 14rpx 10rpx; }
-.tag-item { position: relative; width: calc((100% - 10rpx) / 2); min-height: 132rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10rpx; padding: 16rpx 8rpx; box-sizing: border-box; border: 2rpx solid var(--line); border-radius: 14rpx; background: var(--surface); }
+.tag-item { position: relative; width: calc((100% - 10rpx) / 2); min-height: 112rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10rpx; padding: 24rpx 8rpx 16rpx; box-sizing: border-box; border: 2rpx solid var(--line); border-radius: 14rpx; background: var(--surface); }
+.tag-category { color: var(--muted); font-size: 20rpx; }
 .tag-item.selected { border-color: var(--accent); background: var(--accent-bg); }
 .tag-emoji { font-size: 34rpx; line-height: 1; }
 .tag-text { max-width: 100%; color: var(--ink2); font-size: 22rpx; line-height: 1.3; text-align: center; }

@@ -142,10 +142,10 @@
 				<text class="intro-hint">超有趣的自我介绍会被更多人看见哦！完成后建议搭配照片验证</text>
 			</view>
 
-			<!-- 我的标签 -->
+			<!-- 兴趣标签 -->
 			<view class="section-card tag-section">
-				<text class="section-title">我的标签</text>
-				<text class="tag-desc">选择最能代表你的个性标签（最多20个）</text>
+				<text class="section-title">兴趣标签</text>
+				<text class="tag-desc">选择或自定义最能代表你的标签（最多10个）</text>
 				<view class="tag-row" v-for="(row, ri) in tagRows" :key="ri">
 					<view
 						class="tag-item"
@@ -462,13 +462,13 @@
 		const idx = selectedTags.value.indexOf(tag)
 		if (idx >= 0) {
 			selectedTags.value.splice(idx, 1)
-		} else if (selectedTags.value.length < 20) {
+		} else if (selectedTags.value.length < 10) {
 			selectedTags.value.push(tag)
 		}
 	}
 
 	const addCustomTag = () => {
-		uni.showToast({ title: '自定义标签功能开发中', icon: 'none' })
+		uni.navigateTo({ url: '/pagesSub/userExtra/mytags/edit' })
 	}
 
 	// 关于我 问答

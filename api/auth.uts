@@ -4,13 +4,23 @@
  */
 
 import { request } from './request.uts'
+import { mockMeProfile } from '@/mock'
 import { CURRENT_USER_ID_KEY, setAuthTokens, clearAuthTokens } from './config.uts'
 
+const mockCertifications: any = {
+  education: { kind: 'education', status: 0, material_submitted: false, submitted_at: null, reviewed_at: null, fail_reason: null, next_action: '提交认证材料' },
+  house: { kind: 'house', status: 0, material_submitted: false, submitted_at: null, reviewed_at: null, fail_reason: null, next_action: '提交认证材料' },
+  marriage: { kind: 'marriage', status: 0, material_submitted: false, submitted_at: null, reviewed_at: null, fail_reason: null, next_action: '提交认证材料' }
+}
+
 export async function getProfileCompletion() {
+  const tags = Array.isArray(mockMeProfile.personal_tags) ? mockMeProfile.personal_tags as string[] : []
+  const completed = tags.length >= 3
+  const score = completed ? 100 : 92
   return request({
     url: '/users/me/completion',
     method: 'GET',
-    mockData: { score: 100, completion_score: 100 }
+    mockData: { score: score, completion_score: score, items: [{ key: 'personal_tags', label: '兴趣标签', weight: 8, completed: completed }] }
   })
 }
 
@@ -122,6 +132,34 @@ export async function submitRealname(realName: string, idCard: string) {
     url: '/auth/realname',
     method: 'POST',
     data: { real_name: realName, id_card: idCard }
+  })
+}
+
+/** Query optional qualification certifications independently from real-name gates. */
+export async function getUserCertifications() {
+  return request({
+    url: '/users/me/certifications',
+    method: 'GET',
+    mockData: mockCertifications
+  })
+}
+
+/** Submit the selected education level for manual platform review. */
+export async function submitEducationCertification(education: string) {
+  mockCertifications.education = {
+    kind: 'education',
+    status: 1,
+    material_submitted: true,
+    submitted_at: '',
+    reviewed_at: null,
+    fail_reason: null,
+    next_action: '等待平台审核'
+  }
+  return request({
+    url: '/users/me/certifications/education',
+    method: 'PUT',
+    data: { education },
+    mockData: mockCertifications
   })
 }
 

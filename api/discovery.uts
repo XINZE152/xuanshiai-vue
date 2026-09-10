@@ -5,7 +5,7 @@ import { mockRecommendUsers, mockSquareUsers } from '@/mock/user.uts'
 function mapCard(row: any): any {
   const source = row != null && row.target != null ? row.target : row
   const card = source != null ? source : {}
-  const tags = card.interest_tags != null && Array.isArray(card.interest_tags)
+  const tags = Array.isArray(card.personal_tags) ? card.personal_tags : card.interest_tags != null && Array.isArray(card.interest_tags)
     ? card.interest_tags
     : (card.tags != null && Array.isArray(card.tags) ? card.tags : [])
   const certifications = card.certification_tags != null && Array.isArray(card.certification_tags)

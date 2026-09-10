@@ -112,25 +112,15 @@
 				<text v-if="!completionPassed('intro')" class="completion-warning">自我介绍：少于后台要求的 20 字</text>
 			</view>
 
-			<view class="section-card tags-card" @tap="goTagsEdit('interest')">
-				<view class="section-heading"><text class="section-title">兴趣标签{{ completionSuffix('interest', 5) }}</text><view class="pill-action"><text class="pill-action-text">编辑</text><text class="pill-action-arrow">›</text></view></view>
-				<text class="section-caption">选择能代表你的兴趣爱好</text>
-				<view class="tag-list">
-					<view class="tag-chip" v-for="tag in interestDisplayTags" :key="'interest-' + tag"><text>{{ tag }}</text></view>
-					<view v-if="interestDisplayTags.length == 0" class="tag-empty"><text>暂未填写</text></view>
-				</view>
-				<text v-if="!completionPassed('interest')" class="completion-warning">兴趣标签：少于 3 个</text>
-			</view>
-
-			<view id="sec-personality_tags" class="section-card tags-card" @tap="goTagsEdit('personality')">
-				<view class="section-heading"><text class="section-title">性格标签{{ completionSuffix('personality', 3) }}</text><view class="pill-action"><text class="pill-action-text">编辑</text><text class="pill-action-arrow">›</text></view></view>
-				<text class="section-caption">选择能代表你的性格特征</text>
-				<view class="tag-list">
-					<view class="tag-chip tag-accent" v-for="tag in personalityDisplayTags" :key="'personality-' + tag"><text>{{ tag }}</text></view>
-					<view v-if="personalityDisplayTags.length == 0" class="tag-empty"><text>暂未填写</text></view>
-				</view>
-				<text v-if="!completionPassed('personality')" class="completion-warning">性格标签：少于 3 个</text>
-			</view>
+			<view id="sec-personal_tags" class="section-card tags-card" @tap="goTagsEdit()">
+                <view class="section-heading"><text class="section-title">兴趣标签{{ completionSuffix('personal_tags', 8) }}</text><view class="pill-action"><text class="pill-action-text">编辑</text><text class="pill-action-arrow">›</text></view></view>
+                <text class="section-caption">用兴趣爱好和性格特点介绍自己，最多 10 个</text>
+                <view class="tag-list">
+                    <view class="tag-chip tag-accent" v-for="tag in personalDisplayTags" :key="tag"><text>{{ tag }}</text></view>
+                    <view v-if="personalDisplayTags.length == 0" class="tag-empty"><text>添加几个标签，让对方更了解你</text></view>
+                </view>
+                <text v-if="!completionPassed('personal_tags')" class="completion-warning">选满 3 个可完善资料，也可以稍后再填</text>
+            </view>
 
 			<navigator class="section-card preference-card" url="/pagesSub/userExtra/user/preference" hover-class="none">
 				<view class="section-heading"><text class="section-title">择偶标准{{ completionSuffix('preference', 3) }}</text><view class="pill-action"><text class="pill-action-text">编辑</text><text class="pill-action-arrow">›</text></view></view>
@@ -294,7 +284,7 @@
 </template>
 
 <script setup lang="uts">
-	import { getOwnProfile, updateOwnProfile, updateOwnNickname, getOwnPreferences, uploadUserProfileMedia, deleteUserProfilePhoto, getMeProfile, getProfileCompletion, getAgreementVersions, acceptAgreement } from '@/api'
+	import { getOwnProfile, updateOwnProfile, updateOwnNickname, getOwnPreferences, uploadUserProfileMedia, deleteUserProfilePhoto, getMeProfile, getUserCertifications, getProfileCompletion, getAgreementVersions, acceptAgreement } from '@/api'
 	import { getLatestThoughtfulness, analyzeProfileThoughtfulness, normalizeThoughtfulness, ThoughtfulnessResult } from '@/api/ai-profile.uts'
 	import XsaProfileAiCard from '@/components/XsaProfileAiCard.uvue'
 	import XsaProfileAiFirstAnalysis from '@/components/XsaProfileAiFirstAnalysis.uvue'
@@ -326,6 +316,7 @@
 	const singlePledgePassed = ref(false)
 	const realNameStatus = ref('missing')
 	const educationStatus = ref('missing')
+	const avatarCertificationPassed = ref(false)
 	const genderOptions = ['未选择', '男', '女']
 	const numericOptions = (start: number, end: number): string[] => {
 		const options = [] as string[]
@@ -364,6 +355,7 @@
 		mbti: '',
 		introduction: '',
 		wechat: '',
+		personalTags: [] as string[],
 		interestTags: [] as string[],
 		personalityTags: [] as string[],
 		tagSelections: {} as any,
@@ -478,6 +470,7 @@
 		formData.value.introduction = textValue(data.self_intro)
 		applyQaAnswers(data.qa_answers)
 		formData.value.wechat = textValue(data.wechat)
+		formData.value.personalTags = Array.isArray(data.personal_tags) ? data.personal_tags : []
 		formData.value.interestTags = data.interest_tags != null ? data.interest_tags : []
 		formData.value.personalityTags = data.personality_tags != null ? data.personality_tags : []
 		formData.value.tagSelections = data.tag_selections != null ? data.tag_selections : {}
@@ -647,8 +640,9 @@
 			basic_info: 'sec-basic_info',
 			mbti: 'sec-basic_info',
 			self_intro: 'sec-self_intro',
-			interest_tags: 'sec-interest_tags',
-			personality_tags: 'sec-personality_tags',
+			personal_tags: 'sec-personal_tags',
+			interest_tags: 'sec-personal_tags',
+			personality_tags: 'sec-personal_tags',
 			qa_answers: 'sec-qa_answers'
 		}
 		const target = anchors[key] != null ? '' + anchors[key] : ''
@@ -711,9 +705,19 @@
 				if (meRes.success && meRes.data != null) {
 					realNameStatus.value = meRes.data.realNameStatus != null ? '' + meRes.data.realNameStatus : 'missing'
 					educationStatus.value = meRes.data.educationStatus != null ? '' + meRes.data.educationStatus : 'missing'
+					avatarCertificationPassed.value = meRes.data.certifications != null && meRes.data.certifications.avatar == true
 				}
 			} catch (meError) {
 				console.error('[EditProfile] auth profile unavailable', meError)
+			}
+			try {
+				const certificationsRes = await getUserCertifications()
+				if (certificationsRes.success && certificationsRes.data != null && certificationsRes.data.education != null) {
+					const status = Number(certificationsRes.data.education.status)
+					educationStatus.value = status == 2 ? 'passed' : (status == 1 ? 'reviewing' : (status == 3 ? 'rejected' : 'missing'))
+				}
+			} catch (certificationsError) {
+				console.error('[EditProfile] certification status unavailable', certificationsError)
 			}
 			await refreshCompletion()
 			lastSavedPayloadJson.value = JSON.stringify(buildProfilePayload())
@@ -734,22 +738,19 @@
 		if (key == 'intro') return textValue(formData.value.introduction).trim() != ''
 		if (key == 'weight') return formData.value.weight != ''
 		if (key == 'hometown') return textValue(formData.value.hometown).trim() != ''
-		if (key == 'interest') return formData.value.interestTags.length >= 3
-		if (key == 'personality') return formData.value.personalityTags.length >= 3
+		if (key == 'personal_tags') return personalDisplayTags.value.length >= 3
 		if (key == 'preference') return formData.value.ageMin != '' || formData.value.ageMax != ''
 		return false
 	}
 	const completionPassed = (key: string): boolean => {
-		if (key == 'interest') return interestDisplayTags.value.length >= 3
-		if (key == 'personality') return personalityDisplayTags.value.length >= 3
+		if (key == 'personal_tags') return personalDisplayTags.value.length >= 3
 		const item = completionItems.value[key]
 		return item != null ? item.completed == true : fallbackCompletion(key)
 	}
 	const completionWeight = (key: string, fallback: number): number => {
 		const weights: any = {
 			gender: 7, birthday: 7, location: 5, marriage: 5, occupation: 4, education: 4, income: 4,
-			height: 4, weight: 4, hometown: 4, avatar: 15, intro: 10, album: 8, interest: 5,
-			personality: 3, mbti: 2, preference: 3, realname: 5, single_pledge: 1
+			height: 4, weight: 4, hometown: 4, avatar: 15, intro: 10, album: 8, personal_tags: 8, mbti: 2, preference: 3, realname: 5, single_pledge: 1
 		}
 		return weights[key] != null ? weights[key] : fallback
 	}
@@ -766,7 +767,7 @@
 		const labels: any = {
 			gender: '性别', birthday: '出生日期', location: '所在地区', marriage: '婚姻状况', occupation: '职业',
 			education: '学历', income: '收入', height: '身高', weight: '体重', hometown: '家乡', avatar: '头像',
-			intro: '自我介绍', album: '相册', interest: '兴趣标签', personality: '性格标签', mbti: 'MBTI',
+			intro: '自我介绍', album: '相册', personal_tags: '兴趣标签', interest: '兴趣标签', personality: '兴趣标签', mbti: 'MBTI',
 			preference: '择偶要求', realname: '实名认证', single_pledge: '单身承诺'
 		}
 		const names = missing.map((key: string) => labels[key] || key)
@@ -824,12 +825,7 @@
 	const incomePreviewText = computed(() => formData.value.income != null && ('' + formData.value.income).trim() != '' ? ('' + formData.value.income) : '请选择')
 	const introHasContent = computed(() => textValue(formData.value.introduction).trim() != '')
 	const completedCertCount = computed(() => certifications.value.filter((c: any) => c.passed).length)
-	const interestDisplayTags = computed(() => {
-		return formData.value.interestTags.slice(0, 5)
-	})
-	const personalityDisplayTags = computed(() => {
-		return formData.value.personalityTags.slice(0, 5)
-	})
+	const personalDisplayTags = computed(() => formData.value.personalTags)
 	const preferencePreview = computed(() => {
 		const age = formData.value.ageMin != '' || formData.value.ageMax != '' ? (formData.value.ageMin || '不限') + '-' + (formData.value.ageMax || '不限') + '岁' : '年龄不限'
 		const height = formData.value.heightMin != '' || formData.value.heightMax != '' ? (formData.value.heightMin || '不限') + '-' + (formData.value.heightMax || '不限') + 'cm' : '身高不限'
@@ -847,7 +843,7 @@
 	const certifications = computed(() => [
 		{ key: 'realname', label: '实名认证', icon: '盾', passed: realNameStatus.value == 'passed', desc: realNameDescription.value },
 		{ key: 'education', label: '学历认证', icon: '学', passed: educationStatus.value == 'passed', desc: educationStatus.value == 'passed' ? '学历信息已核验' : '需核验学历信息' },
-		{ key: 'avatar', label: '头像认证', icon: '像', passed: false, desc: '上传真实本人照片' },
+		{ key: 'avatar', label: '头像认证', icon: '像', passed: avatarCertificationPassed.value, desc: avatarCertificationPassed.value ? '头像为本人真实照片' : '上传真实本人照片' },
 		{ key: 'single_pledge', label: '单身承诺', icon: '誓', passed: singlePledgePassed.value, desc: singlePledgePassed.value ? '已签署单身承诺' : '确认当前为单身状态' }
 	])
 
@@ -1104,6 +1100,10 @@
 			singlePledgeVisible.value = true
 			return
 		}
+		if (key == 'avatar') {
+			chooseAvatar()
+			return
+		}
 		uni.navigateTo({ url: '/pagesSub/profileExtra/certification?type=' + key })
 	}
 	const closeSinglePledge = () => { if (!singlePledgeSubmitting.value) singlePledgeVisible.value = false }
@@ -1220,18 +1220,16 @@
 			qaSaving.value = false
 		}
 	}
-	const goTagsEdit = (type: string = 'all') => uni.navigateTo({
-		url: '/pagesSub/userExtra/mytags/edit?type=' + type,
-		events: {
-			tagsSaved: (payload: any) => {
-				if (payload == null || !Array.isArray(payload.tags)) return
-				const tags = (payload.tags as string[]).slice(0, 5)
-				if (payload.type == 'personality') formData.value.personalityTags = tags
-				else formData.value.interestTags = tags
-				refreshCompletion()
-			}
-		}
-	})
+	const goTagsEdit = () => uni.navigateTo({
+        url: '/pagesSub/userExtra/mytags/edit',
+        events: {
+            tagsSaved: (payload: any) => {
+                if (payload == null || !Array.isArray(payload.tags)) return
+                formData.value.personalTags = payload.tags
+                refreshCompletion()
+            }
+        }
+    })
 	const onPreview = () => uni.navigateTo({ url: '/pagesSub/userExtra/user/detail?own=true&preview=true' })
 
 	const onCancel = () => {
@@ -1264,18 +1262,7 @@
 			hometown_district_code: textValue(formData.value.hometownDistrictCode) || null,
 			self_intro: textValue(formData.value.introduction) || null,
 			qa_answers: buildQaPayload(-1, ''),
-			interest_tags: formData.value.interestTags.length >= 3 ? formData.value.interestTags.slice(0, 5) : null,
-			personality_tags: formData.value.personalityTags.length >= 3 ? formData.value.personalityTags.slice(0, 5) : null,
 			mbti: textValue(formData.value.mbti).toUpperCase() || null
-		}
-		const selections = formData.value.tagSelections
-		if (selections != null && typeof selections === 'object') {
-			const supportedSelections: any = {}
-			const relationshipExpectation = selections.relationship_expectation
-			if (Array.isArray(relationshipExpectation) && relationshipExpectation.length > 0) {
-				supportedSelections.relationship_expectation = relationshipExpectation.slice(0, 5)
-			}
-			if (Object.keys(supportedSelections).length > 0) payload.tag_selections = supportedSelections
 		}
 		return payload
 	}

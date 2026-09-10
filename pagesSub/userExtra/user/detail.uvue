@@ -368,7 +368,7 @@ const mapDetailUser = (raw: any, id: number) => {
 		? (rawPhotos as any[]).map((photo: any) => photo != null && typeof photo === 'object' ? resolveMediaUrl(value(photo.url, photo.file_url, avatar)) : resolveMediaUrl(photo))
 		: []
 	const lifePhotos = photos
-	const tags = Array.isArray(card.interest_tags) ? card.interest_tags as string[] : Array.isArray(card.tags) ? card.tags as string[] : Array.isArray(profile.interest_tags) ? profile.interest_tags as string[] : []
+	const tags = Array.isArray(profile.personal_tags) ? profile.personal_tags as string[] : Array.isArray(card.interest_tags) ? card.interest_tags as string[] : Array.isArray(card.tags) ? card.tags as string[] : Array.isArray(profile.interest_tags) ? profile.interest_tags as string[] : []
 	const tagWithMbti = mbti != '' && mbti != '未填写' ? [mbti].concat(tags) : tags
 	const expectations = profile.tag_selections != null && Array.isArray(profile.tag_selections.relationship_expectation)
 		? profile.tag_selections.relationship_expectation as string[]
