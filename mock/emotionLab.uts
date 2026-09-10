@@ -742,3 +742,60 @@ export function discardEmotionLabSessionData(sessionId: string): any {
   writeSubjectState(state)
   return toPublicSessionSnapshot(state.activeSession)
 }
+
+/**
+ * 情感实验室「合拍的人」Mock。
+ * 后端 /emotion-lab/matches 尚未就绪，这里先按前端消费结构提供稳定假数据，
+ * 接口联调后由 api/emotionLab.uts 的真实分支替换，页面渲染契约保持不变。
+ */
+const MOCK_MATCH_ROWS: any[] = [
+  {
+    id: 'match-linzhiwei',
+    name: '林知微',
+    age: 27,
+    city: '杭州',
+    school: '浙江大学 · 心理学',
+    mbtiType: 'ESTP',
+    matchPercent: 70,
+    tags: ['ESTP', '年薪30w+', '名校硕士'],
+    bio: '关于我：杭州人，做用户体验研究。喜欢爬山和看展，希望遇到能一起把普通日子过得有意思的人。'
+  },
+  {
+    id: 'match-chenyu',
+    name: '陈屿',
+    age: 28,
+    city: '上海',
+    school: '上海交通大学 · 计算机',
+    mbtiType: 'INFJ',
+    matchPercent: 68,
+    tags: ['INFJ', '情绪稳定', '硕士在读'],
+    bio: '关于我：在上海读研，性格偏安静，喜欢阅读和长距离散步，期待能互相理解、长期陪伴的关系。'
+  },
+  {
+    id: 'match-suxiao',
+    name: '苏晓',
+    age: 26,
+    city: '南京',
+    school: '南京大学 · 金融',
+    mbtiType: 'INTJ',
+    matchPercent: 65,
+    tags: ['INTJ', '互联网产品', '健身爱好者'],
+    bio: '关于我：定居南京，做互联网产品。逻辑清晰，热爱健身和摄影，希望遇见三观一致、生活节奏同频的人。'
+  }
+]
+
+let matchesRotateCursor: number = 0
+
+export function getEmotionLabMatchesData(mbtiType: string = ''): any {
+  const total: number = MOCK_MATCH_ROWS.length
+  const items: any[] = []
+  for (let i = 0; i < total; i++) {
+    items.push(clone(MOCK_MATCH_ROWS[(i + matchesRotateCursor) % total]))
+  }
+  matchesRotateCursor = (matchesRotateCursor + 1) % total
+  return {
+    mbtiType: mbtiType,
+    items: items,
+    generatedAt: now()
+  }
+}

@@ -421,11 +421,11 @@ const onEmotionLab = () => {
 const mainMenuItems = [
 	{ iconClass: 'ic ic-vip ic-renwu', iconBg: '#EDE4F0', label: '我的任务', badge: 'NEW', action: onMyTasks },
 	{ iconClass: 'ic ic-me ic-dongtai', iconBg: '#E4EDE8', label: '我的动态', action: onMyMoments },
+	{ iconClass: 'ic ic-home ic-star', iconBg: '#E4EDE8', label: '情感实验室', action: onEmotionLab },
 	{ iconClass: 'ic ic-home ic-heart', iconBg: '#FDE8EC', label: '我的海报', action: onMyPoster },
 	{ iconClass: 'ic ic-social ic-huodong', iconBg: '#FEF3E4', label: '我的报名', action: onMyRegistration },
 	{ iconClass: 'ic ic-sys ic-shiming', iconBg: '#FEF3E4', label: '诚信认证', action: onCertification },
 	{ iconClass: 'ic ic-sys ic-fenxiang', iconBg: '#FEF3E4', label: '推荐给好友', action: onInviteFriend },
-	{ iconClass: 'ic ic-home ic-star', iconBg: '#E4EDE8', label: '情感实验室', action: onEmotionLab },
 	{ iconClass: 'ic ic-me ic-shezhi', iconBg: '#FEF3E4', label: '设置', action: onMenuSettings },
 ]
 
