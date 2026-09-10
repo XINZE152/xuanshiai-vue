@@ -1,0 +1,272 @@
+<template>
+	<view class="unlock-page">
+		<!-- 自定义导航栏 -->
+		<view class="nav-bar">
+			<view class="nav-back" @click="goBack">
+				<text class="back-icon">&#8249;</text>
+			</view>
+			<text class="nav-title">解锁记录</text>
+			<view class="nav-placeholder"></view>
+		</view>
+
+		<scroll-view class="scroller" scroll-y>
+			<view class="match-list">
+				<view
+					class="match-card"
+					v-for="item in historyList"
+					:key="item.id"
+					@click="openProfile(item)"
+				>
+					<view class="match-top">
+						<view class="match-user">
+							<XsaAvatar :name="item.name" size="medium"></XsaAvatar>
+							<view class="match-text">
+								<text class="match-name">{{ item.name }}</text>
+								<text class="match-meta">{{ item.age }}岁 · {{ item.city }}</text>
+								<text class="match-school">{{ item.school }} · {{ item.major }}</text>
+							</view>
+						</view>
+						<view class="match-score">
+							<text class="match-percent">{{ item.matchPercent }}%</text>
+							<text class="match-score-label">合拍度</text>
+						</view>
+					</view>
+
+					<view class="match-tags">
+						<view v-if="item.mbti" class="match-tag match-tag-accent">
+							<text class="match-tag-text">{{ item.mbti }}</text>
+						</view>
+						<view v-for="tag in item.tags" :key="tag" class="match-tag">
+							<text class="match-tag-text">{{ tag }}</text>
+						</view>
+					</view>
+
+					<text class="match-bio">{{ item.bio }}</text>
+				</view>
+			</view>
+		</scroll-view>
+	</view>
+</template>
+
+<script setup lang="uts">
+import XsaAvatar from '@/components/XsaAvatar.uvue'
+
+const historyList = ref<any[]>([
+	{
+		id: 1,
+		name: '陈屿',
+		age: 28,
+		city: '上海',
+		school: '上海交通大学',
+		major: '计算机',
+		matchPercent: 68,
+		mbti: 'INFJ',
+		tags: ['情绪稳定', '硕士在读'],
+		bio: '在上海读研，性格偏安静，喜欢阅读和长距离散步，期待能互相理解、长期陪伴的关系。'
+	},
+	{
+		id: 2,
+		name: '苏晓',
+		age: 26,
+		city: '南京',
+		school: '南京大学',
+		major: '金融',
+		matchPercent: 65,
+		mbti: 'INTJ',
+		tags: ['互联网产品', '健身爱好者'],
+		bio: '定居南京，做互联网产品。逻辑清晰，热爱健身和摄影，希望遇见三观一致、生活节奏同频的人。'
+	},
+	{
+		id: 3,
+		name: '林知微',
+		age: 27,
+		city: '杭州',
+		school: '浙江大学',
+		major: '心理学',
+		matchPercent: 70,
+		mbti: 'ESTP',
+		tags: ['年薪30w+', '名校硕士'],
+		bio: '杭州人，做用户体验研究。喜欢爬山和看展，希望遇见能一起成长、探索生活的人。'
+	}
+])
+
+const goBack = () => { uni.navigateBack({}) }
+const openProfile = (item: any) => {
+	uni.navigateTo({
+		url: '/pagesSub/userExtra/user/detail?userId=' + item.id,
+		fail: () => {
+			uni.showToast({ title: '页面跳转失败', icon: 'none' })
+		}
+	})
+}
+</script>
+
+<style scoped>
+	/* 页面根 */
+	.unlock-page {
+		min-height: 100vh;
+		background: #F0F0F3;
+	}
+
+	/* 导航栏 */
+	.nav-bar {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: var(--status-bar-height) 16px 0;
+		height: calc(48px + var(--status-bar-height));
+		background: #F0F0F3;
+	}
+	.nav-back {
+		width: 40px;
+		height: 40px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+	.back-icon {
+		font-size: 28px;
+		color: #1A1A1A;
+		font-weight: 300;
+	}
+	.nav-title {
+		font-size: 17px;
+		font-weight: 600;
+		color: #1A1A1A;
+	}
+	.nav-placeholder {
+		width: 40px;
+	}
+
+	/* 滚动区 */
+	.scroller {
+		height: calc(100vh - 48px - var(--status-bar-height));
+	}
+
+	/* 列表：与 emotion-lab 的 .match-list 一致 */
+	.match-list {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		padding: 12px 16px 32px;
+	}
+
+	/* 卡片：与 emotion-lab 的 .match-list .match-card 完全一致 */
+	.match-card {
+		position: relative;
+		background: #FFFFFF;
+		border-radius: 16px;
+		padding: 18px;
+		gap: 12px;
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		overflow: hidden;
+	}
+
+	/* 顶部行 */
+	.match-top {
+		display: flex;
+		flex-direction: row;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.match-user {
+		display: flex;
+		flex-direction: row;
+		align-items: flex-start;
+		gap: 12px;
+		min-width: 0;
+		flex: 1;
+	}
+
+	.match-text {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		min-width: 0;
+		flex: 1;
+	}
+
+	/* 原稿：姓名 16px/700 #1A1A1A；年龄城市 12px #8E8E93；学校 12px #B0B0B0 */
+	.match-name {
+		font-size: 16px;
+		font-weight: 700;
+		color: #1A1A1A;
+	}
+
+	.match-meta {
+		font-size: 12px;
+		color: #8E8E93;
+	}
+
+	.match-school {
+		font-size: 12px;
+		color: #B0B0B0;
+	}
+
+	/* 合拍度圆：与 emotion-lab 完全一致 */
+	.match-score {
+		flex-shrink: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		width: 64px;
+		height: 64px;
+		border-radius: 50%;
+		background: #E8F5F0;
+		gap: 2px;
+	}
+
+	.match-percent {
+		font-size: 24px;
+		font-weight: 700;
+		line-height: 1;
+		color: #7EC8A0;
+	}
+
+	.match-score-label {
+		font-size: 11px;
+		color: #9AA0A6;
+	}
+
+	/* 标签：与 emotion-lab 完全一致 */
+	.match-tags {
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
+	.match-tag {
+		padding: 4px 10px;
+		border-radius: 10px;
+		background: #E0F5E8;
+	}
+
+	.match-tag-accent {
+		background: #FFF0E0;
+	}
+
+	.match-tag-text {
+		font-size: 11px;
+		color: #5DAF85;
+	}
+
+	.match-tag-accent .match-tag-text {
+		color: #E8A040;
+		font-weight: 700;
+	}
+
+	/* 简介：与 emotion-lab 完全一致 */
+	.match-bio {
+		display: block;
+		font-size: 12px;
+		line-height: 1.5;
+		color: #8E8E93;
+	}
+</style>

@@ -1,206 +1,370 @@
 <template>
 	<view class="lab-page">
-		<view class="page-head">
-			<text class="page-title">情感实验室</text>
-			<text class="page-subtitle">MBTI 偏好记录</text>
-		</view>
-
 		<scroll-view class="lab-scroll" scroll-y>
 			<view v-if="loading" class="state-block">
 				<text class="state-title">正在加载</text>
+				<text class="state-message">正在读取你的测试状态</text>
 			</view>
 
 			<view v-else-if="errorMessage != ''" class="state-block">
 				<text class="state-title">暂时无法加载</text>
 				<text class="state-message">{{ errorMessage }}</text>
-				<button class="secondary-button compact-button" @click="loadSummary">重试</button>
+				<button class="retry-button" @click="loadSummary">重试</button>
 			</view>
 
-			<view v-else class="lab-content">
-				<view v-if="viewState == 'intro'" class="section assessment-section">
-					<view class="section-heading">
-						<view class="heading-copy">
-							<text class="section-title">MBTI 基础维度测试</text>
-							<text class="section-meta">版本 {{ assessmentVersion }}</text>
+			<view v-else-if="viewState == 'intro'" class="lab-content" :class="{ 'lab-content-mint': !hasTestedType }">
+				<text class="guide-text">探索你的人格特质，找到同频合拍的人</text>
+
+			<view v-if="hasTestedType" class="result-card">
+				<view class="card-hero result-hero">
+					<view class="result-edit" @click="openResultActionSheet">
+						<text class="result-edit-icon">✎</text>
+					</view>
+					<text class="hero-type">你的MBTI：{{ currentMbtiType }}</text>
+				<view class="result-illustration">
+					<image
+						class="result-mbti-cat"
+						:src="'/static/mbti/' + currentMbtiType.toLowerCase() + '.png'"
+						mode="aspectFill"
+					/>
+					<view class="ill-star ill-star-a"></view>
+						<view class="ill-star ill-star-b"></view>
+						<view class="ill-star ill-star-c"></view>
+						<view class="ill-doc">
+							<view class="ill-doc-line ill-doc-line-accent"></view>
+							<view class="ill-doc-line"></view>
+							<view class="ill-doc-line ill-doc-line-short"></view>
 						</view>
-						<view class="review-badge" :class="{ 'review-badge-verified': canStartAssessment }">
-							<text class="review-badge-text">{{ authorizationLabel }}</text>
+						<view class="ill-dot"></view>
+					</view>
+				</view>
+
+			<text class="result-description">{{ resultDescription }}</text>
+
+				<button class="primary-button" @click="openResult">查看完整解读</button>
+			</view>
+
+			<view v-else class="main-card">
+				<view class="card-hero">
+					<view class="lab-illustration">
+						<view class="ill-head"></view>
+						<view class="ill-eye ill-eye-left"></view>
+						<view class="ill-eye ill-eye-right"></view>
+						<view class="ill-smile"></view>
+						<view class="ill-star ill-star-left"></view>
+						<view class="ill-star ill-star-right"></view>
+						<view class="ill-bubble">
+							<text class="ill-bubble-text">MBTI</text>
+						</view>
+						<view class="ill-card ill-card-large">
+							<view class="ill-line ill-line-accent"></view>
+							<view class="ill-line"></view>
+							<view class="ill-line ill-line-short"></view>
+						</view>
+						<view class="ill-card ill-card-small">
+							<view class="ill-line ill-line-accent"></view>
+							<view class="ill-line"></view>
+						</view>
+						<text class="ill-heart">♥</text>
+						<view class="ill-dot ill-dot-a"></view>
+						<view class="ill-dot ill-dot-b"></view>
+						<view class="ill-dot ill-dot-c"></view>
+					</view>
+				</view>
+
+				<text class="card-title">你的MBTI解读待生成</text>
+				<text class="card-subtitle">开始测试，解锁你的人格分析</text>
+
+				<button class="primary-button" @click="openStartSheet">开始测试</button>
+			</view>
+
+				<view v-if="!hasTestedType && !canStartAssessment" class="review-notice">
+					<text class="review-title">{{ startBlockTitle }}</text>
+					<text class="review-message">{{ startBlockMessage }}</text>
+				</view>
+
+				<view class="section-header">
+					<text class="section-title">合拍的人</text>
+				</view>
+
+				<view v-if="!hasTestedType" class="match-card">
+					<view class="avatar-row">
+						<view class="avatar-ghost" v-for="slot in ghostAvatars" :key="slot"></view>
+						<view class="avatar-plus">
+							<text class="avatar-plus-text">+</text>
+						</view>
+					</view>
+					<text class="match-hint">参与测试即可查看与你合拍的人</text>
+				</view>
+
+				<view v-else>
+					<view v-if="matchesLoading" class="state-block compact-state">
+						<text class="state-title">正在寻找合拍的人</text>
+					</view>
+
+					<view v-else-if="matches.length == 0" class="match-card">
+						<text class="match-hint">还没有可推荐的人，稍后再来看看</text>
+					</view>
+
+					<view v-else class="match-list">
+						<view class="match-card" v-for="item in matches" :key="item.id" @click="openMatchProfile(item)">
+							<view class="match-top">
+								<view class="match-user">
+									<XsaAvatar :name="item.name" size="medium"></XsaAvatar>
+									<view class="match-text">
+										<text class="match-name">{{ item.name }}</text>
+										<text class="match-meta">{{ item.age }}岁 · {{ item.city }}</text>
+										<text class="match-school">{{ item.school }}</text>
+									</view>
+								</view>
+								<view class="match-score">
+									<text class="match-percent">{{ item.matchPercent }}%</text>
+									<text class="match-score-label">合拍度</text>
+								</view>
+							</view>
+
+							<view class="match-tags">
+								<view
+									v-for="tag in item.tags"
+									:key="tag"
+									class="match-tag"
+									:class="{ 'match-tag-accent': tag == item.mbtiType }"
+								>
+									<text class="match-tag-text">{{ tag }}</text>
+								</view>
+							</view>
+
+							<text class="match-bio">{{ item.bio }}</text>
 						</view>
 					</view>
 
-					<view v-if="!canStartAssessment" class="review-notice">
-						<text class="review-title">{{ startBlockTitle }}</text>
-						<text class="review-message">{{ startBlockMessage }}</text>
-					</view>
-
-					<button
-						class="primary-button"
-						:disabled="!canStartAssessment || starting || hasActiveDraft"
-						@click="handleStartAssessment"
-					>
-						{{ starting ? '正在创建...' : '开始 MBTI 测试' }}
+					<view class="bottom-actions">
+					<button class="history-circle-btn" @click="openHistory">
+						<text class="ic ic-home ic-history"></text>
 					</button>
-
-					<view v-if="hasActiveDraft" class="draft-panel">
-						<view class="draft-copy">
-							<text class="draft-title">有一份未完成记录</text>
-							<text class="section-meta">已保存 {{ answeredCount }} / {{ activeSession.questionIds.length }}</text>
-						</view>
-						<view class="inline-actions">
-							<button class="secondary-button inline-button" :disabled="discarding" @click="requestDiscardDraft">放弃本次测试</button>
-							<button class="primary-button inline-button" :disabled="discarding" @click="continueAssessment">继续测试</button>
-						</view>
-					</view>
-
-					<view v-if="completedResult != null" class="draft-panel">
-						<view class="draft-copy">
-							<text class="draft-title">最近结果 {{ completedResult.mbtiType }}</text>
-							<text class="section-meta">{{ completedResult.resultCopy.version }}</text>
-						</view>
-						<button class="secondary-button inline-button" @click="openResult">查看结果</button>
-					</view>
-
-					<button class="secondary-button manual-entry-button" @click="openManualSettings">手动设置 MBTI</button>
-				</view>
-
-				<view v-else-if="viewState == 'questions'" class="section question-section">
-					<view v-if="currentQuestion != null">
-						<view class="question-progress-row">
-							<text class="section-meta">第 {{ currentQuestionIndex + 1 }} / {{ activeSession.questionIds.length }} 题</text>
-							<text class="section-meta">已完成 {{ answeredCount }} 题</text>
-						</view>
-						<view class="question-track">
-							<view class="question-track-fill" :style="{ width: progressPercent + '%' }"></view>
-						</view>
-						<text class="question-text">{{ currentQuestion.text }}</text>
-						<view class="answer-list">
-							<button
-								v-for="option in currentOptions"
-								:key="option.value"
-								class="answer-option"
-								:class="{ 'answer-option-selected': currentAnswerValue == option.value }"
-								:disabled="savingAnswer"
-								@click="selectAnswer(option.value)"
-							>
-								{{ option.label }}
-							</button>
-						</view>
-						<text v-if="progressMessage != ''" class="save-message">{{ progressMessage }}</text>
-
-						<view class="question-actions">
-							<button class="secondary-button nav-button" :disabled="savingAnswer || currentQuestionIndex == 0" @click="previousQuestion">上一题</button>
-							<button
-								v-if="currentQuestionIndex < activeSession.questionIds.length - 1"
-								class="secondary-button nav-button"
-								:disabled="savingAnswer"
-								@click="nextQuestion"
-							>下一题</button>
-							<button
-								v-else
-								class="primary-button nav-button"
-								:disabled="!allAnswersComplete || savingAnswer || submitting"
-								@click="submitAssessment"
-							>{{ submitting ? '正在提交...' : '完整提交' }}</button>
-						</view>
-						<button class="text-button" :disabled="savingAnswer || submitting || discarding" @click="requestDiscardDraft">放弃本次测试</button>
-					</view>
-					<view v-else class="state-block compact-state">
-						<text class="state-title">没有可显示的题目</text>
-						<button class="secondary-button compact-button" @click="backToIntro">返回</button>
-					</view>
-				</view>
-
-				<view v-else-if="viewState == 'manual'" class="section manual-section">
-					<view class="section-heading">
-						<view class="heading-copy">
-							<text class="section-title">手动选择 16 型</text>
-							<text class="section-meta">资料来源将记录为用户自填</text>
-						</view>
-					</view>
-
-					<view class="type-grid">
-						<button
-							v-for="type in manualTypes"
-							:key="type"
-							class="type-option"
-							:class="{ 'type-option-selected': selectedType == type }"
-							@click="selectManualType(type)"
-						>
-							{{ type }}
+						<button class="primary-button flex-button" :disabled="matchesLoading" @click="refreshMatches">
+							{{ matchesLoading ? '正在更换...' : '换一批' }}
 						</button>
 					</view>
+				</view>
 
-					<checkbox-group class="confirm-group" @change="handleManualConfirmChange">
+				<view class="safe-area"></view>
+			</view>
+
+		<view v-else-if="viewState == 'questions'" class="quiz-body">
+			<view v-if="currentQuestion != null" class="quiz-inner">
+				<text class="quiz-index">{{ quizIndexLabel }}</text>
+
+				<view class="quiz-track">
+					<view class="quiz-track-fill" :style="{ width: progressPercent + '%' }"></view>
+				</view>
+
+				<text class="quiz-question">{{ currentQuestion.text }}</text>
+
+				<view class="rating-wrap">
+					<view class="rating-row">
+						<view
+							v-for="dot in ratingDots"
+							:key="dot.value"
+							class="rating-dot"
+							:class="{ 'rating-dot-selected': currentAnswerValue == dot.value }"
+						:style="{ width: dot.size + 'px', height: dot.size + 'px', borderColor: dot.color, background: currentAnswerValue == dot.value ? dot.color : '#FFFFFF' }"
+						@click="selectAnswer(dot.value)"
+						></view>
+					</view>
+
+					<view class="rating-labels">
+						<text class="rating-label">不同意</text>
+						<text class="rating-label rating-label-center">中立</text>
+						<text class="rating-label rating-label-right">同意</text>
+					</view>
+				</view>
+
+				<view class="quiz-actions">
+					<button class="quiz-prev-button" :disabled="savingAnswer || currentQuestionIndex == 0" @click="previousQuestion">上一题</button>
+					<button
+						v-if="currentQuestionIndex < activeSession.questionIds.length - 1"
+						class="quiz-next-button"
+						:disabled="savingAnswer || currentAnswerValue == 0"
+						@click="nextQuestion"
+					>下一题</button>
+					<button
+						v-else
+						class="quiz-next-button"
+						:disabled="!allAnswersComplete || savingAnswer || submitting"
+						@click="submitAssessment"
+					>{{ submitting ? '正在提交...' : '提交并查看结果' }}</button>
+				</view>
+
+			<view class="quiz-aux">
+				<view class="quiz-aux-button" @click="requestRetest">重新测试</view>
+			</view>
+			</view>
+
+			<view v-else class="state-block compact-state">
+				<text class="state-title">没有可显示的题目</text>
+				<button class="ghost-button compact-button" @click="backToIntro">返回</button>
+			</view>
+		</view>
+
+		<view v-else-if="viewState == 'result' && hasTestedType" class="result-detail">
+			<view class="result-hero-card">
+				<text class="hero-subtitle">你的人格类型是</text>
+				<text class="hero-type">{{ currentMbtiType }}</text>
+				<view class="hero-cat">
+					<image class="hero-cat-img" :src="'/static/mbti/' + currentMbtiType.toLowerCase() + '.png'" mode="aspectFit" />
+				</view>
+				<text class="hero-meta">{{ heroMeta }}</text>
+			</view>
+
+			<view class="dimension-block">
+				<text class="block-title">四维特质分布</text>
+				<view v-for="row in dimensionView" :key="row.key" class="dimension-row">
+					<text class="dim-left">{{ row.leftLabel }}</text>
+					<view class="dim-track">
+						<view class="dim-fill" :style="{ width: row.rightPercent + '%' }"></view>
+					</view>
+					<text class="dim-right">{{ row.rightLabel }}</text>
+				</view>
+			</view>
+
+			<view class="interpret-block">
+				<view class="interpret-card">
+					<text class="interpret-label">恋爱底色</text>
+					<text class="interpret-text">{{ currentInterpretation.loveBase }}</text>
+				</view>
+				<view class="interpret-card">
+					<text class="interpret-label">伴侣优势</text>
+					<text class="interpret-text">{{ currentInterpretation.advantage }}</text>
+				</view>
+				<view class="interpret-card">
+					<text class="interpret-label">恋爱短板</text>
+					<text class="interpret-text">{{ currentInterpretation.shortcoming }}</text>
+				</view>
+				<view class="interpret-card">
+					<text class="interpret-label">理想伴侣需求</text>
+					<text class="interpret-text">{{ currentInterpretation.idealPartner }}</text>
+				</view>
+				<view class="interpret-card match-card">
+					<text class="interpret-label">婚恋匹配推荐</text>
+					<view class="match-row">
+						<view class="match-tag tag-soul">灵魂适配</view>
+						<text class="match-name">{{ currentInterpretation.matchSoul.type }} {{ currentInterpretation.matchSoul.name }}</text>
+					</view>
+					<view class="match-row">
+						<view class="match-tag tag-complement">互补优选</view>
+						<text class="match-name">{{ currentInterpretation.matchComplement.type }} {{ currentInterpretation.matchComplement.name }}</text>
+					</view>
+					<view class="match-row">
+						<view class="match-tag tag-caution">谨慎磨合</view>
+						<text class="match-name">{{ currentInterpretation.matchCaution.type }} {{ currentInterpretation.matchCaution.name }}</text>
+					</view>
+				</view>
+			</view>
+
+			<view v-if="completedResult != null" class="sync-block">
+				<checkbox-group class="confirm-group" @change="handleAssessmentConfirmChange">
+					<label class="confirm-row">
+						<checkbox value="confirmed" :checked="assessmentConfirmed" />
+						<text class="confirm-text">我确认将本次结果同步到资料</text>
+					</label>
+				</checkbox-group>
+
+				<button class="result-sync-btn" :disabled="!assessmentConfirmed || savingProfile" @click="saveAssessmentType">
+					{{ savingProfile ? '正在同步...' : '同步本次结果' }}
+				</button>
+			</view>
+
+			<button class="result-back-btn" @click="backToIntro">返回实验室</button>
+
+			<view v-if="disclaimerText != ''" class="disclaimer-band">
+				<text class="disclaimer-text">{{ disclaimerText }}</text>
+				<text v-if="disclaimerVersion != ''" class="disclaimer-version">文案版本 {{ disclaimerVersion }}</text>
+			</view>
+		</view>
+		</scroll-view>
+
+		<XsaSheet :visible="startSheetVisible" @close="startSheetVisible = false">
+			<view class="action-sheet">
+				<view class="sheet-option" @click="handleSheetStart">
+					<text class="sheet-option-text">开始测试</text>
+				</view>
+				<view class="sheet-divider"></view>
+				<view class="sheet-option" @click="handleSheetManual">
+					<text class="sheet-option-text">设置我的人格类型</text>
+				</view>
+				<view class="sheet-divider"></view>
+				<view class="sheet-option" @click="startSheetVisible = false">
+					<text class="sheet-option-text sheet-option-cancel">取消</text>
+				</view>
+			</view>
+		</XsaSheet>
+
+		<XsaSheet :visible="resultActionSheetVisible" @close="resultActionSheetVisible = false">
+			<view class="action-sheet">
+				<view class="sheet-option" @click="handleResultActionRetest">
+					<text class="sheet-option-text">重新测试</text>
+				</view>
+				<view class="sheet-divider"></view>
+				<view class="sheet-option" @click="handleResultActionChooseType">
+					<text class="sheet-option-text">选择我的人格类型</text>
+				</view>
+				<view class="sheet-divider"></view>
+				<view class="sheet-option" @click="resultActionSheetVisible = false">
+					<text class="sheet-option-text sheet-option-cancel">取消</text>
+				</view>
+			</view>
+		</XsaSheet>
+
+		<XsaSheet :visible="retestConfirmVisible" title="重新测试" @close="cancelRetest">
+			<view class="confirm-sheet">
+				<text class="confirm-sheet-text">确定要重新测试吗？当前进度将被清除，并跳转到第一题。</text>
+				<view class="confirm-sheet-actions">
+					<view class="confirm-sheet-btn confirm-sheet-cancel" @click="cancelRetest">取消</view>
+					<view class="confirm-sheet-btn confirm-sheet-ok" @click="confirmRetest">确认</view>
+				</view>
+			</view>
+		</XsaSheet>
+
+		<XsaSheet :visible="typeSheetVisible" title="选择我的人格类型" :tall="true" @close="closeTypeSheet">
+			<view class="type-selector">
+				<view class="type-row" v-for="group in typeGroups" :key="group.key">
+					<view
+						v-for="item in group.items"
+						:key="item.type"
+						class="type-cell"
+						:class="[group.tone, { 'type-cell-selected': selectedType == item.type }]"
+						@click="selectManualType(item.type)"
+					>
+						<text class="type-cell-label">{{ item.type }}</text>
+						<text class="type-cell-nickname">{{ item.nickname }}</text>
+					</view>
+				</view>
+
+				<view class="type-confirm">
+					<checkbox-group @change="handleManualConfirmChange">
 						<label class="confirm-row">
 							<checkbox value="confirmed" :checked="manualConfirmed" />
 							<text class="confirm-text">我确认将此自填类型同步到资料</text>
 						</label>
 					</checkbox-group>
 
-					<button
-						class="primary-button"
-						:disabled="selectedType == '' || !manualConfirmed || savingProfile"
-						@click="saveManualType"
-					>
-						{{ savingProfile ? '正在保存...' : '保存自填类型' }}
+					<button class="primary-button" :disabled="selectedType == '' || savingProfile" @click="saveManualType">
+						{{ savingProfile ? '正在保存...' : '选好了' }}
 					</button>
-
-					<view v-if="profileSource != null" class="saved-source">
-						<text class="saved-type">{{ profileSource.mbtiType }}</text>
-						<text class="saved-label">{{ profileSource.source == 'assessment' ? '测评记录' : '用户自填' }}</text>
-					</view>
-					<button class="text-button" @click="backToIntro">返回实验室</button>
-				</view>
-
-				<view v-else-if="viewState == 'result' && completedResult != null" class="section result-section">
-					<view class="section-heading">
-						<view class="heading-copy">
-							<text class="section-title">本次结果</text>
-							<text class="section-meta">{{ completedResult.resultCopy.version }}</text>
-						</view>
-						<text class="result-type">{{ completedResult.mbtiType }}</text>
-					</view>
-
-					<view class="dimension-list">
-						<view v-for="row in dimensionRows" :key="row.key" class="dimension-row">
-							<text class="dimension-pole">{{ row.left }} {{ row.leftScore }}</text>
-							<view class="dimension-track">
-								<view class="dimension-fill" :style="{ width: row.leftScore + '%' }"></view>
-							</view>
-							<text class="dimension-pole dimension-pole-right">{{ row.rightScore }} {{ row.right }}</text>
-						</view>
-					</view>
-
-					<text class="result-summary">{{ completedResult.resultCopy.summary }}</text>
-					<checkbox-group class="confirm-group" @change="handleAssessmentConfirmChange">
-						<label class="confirm-row">
-							<checkbox value="confirmed" :checked="assessmentConfirmed" />
-							<text class="confirm-text">我确认将本次结果同步到资料</text>
-						</label>
-					</checkbox-group>
-					<button
-						class="primary-button"
-						:disabled="!assessmentConfirmed || savingProfile"
-						@click="saveAssessmentType"
-					>
-						同步本次结果
-					</button>
-					<button class="text-button" @click="backToIntro">返回实验室</button>
-				</view>
-
-				<view v-if="disclaimerText != ''" class="disclaimer-band">
-					<text class="disclaimer-text">{{ disclaimerText }}</text>
-					<text v-if="disclaimerVersion != ''" class="disclaimer-version">文案版本 {{ disclaimerVersion }}</text>
 				</view>
 			</view>
-		</scroll-view>
+		</XsaSheet>
 	</view>
 </template>
 
 <script setup lang="uts">
 	import { ref, computed, onMounted } from 'vue'
+	import XsaSheet from '@/components/XsaSheet.uvue'
+	import XsaAvatar from '@/components/XsaAvatar.uvue'
 	import {
 		getEmotionLabSummary,
+		getEmotionLabMatches,
 		startMbtiAssessment,
 		saveMbtiAnswer,
 		submitMbtiAssessment,
@@ -214,39 +378,272 @@
 	const submitting = ref(false)
 	const discarding = ref(false)
 	const savingProfile = ref(false)
+	const matchesLoading = ref(false)
 	const errorMessage = ref('')
 	const summary = ref(null as any)
 	const viewState = ref('intro')
 	const currentQuestionIndex = ref(0)
 	const progressMessage = ref('')
 	const selectedType = ref('')
+	const manualResultType = ref('')
 	const manualConfirmed = ref(false)
 	const assessmentConfirmed = ref(false)
+	const startSheetVisible = ref(false)
+	const typeSheetVisible = ref(false)
+	const typeSheetBackup = ref('')
+	const resultActionSheetVisible = ref(false)
+	const retestConfirmVisible = ref(false)
+	const pendingRetestSessionId = ref('')
+	const matches = ref([] as any[])
+
 	const defaultScaleLabels: string[] = ['非常不符合', '比较不符合', '不确定', '比较符合', '非常符合']
+
+	const MBTI_NICKNAMES: any = {
+		INTJ: '建筑师',
+		INTP: '逻辑学家',
+		ENTJ: '指挥官',
+		ENTP: '辩论家',
+		INFJ: '提倡者',
+		INFP: '调停者',
+		ENFJ: '主人公',
+		ENFP: '竞选者',
+		ISTJ: '物流师',
+		ISFJ: '守卫者',
+		ESTJ: '总经理',
+		ESFJ: '执政官',
+		ISTP: '鉴赏家',
+		ISFP: '探险家',
+		ESTP: '企业家',
+		ESFP: '表演者'
+	}
+
+	const MBTI_BRIEF_COPY: any = {
+		INTJ: '独立、善于规划，习惯先把事情想清楚再行动。',
+		INTP: '好奇心强，喜欢拆解问题，享受思考本身。',
+		ENTJ: '目标感强，擅长组织推进，习惯把想法落成结果。',
+		ENTP: '思维活跃，点子多，乐于尝试新的可能。',
+		INFJ: '细腻且重价值感，倾向深度而非广度的相处。',
+		INFP: '内心丰富，重视真实，愿意为在意的人留出空间。',
+		ENFJ: '善于照顾他人感受，习惯主动维系关系。',
+		ENFP: '热情真诚，容易被新鲜事物点燃，也乐于分享。',
+		ISTJ: '踏实可靠，重视承诺，偏好稳定可预期的节奏。',
+		ISFJ: '温和体贴，记得细节，习惯用行动表达关心。',
+		ESTJ: '讲求效率与规则，做事干脆，愿意承担责任。',
+		ESFJ: '重视和谐，擅长照顾身边人，喜欢有回应地相处。',
+		ISTP: '冷静务实，动手能力强，压力下也能保持判断。',
+		ISFP: '审美细腻，随和真诚，偏好用行动而非语言表达。',
+		ESTP: '外向、务实、行动力强，在相处中偏爱直接沟通。',
+		ESFP: '开朗热络，擅长活跃气氛，享受当下。'
+	}
+
+	// 16 型 MBTI 婚恋完整解读（统一 5 板块模板），用于测试结果页展示
+	const MBTI_INTERPRETATION: any = {
+		INTJ: {
+			loveBase: '宁缺毋滥的智性恋爱，偏爱灵魂知己的陪伴，讨厌情绪化内耗的关系，爱意藏在未来规划的细节里。',
+			advantage: '独立理性，遇事能冷静解决；眼光长远，会规划两个人的未来；专一靠谱，不轻易开始感情。',
+			shortcoming: '外表冷淡，不擅长表达爱意；遇事爱讲道理，容易忽略对方情绪；防备心重，很难完全敞开心扉。',
+			idealPartner: '精神同频，能跟上自己的思考节奏；情绪稳定，不无理取闹；尊重独立空间，不黏人纠缠。',
+			matchSoul: { type: 'ENFP', name: '竞选者' },
+			matchComplement: { type: 'INTP', name: '逻辑学家' },
+			matchCaution: { type: 'ESFP', name: '表演者' }
+		},
+		INTP: {
+			loveBase: '精神同频的松弛恋爱，偏爱互不打扰的陪伴，讨厌情绪化绑架的关系，爱意藏在主动的分享与探讨里。',
+			advantage: '逻辑清晰，遇事能理性分析；包容度高，不强迫对方改变；思想有趣，能带来新鲜感。',
+			shortcoming: '回避冲突，遇到矛盾习惯冷处理；容易沉浸自己世界，忽略伴侣感受；不擅长浪漫与情绪安抚。',
+			idealPartner: '边界感强，不强迫亲密表达；精神同频，愿意和自己深度交流；包容慢热，不逼自己给承诺。',
+			matchSoul: { type: 'ENFJ', name: '主人公' },
+			matchComplement: { type: 'INTJ', name: '建筑师' },
+			matchCaution: { type: 'ESFJ', name: '执政官' }
+		},
+		ENTJ: {
+			loveBase: '势均力敌的并肩恋爱，偏爱共同成长的陪伴，讨厌软弱内耗的关系，爱意藏在为对方铺路的行动里。',
+			advantage: '果断有担当，能扛事解决问题；上进心强，带着对方一起变好；理性清醒，不拖泥带水。',
+			shortcoming: '强势好胜，习惯主导关系；遇事爱争输赢，忽略对方情绪；控制欲强，容易干涉对方选择。',
+			idealPartner: '独立有主见，不依附不盲从；能力匹配，能和自己并肩同行；情绪稳定，不无理取闹。',
+			matchSoul: { type: 'INFP', name: '调停者' },
+			matchComplement: { type: 'ENTP', name: '辩论家' },
+			matchCaution: { type: 'ISFP', name: '探险家' }
+		},
+		ENTP: {
+			loveBase: '有趣碰撞的欢喜恋爱，偏爱思想交锋的陪伴，讨厌枯燥平淡的关系，爱意藏在互怼式的关心里。',
+			advantage: '风趣幽默，相处永远不无聊；思维活跃，能带来新鲜视角；心态开放，不刻板不束缚。',
+			shortcoming: '喜欢抬杠，容易引发矛盾；回避严肃承诺，让人没安全感；耐性不足，容易厌倦平淡。',
+			idealPartner: '内心强大，能接住自己的抬杠；有趣有想法，能和自己思想碰撞；边界感强，不过度黏人。',
+			matchSoul: { type: 'INFJ', name: '提倡者' },
+			matchComplement: { type: 'ENTJ', name: '指挥官' },
+			matchCaution: { type: 'ISFJ', name: '守卫者' }
+		},
+		INFJ: {
+			loveBase: '深度联结的灵魂恋爱，偏爱懂与被懂的陪伴，讨厌肤浅敷衍的关系，爱意藏在洞察人心的默契里。',
+			advantage: '细腻共情，能看透对方内心需求；专一深情，对感情极度认真；洞察力强，能默默化解矛盾。',
+			shortcoming: '防备心重，很难完全敞开心扉；习惯过度付出，容易自我内耗；敏感多虑，容易脑补受伤。',
+			idealPartner: '灵魂同频，能懂自己的深层想法；真诚靠谱，给足安全感；尊重独处空间，不强迫社交。',
+			matchSoul: { type: 'ENTP', name: '辩论家' },
+			matchComplement: { type: 'INFP', name: '调停者' },
+			matchCaution: { type: 'ESTP', name: '企业家' }
+		},
+		INFP: {
+			loveBase: '极致浪漫的理想恋爱，偏爱灵魂共鸣的陪伴，讨厌世俗功利的关系，爱意藏在深层的理解与包容里。',
+			advantage: '温柔共情，能深度接纳对方情绪；内心纯粹，对感情真诚专一；精神世界丰富，能带来治愈感。',
+			shortcoming: '容易理想化对方，现实落差易受伤；回避冲突，习惯把委屈憋在心里；敏感多虑，容易自我内耗。',
+			idealPartner: '精神同频，能懂自己的内心世界；耐心温和，不打压自己的敏感；尊重精神空间，不强迫外放。',
+			matchSoul: { type: 'ENTJ', name: '指挥官' },
+			matchComplement: { type: 'INFJ', name: '提倡者' },
+			matchCaution: { type: 'ESTJ', name: '总经理' }
+		},
+		ENFJ: {
+			loveBase: '温暖治愈的付出型恋爱，偏爱双向奔赴的陪伴，讨厌冷漠自私的关系，爱意藏在主动的包容与成全里。',
+			advantage: '热情体贴，擅长照顾对方情绪；责任感强，愿意为关系付出；共情力强，能带动关系氛围。',
+			shortcoming: '习惯讨好对方，容易委屈自己；害怕冲突，会压抑真实感受；过度操心，容易掌控关系。',
+			idealPartner: '懂得珍惜，不消耗自己的付出；真诚专一，能给予正向反馈；愿意和自己共同经营关系。',
+			matchSoul: { type: 'INTP', name: '逻辑学家' },
+			matchComplement: { type: 'ENFP', name: '竞选者' },
+			matchCaution: { type: 'ISTP', name: '鉴赏家' }
+		},
+		ENFP: {
+			loveBase: '热烈自由的浪漫恋爱，偏爱有趣鲜活的陪伴，讨厌刻板压抑的关系，爱意藏在源源不断的分享与惊喜里。',
+			advantage: '阳光热情，感染力极强；脑洞丰富，相处永远有新鲜感；共情力强，能给对方情绪价值。',
+			shortcoming: '三分钟热度，容易理想化对方；遇到现实压力容易逃避；情绪起伏大，不擅长处理负面情绪。',
+			idealPartner: '情绪稳定，能接住自己的热情与低落；尊重自由，不过度束缚；能和自己一起探索世界。',
+			matchSoul: { type: 'INTJ', name: '建筑师' },
+			matchComplement: { type: 'INFP', name: '调停者' },
+			matchCaution: { type: 'ISTJ', name: '物流师' }
+		},
+		ISTJ: {
+			loveBase: '踏实可靠的责任恋爱，偏爱稳定有序的陪伴，讨厌变数太多的关系，爱意藏在说到做到的承诺里。',
+			advantage: '靠谱负责，承诺的事一定落地；作息规律，生活安稳有秩序；专一忠诚，边界感极强。',
+			shortcoming: '刻板固执，不懂得灵活变通；不善表达浪漫，容易忽略情绪价值；遇事较真，习惯讲道理。',
+			idealPartner: '情绪稳定，不无理取闹；认同踏实的生活节奏；能包容不善言辞的表达。',
+			matchSoul: { type: 'ESFP', name: '表演者' },
+			matchComplement: { type: 'ISFJ', name: '守卫者' },
+			matchCaution: { type: 'ENFP', name: '竞选者' }
+		},
+		ISFJ: {
+			loveBase: '细水长流的温柔恋爱，偏爱安稳踏实的陪伴，讨厌动荡善变的关系，爱意藏在日复一日的悉心照料里。',
+			advantage: '体贴入微，擅长照顾生活细节；专一忠诚，对感情高度负责；共情包容，愿意迁就对方需求。',
+			shortcoming: '习惯自我牺牲，容易委屈自己；回避冲突，习惯压抑自身诉求；过度操心，容易患得患失。',
+			idealPartner: '懂得感恩，能看见自己的付出；专一踏实，给足安全感；愿意主动沟通化解矛盾。',
+			matchSoul: { type: 'ESTP', name: '企业家' },
+			matchComplement: { type: 'ISTJ', name: '物流师' },
+			matchCaution: { type: 'ENTP', name: '辩论家' }
+		},
+		ESTJ: {
+			loveBase: '稳重负责的现实恋爱，偏爱井井有条的陪伴，讨厌懒散无序的关系，爱意藏在为未来铺路的规划里。',
+			advantage: '有担当，能主动承担核心责任；行动力强，把生活安排妥当；理性果断，遇事能扛事。',
+			shortcoming: '强势霸道，习惯主导关系走向；忽略情绪，遇事喜欢讲道理；控制欲强，容易干涉对方。',
+			idealPartner: '性格温和，能包容强势；有分寸感，做事靠谱；认同稳定的生活规划。',
+			matchSoul: { type: 'ISFP', name: '探险家' },
+			matchComplement: { type: 'ESFJ', name: '执政官' },
+			matchCaution: { type: 'INFP', name: '调停者' }
+		},
+		ESFJ: {
+			loveBase: '温暖双向的烟火恋爱，偏爱热闹融洽的陪伴，讨厌冷漠疏离的关系，爱意藏在主动的关心与用心经营里。',
+			advantage: '热情周到，善于经营亲密关系；责任感强，重视家庭与承诺；共情力强，能照顾身边人情绪。',
+			shortcoming: '在意他人眼光，易被外界评价影响；过度付出，容易心理失衡；害怕冲突，习惯讨好妥协。',
+			idealPartner: '真诚靠谱，能给予正向回应；重视家庭与仪式感；愿意主动分担责任。',
+			matchSoul: { type: 'ISTP', name: '鉴赏家' },
+			matchComplement: { type: 'ESTJ', name: '总经理' },
+			matchCaution: { type: 'INTP', name: '逻辑学家' }
+		},
+		ISTP: {
+			loveBase: '松弛自在的务实恋爱，偏爱互不束缚的陪伴，讨厌黏糊矫情的关系，爱意藏在不动声色的问题解决里。',
+			advantage: '独立清醒，不过度依赖对方；动手能力强，能搞定实际难题；情绪稳定，极少情绪化内耗。',
+			shortcoming: '疏离感强，不擅长情感表达；回避亲密承诺，讨厌被关系捆绑；遇事冷处理，容易让对方缺安全感。',
+			idealPartner: '边界感强，不强迫亲密表达；独立自主，有自己的生活节奏；接受慢热疏离的相处模式。',
+			matchSoul: { type: 'ESFJ', name: '执政官' },
+			matchComplement: { type: 'ISFP', name: '探险家' },
+			matchCaution: { type: 'ENFJ', name: '主人公' }
+		},
+		ISFP: {
+			loveBase: '遵从内心感受的温柔恋爱，偏爱安静治愈的陪伴，讨厌复杂功利的关系，爱意藏在无声细腻的行动之中。',
+			advantage: '温柔真诚，尊重你的个人边界；审美细腻浪漫；待人纯粹，不会刻意算计感情。',
+			shortcoming: '害怕激烈冲突，默默积攒失望；不擅长表达内心感受；遇到矛盾习惯悄悄退场。',
+			idealPartner: '温柔包容，不强迫自己改变；尊重个人空间；接纳安静内敛的相处节奏。',
+			matchSoul: { type: 'ESTJ', name: '总经理' },
+			matchComplement: { type: 'ISTP', name: '鉴赏家' },
+			matchCaution: { type: 'ENTJ', name: '指挥官' }
+		},
+		ESTP: {
+			loveBase: '随性热烈的激情恋爱，偏爱新鲜有趣的陪伴，讨厌刻板沉闷的关系，爱意藏在大胆直接的行动里。',
+			advantage: '风趣幽默，相处永远有新鲜感；行动力强，想到就做不纠结；心态松弛，遇事不钻牛角尖。',
+			shortcoming: '缺乏耐心，容易厌倦平淡；讨厌被束缚，不愿过早定下来；说话直白，容易无意中伤人。',
+			idealPartner: '性格松弛，不控制不黏人；能一起探索新鲜事物；不纠结于形式化的承诺。',
+			matchSoul: { type: 'ISFJ', name: '守卫者' },
+			matchComplement: { type: 'ESFP', name: '表演者' },
+			matchCaution: { type: 'INFJ', name: '提倡者' }
+		},
+		ESFP: {
+			loveBase: '锚定当下的热烈恋爱，偏爱鲜活热闹的陪伴，讨厌沉闷压抑的关系，爱意藏在每一次热忱的分享与奔赴里。',
+			advantage: '热情开朗，能轻松带动相处氛围；共情力强，敏锐捕捉对方情绪；坦率真诚，相处起来轻松不内耗。',
+			shortcoming: '回避沉重话题，逃避深度矛盾；情绪起伏大，容易冲动上头；缺乏长远规划，易忽略现实问题。',
+			idealPartner: '情绪稳定，能接住自己的情绪起伏；愿意陪自己体验生活；不强迫自己做长远绑定。',
+			matchSoul: { type: 'ISTJ', name: '物流师' },
+			matchComplement: { type: 'ESTP', name: '企业家' },
+			matchCaution: { type: 'INTJ', name: '建筑师' }
+		}
+	}
+
+	const EMPTY_INTERPRETATION: any = {
+		loveBase: '',
+		advantage: '',
+		shortcoming: '',
+		idealPartner: '',
+		matchSoul: { type: '', name: '' },
+		matchComplement: { type: '', name: '' },
+		matchCaution: { type: '', name: '' }
+	}
+
+	const manualTypes = computed(() => {
+		if (summary.value == null || !Array.isArray(summary.value.manualTypes)) return [] as string[]
+		return summary.value.manualTypes as string[]
+	})
+
+	const typeGroups = computed(() => {
+		const rows: any[] = [
+			{ key: 'analyst', tone: 'tone-analyst', types: ['INTJ', 'INTP', 'ENTJ', 'ENTP'] },
+			{ key: 'diplomat', tone: 'tone-diplomat', types: ['INFJ', 'INFP', 'ENFJ', 'ENFP'] },
+			{ key: 'sentinel', tone: 'tone-sentinel', types: ['ISTJ', 'ISFJ', 'ESTJ', 'ESFJ'] },
+			{ key: 'explorer', tone: 'tone-explorer', types: ['ISTP', 'ISFP', 'ESTP', 'ESFP'] }
+		]
+		const fallback: string[] = [
+			'INTJ', 'INTP', 'ENTJ', 'ENTP',
+			'INFJ', 'INFP', 'ENFJ', 'ENFP',
+			'ISTJ', 'ISFJ', 'ESTJ', 'ESFJ',
+			'ISTP', 'ISFP', 'ESTP', 'ESFP'
+		]
+		const source: string[] = manualTypes.value.length > 0 ? manualTypes.value : fallback
+		const allowed: any = {}
+		for (let i = 0; i < source.length; i++) allowed['' + source[i]] = true
+
+		const groups: any[] = []
+		for (let i = 0; i < rows.length; i++) {
+			const row = rows[i]
+			const items: any[] = []
+			for (let j = 0; j < row.types.length; j++) {
+				const type = row.types[j]
+				if (allowed[type] != true) continue
+				items.push({ type: type, nickname: MBTI_NICKNAMES[type] != null ? MBTI_NICKNAMES[type] : '' })
+			}
+			if (items.length == 0) continue
+			groups.push({ key: row.key, tone: row.tone, items: items })
+		}
+		return groups
+	})
+
+	const ghostAvatars = computed(() => {
+		return [1, 2, 3, 4, 5]
+	})
 
 	const assessment = computed(() => {
 		if (summary.value == null || !Array.isArray(summary.value.assessments)) return null
 		return summary.value.assessments.length > 0 ? summary.value.assessments[0] : null
 	})
 
-	const assessmentVersion = computed(() => {
-		return assessment.value != null ? assessment.value.version : 'mbti-core@2'
-	})
-
 	const canStartAssessment = computed(() => {
 		if (assessment.value == null || assessment.value.authorization == null) return false
 		const status = '' + assessment.value.authorization.status
 		return assessment.value.canStart == true && (status == 'verified' || status == 'approved')
-	})
-
-	const authorizationLabel = computed(() => {
-		if (assessment.value != null && assessment.value.authorization != null) {
-			const status = '' + assessment.value.authorization.status
-			if (status == 'approved') return '内容已授权'
-			if (status == 'verified') return '内容已审核'
-			if (status == 'rejected') return '内容不可用'
-		}
-		return '内容授权待审核'
 	})
 
 	const startBlockTitle = computed(() => {
@@ -265,11 +662,6 @@
 			if (status == 'verified' || status == 'approved') return '当前版本暂未开放，请稍后再试。'
 		}
 		return '题库来源与使用范围尚未完成复核，当前不会加载任何测试题。'
-	})
-
-	const manualTypes = computed(() => {
-		if (summary.value == null || !Array.isArray(summary.value.manualTypes)) return [] as string[]
-		return summary.value.manualTypes as string[]
 	})
 
 	const profileSource = computed(() => {
@@ -332,6 +724,49 @@
 		return rows
 	})
 
+	const ratingDots = computed(() => {
+		const options = currentOptions.value
+		const rows: any[] = []
+		const total = options.length
+		if (total == 0) return rows
+
+		/* 设计稿原稿（画板3 MBTI Quiz Page）7 级李克特圆点：
+		   白底空心 + 2.5px 彩色描边；直径两端大中间小 40/34/28/24/28/34/40；
+		   描边色由暖橙 #F0A060 经中性灰 #B8B8B8 渐变到薄荷绿 #7EC8A0。 */
+		const designSizes = [40, 34, 28, 24, 28, 34, 40]
+		const designColors = ['#F0A060', '#E0A878', '#C8B090', '#B8B8B8', '#90B8A0', '#78B898', '#7EC8A0']
+
+		for (let i = 0; i < total; i++) {
+			let size = 24
+			let color = '#B8B8B8'
+			if (total == designSizes.length) {
+				size = designSizes[i]
+				color = designColors[i]
+			} else {
+				// 非 7 档时按比例保持"两端大、中间小"与"橙→灰→绿"渐变
+				const middle = (total - 1) / 2
+				const distance = middle == 0 ? 1 : Math.abs(i - middle) / middle
+				size = Math.round(24 + 16 * distance)
+				const t = total == 1 ? 0.5 : i / (total - 1)
+				if (t < 0.34) color = '#F0A060'
+				else if (t > 0.66) color = '#7EC8A0'
+				else color = '#B8B8B8'
+			}
+			rows.push({ value: options[i].value, label: options[i].label, size: size, color: color })
+		}
+		return rows
+	})
+
+	const currentAnswerLabel = computed(() => {
+		const value = currentAnswerValue.value
+		if (value == 0) return ''
+		const dots = ratingDots.value
+		for (let i = 0; i < dots.length; i++) {
+			if (dots[i].value == value) return '' + dots[i].label
+		}
+		return ''
+	})
+
 	const currentAnswerValue = computed(() => {
 		const session: any = activeSession.value
 		const question: any = currentQuestion.value
@@ -349,6 +784,13 @@
 		return Math.round(answeredCount.value / session.questionIds.length * 100)
 	})
 
+	const quizIndexLabel = computed(() => {
+		const session: any = activeSession.value
+		const total = session != null && Array.isArray(session.questionIds) ? session.questionIds.length : 0
+		const index = total > 0 ? currentQuestionIndex.value + 1 : 0
+		return padIndex(index) + ' / ' + padIndex(total)
+	})
+
 	const allAnswersComplete = computed(() => {
 		const session: any = activeSession.value
 		return session != null && Array.isArray(session.questionIds) && session.questionIds.length > 0 &&
@@ -359,6 +801,30 @@
 		if (activeSession.value == null) return null
 		const session: any = activeSession.value
 		return session.status == 'completed' ? session.result : null
+	})
+
+	const currentMbtiType = computed(() => {
+		if (completedResult.value != null) return '' + completedResult.value.mbtiType
+		if (manualResultType.value != '') return manualResultType.value
+		if (profileSource.value != null && profileSource.value.mbtiType != null) return '' + profileSource.value.mbtiType
+		return ''
+	})
+
+	const currentMbtiNickname = computed(() => {
+		const type = currentMbtiType.value
+		return MBTI_NICKNAMES[type] != null ? '' + MBTI_NICKNAMES[type] : ''
+	})
+
+	const hasTestedType = computed(() => currentMbtiType.value != '')
+
+	const resultDescription = computed(() => {
+		const result: any = completedResult.value
+		if (result != null && result.resultCopy != null && result.resultCopy.summary != null) {
+			return '' + result.resultCopy.summary
+		}
+		const type = currentMbtiType.value
+		if (MBTI_BRIEF_COPY[type] != null) return '' + MBTI_BRIEF_COPY[type]
+		return ''
 	})
 
 	const disclaimerText = computed(() => {
@@ -392,17 +858,89 @@
 		return ''
 	})
 
-	const dimensionRows = computed(() => {
+	// 四维中文极点名（左=首字母端，右=次字母端）
+	const DIM_ZH: any = {
+		EI: { left: '外倾', right: '内倾' },
+		SN: { left: '实感', right: '直觉' },
+		TF: { left: '思考', right: '情感' },
+		JP: { left: '判断', right: '知觉' }
+	}
+
+	// 结果页四维分布：左侧「字母+中文+数字」，右侧「数字+中文+字母」，进度条按右端分值填充
+	// 手动设置/历史资料的类型没有真实分值，按类型字母派生参考分布（62/38），并标注「参考值」
+	const DIM_KEYS: string[] = ['EI', 'SN', 'TF', 'JP']
+
+	const dimensionEstimated = computed(() => {
+		const result: any = completedResult.value
+		return !(result != null && result.dimensions != null)
+	})
+
+	const dimensionTitle = computed(() => {
+		return dimensionEstimated.value ? '四维特质分布（参考值）' : '四维特质分布'
+	})
+
+	const dimensionView = computed(() => {
 		const result: any = completedResult.value
 		const rows: any[] = []
-		if (result == null || result.dimensions == null) return rows
-		return [
-			{ key: 'EI', left: 'E', right: 'I', leftScore: result.dimensions.EI.E, rightScore: result.dimensions.EI.I },
-			{ key: 'SN', left: 'S', right: 'N', leftScore: result.dimensions.SN.S, rightScore: result.dimensions.SN.N },
-			{ key: 'TF', left: 'T', right: 'F', leftScore: result.dimensions.TF.T, rightScore: result.dimensions.TF.F },
-			{ key: 'JP', left: 'J', right: 'P', leftScore: result.dimensions.JP.J, rightScore: result.dimensions.JP.P }
-		]
+		const d = result != null ? result.dimensions : null
+		if (d != null) {
+			const rEI: any = { key: 'EI', leftLabel: 'E' + DIM_ZH.EI.left + d.EI.E, rightLabel: d.EI.I + DIM_ZH.EI.right + 'I', rightPercent: d.EI.I }
+			const rSN: any = { key: 'SN', leftLabel: 'S' + DIM_ZH.SN.left + d.SN.S, rightLabel: d.SN.N + DIM_ZH.SN.right + 'N', rightPercent: d.SN.N }
+			const rTF: any = { key: 'TF', leftLabel: 'T' + DIM_ZH.TF.left + d.TF.T, rightLabel: d.TF.F + DIM_ZH.TF.right + 'F', rightPercent: d.TF.F }
+			const rJP: any = { key: 'JP', leftLabel: 'J' + DIM_ZH.JP.left + d.JP.J, rightLabel: d.JP.P + DIM_ZH.JP.right + 'P', rightPercent: d.JP.P }
+			rows.push(rEI)
+			rows.push(rSN)
+			rows.push(rTF)
+			rows.push(rJP)
+			return rows
+		}
+		const type = currentMbtiType.value.toUpperCase()
+		if (type.length < 4) return rows
+		for (let i = 0; i < DIM_KEYS.length; i++) {
+			const key = DIM_KEYS[i]
+			const zh: any = DIM_ZH[key]
+			const letter = type.charAt(i)
+			const leftScore = letter == key.charAt(0) ? 62 : 38
+			const rightScore = 100 - leftScore
+			const row: any = {
+				key: key,
+				leftLabel: key.charAt(0) + zh.left + leftScore,
+				rightLabel: rightScore + zh.right + key.charAt(1),
+				rightPercent: rightScore
+			}
+			rows.push(row)
+		}
+		return rows
 	})
+
+	// 当前类型对应的 5 板块婚恋解读
+	const currentInterpretation = computed(() => {
+		const type = currentMbtiType.value
+		if (MBTI_INTERPRETATION[type] != null) return MBTI_INTERPRETATION[type]
+		return EMPTY_INTERPRETATION
+	})
+
+	// 结果文案版本号（mbti-result-copy@x）
+	const resultVersion = computed(() => {
+		const result: any = completedResult.value
+		if (result != null && result.resultCopy != null && typeof result.resultCopy.version == 'string') {
+			return result.resultCopy.version
+		}
+		return ''
+	})
+
+	// 昵称 · 版本号（无版本号时只显示昵称，避免多余的「·」）
+	const heroMeta = computed(() => {
+		const name = currentMbtiNickname.value
+		const version = resultVersion.value
+		if (name != '' && version != '') return name + ' · ' + version
+		if (name != '') return name
+		return version
+	})
+
+	const padIndex = (value: number): string => {
+		return value < 10 ? '0' + value : '' + value
+	}
 
 	const responseMessage = (res: any, fallback: string): string => {
 		return res != null && res.message != null ? '' + res.message : fallback
@@ -429,6 +967,26 @@
 		return session.questionIds.length > 0 ? session.questionIds.length - 1 : 0
 	}
 
+	const loadMatches = async () => {
+		if (currentMbtiType.value == '') {
+			matches.value = []
+			return
+		}
+		matchesLoading.value = true
+		try {
+			const res = await getEmotionLabMatches(currentMbtiType.value)
+			if (res.success == true && res.data != null && Array.isArray(res.data.items)) {
+				matches.value = res.data.items as any[]
+			} else {
+				matches.value = []
+			}
+		} catch (error) {
+			matches.value = []
+		} finally {
+			matchesLoading.value = false
+		}
+	}
+
 	const loadSummary = async () => {
 		loading.value = true
 		errorMessage.value = ''
@@ -445,10 +1003,55 @@
 		} finally {
 			loading.value = false
 		}
+		await loadMatches()
+	}
+
+	const openStartSheet = () => {
+		startSheetVisible.value = true
+	}
+
+	const handleSheetStart = () => {
+		startSheetVisible.value = false
+		handleStartAssessment()
+	}
+
+	const handleSheetManual = () => {
+		startSheetVisible.value = false
+		openTypeSheet()
+	}
+
+	const openTypeSheet = () => {
+		// 记录打开前的类型，供取消时还原，避免选择预览污染已显示的结果
+		typeSheetBackup.value = manualResultType.value
+		manualConfirmed.value = false
+		typeSheetVisible.value = true
+	}
+
+	const closeTypeSheet = () => {
+		// 取消/关闭时还原为打开前的类型，保证结果图标不被未保存的选择改变
+		manualResultType.value = typeSheetBackup.value
+		typeSheetVisible.value = false
+	}
+
+	const openResultActionSheet = () => {
+		resultActionSheetVisible.value = true
+	}
+
+	const handleResultActionRetest = () => {
+		resultActionSheetVisible.value = false
+		handleStartAssessment()
+	}
+
+	const handleResultActionChooseType = () => {
+		resultActionSheetVisible.value = false
+		openTypeSheet()
 	}
 
 	const handleStartAssessment = async () => {
-		if (!canStartAssessment.value || assessment.value == null) return
+		if (!canStartAssessment.value || assessment.value == null) {
+			uni.showToast({ title: startBlockMessage.value, icon: 'none' })
+			return
+		}
 		if (hasActiveDraft.value) {
 			continueAssessment()
 			return
@@ -485,15 +1088,16 @@
 		viewState.value = 'questions'
 	}
 
-	const openManualSettings = () => {
-		manualConfirmed.value = false
-		viewState.value = 'manual'
-	}
-
 	const openResult = () => {
-		if (completedResult.value == null) return
+		// 完整解读页按「当前 MBTI 类型」渲染：测评完成、手动设置、历史资料任一来源都可进入，
+		// 不再要求必须存在本次完成的测评结果
+		if (!hasTestedType.value) {
+			uni.showToast({ title: '当前没有可查看的测评结果', icon: 'none' })
+			return
+		}
 		assessmentConfirmed.value = false
 		viewState.value = 'result'
+		uni.pageScrollTo({ scrollTop: 0, duration: 0 })
 	}
 
 	const backToIntro = () => {
@@ -576,6 +1180,7 @@
 				progressMessage.value = ''
 				viewState.value = 'result'
 				uni.showToast({ title: '测试已完成', icon: 'success' })
+				await loadMatches()
 			} else {
 				uni.showToast({ title: responseMessage(res, '提交失败，请重试'), icon: 'none' })
 			}
@@ -586,7 +1191,7 @@
 		}
 	}
 
-	const discardCurrentDraft = async (sessionId: string) => {
+	const discardCurrentDraft = async (sessionId: string, targetView: string = 'intro') => {
 		if (discarding.value) return
 		discarding.value = true
 		try {
@@ -595,8 +1200,8 @@
 				applySessionSnapshot(res.data)
 				currentQuestionIndex.value = 0
 				progressMessage.value = ''
-				viewState.value = 'intro'
-				uni.showToast({ title: '本次测试已放弃', icon: 'none' })
+				viewState.value = targetView
+				uni.showToast({ title: '已重置，从头开始', icon: 'none' })
 			} else {
 				uni.showToast({ title: responseMessage(res, '暂时无法放弃测试'), icon: 'none' })
 			}
@@ -607,23 +1212,38 @@
 		}
 	}
 
-	const requestDiscardDraft = () => {
+	// 重新测试：打开自定义确认弹窗（替代 uni.showModal，避免 mp-weixin 偶发不弹窗）
+	const requestRetest = () => {
 		const session: any = activeSession.value
-		if (discarding.value || session == null || session.status != 'in_progress') return
-		const sessionId = '' + session.id
-		uni.showModal({
-			title: '放弃本次测试',
-			content: '已保存的答案将被清除，且无法恢复。',
-			cancelText: '继续作答',
-			confirmText: '确认放弃',
-			success: (res: any) => {
-				if (res.confirm == true) discardCurrentDraft(sessionId)
-			}
-		})
+		if (session == null || session.id == null) {
+			uni.showToast({ title: '当前没有可重置的测试', icon: 'none' })
+			return
+		}
+		pendingRetestSessionId.value = '' + session.id
+		retestConfirmVisible.value = true
 	}
 
+	const confirmRetest = () => {
+		const sessionId = pendingRetestSessionId.value
+		if (sessionId == '') return
+		retestConfirmVisible.value = false
+		discardCurrentDraft(sessionId, 'questions')
+			.then(() => {
+				uni.pageScrollTo({ scrollTop: 0, duration: 0 })
+			})
+			.catch(() => {})
+	}
+
+	const cancelRetest = () => {
+		pendingRetestSessionId.value = ''
+		retestConfirmVisible.value = false
+	}
+
+	// 选择类型时即时更新结果图标（manualResultType 驱动 currentMbtiType），
+	// 让“选哪只猫，图标立刻变成哪只”的反馈立即可见；未保存关闭会由 closeTypeSheet 还原
 	const selectManualType = (type: string) => {
 		selectedType.value = type
+		manualResultType.value = type
 		manualConfirmed.value = false
 	}
 
@@ -638,7 +1258,17 @@
 	}
 
 	const saveManualType = async () => {
-		if (selectedType.value == '' || !manualConfirmed.value) return
+		if (selectedType.value == '') return
+
+		// 未勾选"同步到资料"时，不调用同步接口，直接把所选类型记录到本地 manualResultType；
+		// 这样"选好了"按钮始终可点，不会触发后端"需要明确确认"的报错，
+		// 结果卡片也会立即显示本次选择的类型。
+		if (!manualConfirmed.value) {
+			manualResultType.value = selectedType.value
+			typeSheetVisible.value = false
+			return
+		}
+
 		savingProfile.value = true
 		try {
 			const res = await setMyMbtiType({
@@ -649,6 +1279,8 @@
 			if (res.success == true) {
 				uni.showToast({ title: '已保存', icon: 'success' })
 				manualConfirmed.value = false
+				manualResultType.value = ''
+				typeSheetVisible.value = false
 				await loadSummary()
 			} else {
 				uni.showToast({ title: responseMessage(res, '保存失败，请重试'), icon: 'none' })
@@ -684,6 +1316,35 @@
 		}
 	}
 
+	const refreshMatches = async () => {
+		if (matchesLoading.value) return
+		await loadMatches()
+		uni.showToast({ title: '已换一批', icon: 'none' })
+	}
+
+	const openHistory = () => {
+		uni.navigateTo({
+			url: '/pagesSub/profileExtra/unlock-history',
+			fail: () => {
+				uni.showToast({ title: '历史记录暂未开放', icon: 'none' })
+			}
+		})
+	}
+
+	const openMatchProfile = (item: any) => {
+		const userId = item != null && item.userId != null ? '' + item.userId : ''
+		if (userId == '') {
+			uni.showToast({ title: '对方主页暂未开放', icon: 'none' })
+			return
+		}
+		uni.navigateTo({
+			url: '/pagesSub/userExtra/user/detail?userId=' + encodeURIComponent(userId),
+			fail: () => {
+				uni.showToast({ title: '对方主页暂未开放', icon: 'none' })
+			}
+		})
+	}
+
 	onMounted(() => {
 		loadSummary()
 	})
@@ -691,32 +1352,41 @@
 
 <style scoped>
 	.lab-page {
+		/* 情感实验室原稿色值（pencil-new.pen 画板0-4，1:1 还原，勿改） */
+		--lab-bg: #F0F0F3;
+		--lab-bg-mint: #F4F9F6;
+		--lab-card: #FFFFFF;
+		--lab-accent: #7EC8A0;
+		--lab-accent-dark: #5DAF85;
+		--lab-accent-light: #B5E8D5;
+		--lab-accent-soft: #E8F5EE;
+		--lab-text: #1A1A1A;
+		--lab-text-2: #8E8E93;
+		--lab-text-3: #B0B0B0;
+		--lab-inverse: #FFFFFF;
+		--lab-track: #ECECEC;
+		--lab-divider: #F0F0F0;
+		--lab-heart: #FFB5B5;
+		--lab-plus: #F0F0F0;
+		--lab-tag-bg: #E0F5E8;
+		--lab-tag-accent-bg: #FFF0E0;
+		--lab-tag-accent-text: #E8A040;
+
+		/* 16 型四组莫兰迪配色（原稿画板2）：NT 紫 / NF 绿 / SJ 蓝 / SP 卡其 */
+		--lab-nt-bg: #EBE3F3;
+		--lab-nt-text: #6B5A80;
+		--lab-nf-bg: #D8F0E4;
+		--lab-nf-text: #4A7A5E;
+		--lab-sj-bg: #D8E8F4;
+		--lab-sj-text: #4A6A8A;
+		--lab-sp-bg: #F0E8DC;
+		--lab-sp-text: #8A7A5E;
+
 		min-height: 100vh;
-		background: var(--canvas);
-		color: var(--ink);
+		background: var(--lab-bg);
+		color: var(--lab-text);
 		display: flex;
 		flex-direction: column;
-	}
-
-	.page-head {
-		padding: 16px;
-		background: var(--surface);
-		border-bottom: 1px solid var(--line);
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.page-title {
-		font-family: var(--serif);
-		font-size: 22px;
-		font-weight: 700;
-	}
-
-	.page-subtitle,
-	.section-meta {
-		font-size: 12px;
-		color: var(--muted);
 	}
 
 	.lab-scroll {
@@ -725,319 +1395,981 @@
 	}
 
 	.lab-content {
-		padding-bottom: 32px;
+		display: flex;
+		flex-direction: column;
+		padding: 8px 16px 24px;
+		gap: 20px;
+		background: var(--lab-bg);
 	}
 
-	.section {
-		padding: 24px 16px;
-		background: var(--surface);
-		border-bottom: 1px solid var(--line);
+	/* 未测试态：原稿画板0 Content Wrapper = padding[8,20] gap=24，浅绿底 #F4F9F6 */
+	.lab-content-mint {
+		padding: 8px 20px 0;
+		gap: 24px;
+		background: var(--lab-bg-mint);
 	}
 
-	.section-heading {
+	/* 原稿 Guide Text：13px #B0B0B0 居中；与卡片间距由父级 gap 控制 */
+	.guide-text {
+		display: block;
+		padding: 0;
+		font-size: 13px;
+		line-height: 1.6;
+		color: var(--lab-text-3);
+		text-align: center;
+	}
+
+	.safe-area {
+		height: calc(24px + env(safe-area-inset-bottom));
+	}
+
+	.main-card,
+	.result-card,
+	.match-card {
+		position: relative;
+		background: var(--lab-card);
+		border-radius: 20px;
+		box-shadow: none;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		overflow: hidden;
+	}
+
+	/* 原稿 Main Card：白底、20px 圆角、padding[32,24]、gap=16 */
+	.main-card {
+		padding: 32px 24px;
+		gap: 16px;
+	}
+
+	/* 原稿 Result Card：白底、20px 圆角、padding[28,24]、gap=16 */
+	.result-card {
+		padding: 28px 24px;
+		gap: 16px;
+	}
+
+	/* 原稿卡片为纯白无渐变，此处仅作居中容器 */
+	.card-hero {
+		width: 100%;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+
+	.result-hero {
+		padding-bottom: 0;
+	}
+
+	.hero-eyebrow {
+		margin-bottom: 14px;
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: 3px;
+		color: var(--accent2);
+	}
+
+	/* 原稿 Result Title「你的MBTI：ESTP」：24px/700 #1A1A1A */
+	.hero-type {
+		font-size: 24px;
+		font-weight: 700;
+		line-height: 1.35;
+		color: var(--lab-text);
+		text-align: center;
+	}
+
+	.hero-nickname {
+		margin-top: 4px;
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--lab-text-2);
+	}
+
+	/* 原稿 Card Title：20px/700 #1A1A1A */
+	.card-title {
+		display: block;
+		font-size: 20px;
+		font-weight: 700;
+		line-height: 1.4;
+		color: var(--lab-text);
+		text-align: center;
+	}
+
+	/* 原稿 Card Subtitle：14px #8E8E93 */
+	.card-subtitle {
+		display: block;
+		margin-top: 8px;
+		font-size: 14px;
+		color: var(--lab-text-2);
+		text-align: center;
+	}
+
+	/* 描述 12px/1.5，与上方标题间距由卡片 gap 控制，确保完整显示 */
+	.result-description {
+		display: block;
+		margin-top: 6px;
+		padding: 0 4px;
+		font-size: 12px;
+		line-height: 1.5;
+		color: var(--lab-text-2);
+		text-align: center;
+	}
+
+	/* 编辑入口：卡片右上角，白底 + 薄荷色高亮边框，确保易发现且不遮挡内容 */
+	.result-edit {
+		position: absolute;
+		top: 8px;
+		right: 8px;
+		width: 34px;
+		height: 34px;
+		box-sizing: border-box;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: #FFFFFF;
+		border-radius: 50%;
+		border: 2px solid var(--lab-accent);
+		box-shadow: 0 2px 8px rgba(125, 200, 160, 0.20);
+		z-index: 2;
+	}
+
+	.result-edit-icon {
+		font-size: 18px;
+		color: var(--lab-accent-dark);
+		font-weight: 700;
+	}
+
+	.main-card .primary-button,
+	.result-card .primary-button {
+		margin-top: 24px;
+	}
+
+	.section-header {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	/* 原稿「合拍的人」：18px/700 #1A1A1A */
+	.section-title {
+		font-size: 18px;
+		font-weight: 700;
+		color: var(--lab-text);
+	}
+
+	/* 原稿 Match Card：白底、16px 圆角、padding=20、gap=12、无描边 */
+	.match-card {
+		padding: 20px;
+		gap: 12px;
+		border: 0;
+	}
+
+	.match-list {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.match-list .match-card {
+		border-radius: 16px;
+		padding: 18px;
+		gap: 12px;
+		align-items: stretch;
+		background: #FFFFFF;
+	}
+
+	.avatar-row {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+	}
+
+	/* 原稿头像行：48×48 圆形，5 色叠加 opacity 0.35，相邻重叠 12px */
+	.avatar-ghost {
+		width: 48px;
+		height: 48px;
+		border-radius: 50%;
+		opacity: 0.35;
+		margin-right: -12px;
+		background: #FFB5B5;
+	}
+
+	.avatar-ghost:nth-child(2) {
+		background: #B5D8FF;
+	}
+
+	.avatar-ghost:nth-child(3) {
+		background: #FFE0A3;
+	}
+
+	.avatar-ghost:nth-child(4) {
+		background: #C5B5FF;
+	}
+
+	.avatar-ghost:nth-child(5) {
+		background: #B5F0D0;
+	}
+
+	/* 原稿 Plus Avatar：#F0F0F0 圆形，「+」22px/300 #B0B0B0 */
+	.avatar-plus {
+		width: 48px;
+		height: 48px;
+		border-radius: 50%;
+		background: var(--lab-plus);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.avatar-plus-text {
+		font-size: 22px;
+		font-weight: 300;
+		color: var(--lab-text-3);
+	}
+
+	/* 原稿提示文案：13px #B0B0B0 居中 */
+	.match-hint {
+		display: block;
+		font-size: 13px;
+		line-height: 1.6;
+		color: var(--lab-text-3);
+		text-align: center;
+	}
+
+	.match-top {
 		display: flex;
 		flex-direction: row;
 		align-items: flex-start;
 		justify-content: space-between;
 		gap: 12px;
-		margin-bottom: 16px;
 	}
 
-	.heading-copy {
+	.match-user {
+		display: flex;
+		flex-direction: row;
+		align-items: flex-start;
+		gap: 12px;
 		min-width: 0;
 		flex: 1;
+	}
+
+	.match-text {
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
+		min-width: 0;
+		flex: 1;
 	}
 
-	.section-title {
-		font-size: 17px;
+	/* 原稿：姓名 16px/700 #1A1A1A；年龄城市 12px #8E8E93；学校 12px #B0B0B0 */
+	.match-name {
+		font-size: 16px;
 		font-weight: 700;
+		color: var(--lab-text);
 	}
 
-	.review-badge {
+	.match-meta {
+		font-size: 12px;
+		color: var(--lab-text-2);
+	}
+
+	.match-school {
+		font-size: 12px;
+		color: var(--lab-text-3);
+	}
+
+	.match-score {
 		flex-shrink: 0;
-		padding: 4px 8px;
-		border: 1px solid var(--line);
-		border-radius: 4px;
-		background: var(--warm);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		width: 64px;
+		height: 64px;
+		border-radius: 50%;
+		background: #E8F5F0;
+		gap: 2px;
 	}
 
-	.review-badge-text {
-		font-size: 11px;
+	/* 合拍度：24px/700 #7EC8A0；下方「合拍度」11px #9AA0A6 */
+	.match-percent {
+		font-size: 24px;
 		font-weight: 700;
-		color: var(--ink2);
+		line-height: 1;
+		color: #7EC8A0;
 	}
 
-	.review-badge-verified {
-		background: var(--accent-bg);
-		border-color: var(--accent);
+	.match-score-label {
+		font-size: 11px;
+		color: #9AA0A6;
 	}
 
-	.review-badge-verified .review-badge-text {
-		color: var(--accent2);
+	.match-tags {
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
+	/* 原稿标签：10px 圆角、padding[4,10]；普通标签 #E0F5E8/#5DAF85，MBTI 标签 #FFF0E0/#E8A040 */
+	.match-tag {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		padding: 4px 10px;
+		border-radius: 10px;
+		background: var(--lab-tag-bg);
+	}
+
+	.match-tag-accent {
+		background: var(--lab-tag-accent-bg);
+	}
+
+	.match-tag-text {
+		font-size: 11px;
+		line-height: 1.4;
+		color: var(--lab-accent-dark);
+		/* 标签文字不换行：宽度不够时整个标签折到下一行，而不是文字在胶囊内折行被裁 */
+		white-space: nowrap;
+	}
+
+	.match-tag-accent .match-tag-text {
+		color: var(--lab-tag-accent-text);
+		font-weight: 700;
+	}
+
+	/* 原稿 Bio：12px #8E8E93，行高 1.5 */
+	.match-bio {
+		display: block;
+		font-size: 12px;
+		line-height: 1.5;
+		color: var(--lab-text-2);
+	}
+
+	/* 已删除「查看主页」底部栏，点击整卡跳转个人主页 */
+
+	.bottom-actions {
+		margin-top: 16px;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.flex-button {
+		flex: 1;
+		min-width: 0;
 	}
 
 	.review-notice {
-		padding: 12px;
-		border: 1px solid var(--line);
-		border-radius: 8px;
+		margin-top: 16px;
+		padding: 12px 16px;
+		border-radius: 12px;
 		background: var(--paper);
+		border: 1px solid var(--line);
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
-		margin-bottom: 16px;
 	}
 
 	.review-title {
 		font-size: 14px;
 		font-weight: 700;
+		color: var(--lab-text);
 	}
 
-	.review-message,
-	.result-summary,
-	.state-message {
+	.review-message {
 		font-size: 13px;
-		line-height: 1.65;
-		color: var(--ink2);
+		line-height: 1.6;
+		color: var(--lab-text-2);
 	}
 
-	.primary-button,
-	.secondary-button,
-	.type-option,
-	.answer-option,
-	.text-button {
-		margin: 0;
-		border-radius: 8px;
+	.lab-illustration {
+		position: relative;
+		width: 280px;
+		height: 140px;
+		margin-bottom: 24px;
+	}
+
+	/* 原稿 Result Illustration 240×185，位于标题之上（order 提前），与标题间距 12 */
+	.result-illustration {
+		position: relative;
+		width: 240px;
+		height: 185px;
+		margin-bottom: 12px;
+		order: -1;
+	}
+
+	/* 测试结果页：用对应 MBTI 类型小猫替换原笑脸图标；180×180 居中突出，无背景/边框以融合卡片 */
+	.result-illustration .result-mbti-cat {
+		width: 180px;
+		height: 180px;
+		position: absolute;
+		left: 30px;
+		top: 3px;
+		border: none;
+		outline: none;
+	}
+
+	.ill-head {
+		width: 50px;
+		height: 50px;
+		border-radius: 50%;
+		background: var(--lab-accent-light);
+		position: absolute;
+		left: 105px;
+		top: 15px;
+	}
+
+	.ill-eye {
+		width: 6px;
+		height: 7px;
+		border-radius: 3px;
+		background: var(--lab-accent-dark);
+		position: absolute;
+	}
+
+	.ill-eye-left {
+		left: 120px;
+		top: 32px;
+	}
+
+	.ill-eye-right {
+		left: 134px;
+		top: 32px;
+	}
+
+	.ill-smile {
+		width: 14px;
+		height: 8px;
+		border-radius: 0 0 14px 14px;
+		background: var(--lab-accent-dark);
+		position: absolute;
+		left: 123px;
+		top: 44px;
+	}
+
+	.ill-star {
+		background: var(--lab-accent);
+		position: absolute;
+		transform: rotate(45deg);
+	}
+
+	.ill-star-left {
+		width: 22px;
+		height: 22px;
+		border-radius: 3px;
+		left: 65px;
+		top: 25px;
+	}
+
+	.ill-star-right {
+		width: 17px;
+		height: 17px;
+		border-radius: 2px;
+		left: 185px;
+		top: 50px;
+	}
+
+	.ill-star-a {
+		width: 19px;
+		height: 19px;
+		border-radius: 3px;
+		left: 55px;
+		top: 18px;
+	}
+
+	.ill-star-b {
+		width: 14px;
+		height: 14px;
+		border-radius: 2px;
+		left: 170px;
+		top: 12px;
+	}
+
+	.ill-star-c {
+		width: 12px;
+		height: 12px;
+		border-radius: 2px;
+		background: var(--lab-accent-light);
+		left: 180px;
+		top: 55px;
+	}
+
+	.ill-bubble {
+		width: 70px;
+		height: 38px;
+		border-radius: 14px;
+		background: var(--lab-accent-light);
+		position: absolute;
+		left: 15px;
+		top: 55px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		letter-spacing: 0;
 	}
 
-	.primary-button::after,
-	.secondary-button::after,
-	.type-option::after,
-	.answer-option::after,
-	.text-button::after {
-		border: none;
-	}
-
-	.primary-button {
-		width: 100%;
-		height: 44px;
-		min-height: 44px;
-		background: var(--accent2);
-		color: var(--text-invert);
-		font-size: 14px;
+	/* 原稿气泡文字「MBTI」：12px/700 #5DAF85 */
+	.ill-bubble-text {
+		font-size: 12px;
 		font-weight: 700;
+		color: var(--lab-accent-dark);
 	}
 
-	.primary-button[disabled] {
-		background: var(--warm);
-		color: var(--muted);
-		opacity: 1;
-	}
-
-	.secondary-button {
-		height: 44px;
-		min-height: 44px;
-		padding: 0 16px;
-		background: var(--surface);
-		border: 1px solid var(--line);
-		color: var(--ink);
-		font-size: 14px;
-	}
-
-	.secondary-button[disabled],
-	.text-button[disabled] {
-		color: var(--muted);
-		opacity: 0.55;
-	}
-
-	.compact-button {
-		width: auto;
-		margin-top: 16px;
-	}
-
-	.manual-entry-button {
-		width: 100%;
-		margin-top: 12px;
-	}
-
-	.draft-panel {
-		margin-top: 16px;
-		padding: 16px;
-		border: 1px solid var(--line);
-		border-radius: 12px;
-		background: var(--paper);
+	.ill-card {
+		position: absolute;
+		background: var(--lab-card);
+		box-shadow: none;
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
+		gap: 6px;
 	}
 
-	.draft-copy {
-		min-width: 0;
+	.ill-card-large {
+		width: 48px;
+		height: 60px;
+		border-radius: 10px;
+		padding: 8px;
+		left: 195px;
+		top: 18px;
+	}
+
+	.ill-card-small {
+		width: 40px;
+		height: 50px;
+		border-radius: 8px;
+		padding: 7px;
+		gap: 5px;
+		left: 225px;
+		top: 40px;
+	}
+
+	.ill-line {
+		width: 100%;
+		height: 4px;
+		border-radius: 2px;
+		background: var(--warm);
+	}
+
+	.ill-line-accent {
+		background: var(--lab-accent-light);
+	}
+
+	.ill-line-short {
+		width: 24px;
+	}
+
+	.ill-doc {
+		width: 36px;
+		height: 44px;
+		border-radius: 6px;
+		background: var(--lab-card);
+		box-shadow: none;
+		position: absolute;
+		left: 15px;
+		top: 40px;
+		padding: 8px;
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
 	}
 
-	.draft-title {
-		font-size: 14px;
-		font-weight: 700;
-		color: var(--ink);
+	.ill-doc-line {
+		width: 100%;
+		height: 3px;
+		border-radius: 1.5px;
+		background: var(--warm);
 	}
 
-	.inline-actions {
+	.ill-doc-line-accent {
+		background: var(--lab-accent-light);
+	}
+
+	.ill-doc-line-short {
+		width: 12px;
+	}
+
+	.ill-heart {
+		position: absolute;
+		left: 50px;
+		top: 70px;
+		font-size: 17px;
+		color: var(--heart-red);
+	}
+
+	.ill-dot {
+		position: absolute;
+		border-radius: 50%;
+		background: var(--lab-accent-light);
+	}
+
+	.ill-dot-a {
+		width: 6px;
+		height: 6px;
+		left: 160px;
+		top: 80px;
+	}
+
+	.ill-dot-b {
+		width: 4px;
+		height: 4px;
+		left: 80px;
+		top: 105px;
+	}
+
+	.ill-dot-c {
+		width: 5px;
+		height: 5px;
+		background: var(--line);
+		left: 200px;
+		top: 110px;
+	}
+
+	.result-illustration .ill-dot {
+		width: 4px;
+		height: 4px;
+		left: 60px;
+		top: 70px;
+	}
+
+	.quiz-body {
+		min-height: 100vh;
+		background: #FFFFFF;
+		padding: 0;
+	}
+
+	/* 原稿 Quiz Card：白底、gap=28；顶部 padding 由 32 增至 48，让题目整体下沉。
+	   顶部去圆角，避免父级灰色背景在圆角处露出导致“白色没有铺满”；底部保留 24px 圆角。 */
+	.quiz-inner {
 		display: flex;
-		flex-direction: row;
-		gap: 8px;
+		flex-direction: column;
+		min-height: 100vh;
+		background: #FFFFFF;
+		border-radius: 0 0 24px 24px;
+		padding: 48px 28px 40px;
+		gap: 28px;
 	}
 
-	.inline-button {
-		width: auto;
-		min-width: 0;
-		flex: 1;
-		height: 44px;
-		min-height: 44px;
-		padding: 0 8px;
-		font-size: 13px;
+	/* 原稿：题号 14px/500 #B0B0B0；进度条底 #ECECEC、填充 #7EC8A0，高 4px 圆角 2px */
+	.quiz-index {
+		display: block;
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--lab-text-3);
+		letter-spacing: 1px;
 	}
 
-	.question-section {
-		min-height: 430px;
+	.quiz-track {
+		width: 100%;
+		height: 4px;
+		border-radius: 2px;
+		background: var(--lab-track);
+		overflow: hidden;
 	}
 
-	.question-progress-row {
+	.quiz-track-fill {
+		height: 4px;
+		border-radius: 2px;
+		background: var(--lab-accent);
+	}
+
+	/* 原稿题目：18px/700 #1A1A1A，行高 1.6，居中；与进度条之间额外留白 20px，提升视觉舒适度 */
+	.quiz-question {
+		display: block;
+		margin-top: 20px;
+		font-size: 18px;
+		font-weight: 700;
+		line-height: 1.6;
+		color: var(--lab-text);
+		text-align: center;
+	}
+
+	.rating-wrap {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+	}
+
+	.rating-row {
+		position: relative;
 		display: flex;
 		flex-direction: row;
 		align-items: center;
 		justify-content: space-between;
+		padding: 0 4px;
+	}
+
+	.rating-line {
+		position: absolute;
+		left: 26px;
+		right: 26px;
+		top: 50%;
+		height: 2px;
+		transform: translateY(-50%);
+		background: var(--line);
+		z-index: 0;
+	}
+
+	/* 设计稿原稿：白底空心圆 + 2.5px 彩色描边，描边色与选中填充色由内联样式按档位注入 */
+	.rating-dot {
+		position: relative;
+		z-index: 1;
+		border-radius: 50%;
+		background: #FFFFFF;
+		border: 2.5px solid var(--lab-track);
+		box-sizing: border-box;
+		transition: transform 0.15s ease-out;
+	}
+
+	.rating-dot-selected {
+		transform: scale(1.06);
+	}
+
+	.rating-labels {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0 4px;
+	}
+
+	.rating-label {
+		width: 44px;
+		font-size: 12px;
+		color: #F0A060;
+		text-align: center;
+	}
+
+	.rating-label-center {
+		text-align: center;
+		color: #B0B0B0;
+	}
+
+	.rating-label-right {
+		text-align: center;
+		color: #7EC8A0;
+	}
+
+	.quiz-actions {
+		margin-top: 40px;
+		display: flex;
+		flex-direction: row;
+		gap: 16px;
+	}
+
+	/* 原稿「上一题」：白底 + 浅灰描边 #F0F0F0 + 深灰字 */
+	.quiz-prev-button {
+		flex: 1;
+		min-width: 0;
+		padding: 14px 0;
+		min-height: 52px;
+		border-radius: 24px;
+		background: #FFFFFF;
+		border: 1px solid var(--lab-divider);
+		color: var(--lab-text-2);
+		font-size: 16px;
+		font-weight: 500;
+	}
+
+	.quiz-prev-button::after {
+		border: 0;
+	}
+
+	/* 原稿「下一题」：#7EC8A0 填充 + 白字 */
+	.quiz-next-button {
+		flex: 1;
+		min-width: 0;
+		padding: 14px 0;
+		min-height: 52px;
+		border-radius: 24px;
+		background: var(--lab-accent);
+		color: #FFFFFF;
+		font-size: 16px;
+		font-weight: 600;
+	}
+
+	.quiz-next-button::after {
+		border: 0;
+	}
+
+	.quiz-aux {
+		margin-top: 40px;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
 		gap: 12px;
 	}
 
-	.question-track {
-		width: 100%;
-		height: 8px;
-		margin: 12px 0 24px;
-		background: var(--warm);
-		overflow: hidden;
+	.quiz-aux-button {
+		padding: 8px 12px;
+		font-size: 13px;
+		color: var(--lab-text-3);
+		background: transparent;
 	}
 
-	.question-track-fill {
-		height: 8px;
-		background: var(--accent);
+	.quiz-aux-button::after {
+		border: 0;
 	}
 
-	.question-text {
-		display: block;
-		font-size: 17px;
-		font-weight: 700;
-		line-height: 1.55;
-		color: var(--ink);
+	.result-detail {
+		padding: 10px 20px 32px;
+		background: #FFFFFF;
+		min-height: 100vh;
 	}
 
-	.answer-list {
-		margin-top: 16px;
+	/* 类型 hero 卡片：浅绿圆角背景包裹类型标题 + 小猫 + 昵称版本 */
+	.result-hero-card {
+		background: #E8F5EE;
+		border-radius: 30px;
+		padding: 20px 20px 22px;
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		align-items: center;
+		text-align: center;
+	}
+	.hero-subtitle {
+		font-size: 13px;
+		color: #2C2C2A;
+	}
+	.hero-type {
+		font-size: 36px;
+		font-weight: 500;
+		color: #1F5C43;
+		letter-spacing: 2px;
+		margin-top: 6px;
+	}
+	.hero-cat {
+		width: 124px;
+		height: 124px;
+		border-radius: 62px;
+		background: #FFFFFF;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin-top: 18px;
+		overflow: hidden;
+	}
+	.hero-cat-img {
+		width: 100%;
+		height: 100%;
+	}
+	.hero-meta {
+		font-size: 13px;
+		color: #9A9A95;
+		margin-top: 13px;
 	}
 
-	.answer-option {
-		width: 100%;
-		min-height: 48px;
-		padding: 12px 16px;
-		justify-content: flex-start;
-		background: var(--surface);
-		border: 1px solid var(--line);
-		color: var(--ink2);
-		font-size: 14px;
-		line-height: 1.45;
+	/* 四维特质分布 */
+	.dimension-block {
+		margin-top: 22px;
+	}
+	.block-title {
+		font-size: 13px;
+		font-weight: 500;
+		color: #2C2C2A;
+		margin-bottom: 14px;
+	}
+	.dimension-row {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		margin-bottom: 14px;
+	}
+	.dimension-row:last-child {
+		margin-bottom: 0;
+	}
+	.dim-left,
+	.dim-right {
+		font-size: 13px;
+		color: #444441;
+		width: 78px;
+	}
+	.dim-left {
 		text-align: left;
 	}
-
-	.answer-option-selected {
-		background: var(--accent-bg);
-		border-color: var(--accent2);
-		color: var(--accent2);
-		font-weight: 700;
+	.dim-right {
+		text-align: right;
 	}
-
-	.answer-option[disabled] {
-		opacity: 0.7;
-	}
-
-	.save-message {
-		display: block;
-		margin-top: 12px;
-		font-size: 12px;
-		color: var(--accent2);
-	}
-
-	.question-actions {
-		margin-top: 16px;
-		display: flex;
-		flex-direction: row;
-		gap: 8px;
-	}
-
-	.nav-button {
-		width: auto;
-		min-width: 0;
+	.dim-track {
 		flex: 1;
-		padding: 0 12px;
+		height: 8px;
+		border-radius: 4px;
+		background: #EDEDEB;
+		position: relative;
+		margin: 0 6px;
+		overflow: hidden;
+	}
+	.dim-fill {
+		position: absolute;
+		right: 0;
+		top: 0;
+		height: 8px;
+		background: #7EC8A0;
+		border-radius: 4px;
 	}
 
-	.text-button {
-		width: auto;
-		min-height: 44px;
-		margin: 12px auto 0;
-		padding: 0 12px;
-		background: transparent;
-		color: var(--muted);
+	/* 五板块婚恋解读 */
+	.interpret-block {
+		margin-top: 24px;
+	}
+	.interpret-card {
+		background: #F7F7F5;
+		border-radius: 14px;
+		padding: 14px 16px;
+		margin-bottom: 12px;
+	}
+	.match-card {
+		background: #E8F5EE;
+		margin-bottom: 0;
+	}
+	.interpret-label {
+		font-size: 12px;
+		font-weight: 500;
+		color: #1F5C43;
+		margin-bottom: 6px;
+	}
+	.interpret-text {
 		font-size: 13px;
+		line-height: 1.6;
+		color: #5F5E5A;
 	}
-
-	.compact-state {
-		min-height: 320px;
-		padding: 32px 0;
-	}
-
-	.type-grid {
+	.match-row {
 		display: flex;
 		flex-direction: row;
-		flex-wrap: wrap;
-		gap: 8px;
-		margin-bottom: 16px;
+		align-items: center;
+		gap: 10px;
+		margin-top: 8px;
 	}
-
-	.type-option {
-		width: 22%;
-		min-width: 0;
-		flex-grow: 1;
-		height: 48px;
-		min-height: 48px;
-		padding: 0;
-		background: var(--paper);
-		border: 1px solid var(--line);
-		color: var(--ink2);
+	.match-row:first-of-type {
+		margin-top: 10px;
+	}
+	.match-tag {
+		width: 64px;
+		height: 22px;
+		border-radius: 11px;
+		color: #FFFFFF;
+		font-size: 11px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+	.tag-soul { background: #1F5C43; }
+	.tag-complement { background: #7EC8A0; }
+	.tag-caution { background: #D6C7A0; color: #5F5E5A; }
+	.match-name {
 		font-size: 13px;
-		font-weight: 700;
+		color: #2C2C2A;
 	}
 
-	.type-option-selected {
-		background: var(--accent-bg);
-		border-color: var(--accent2);
-		color: var(--accent2);
-	}
-
+	/* 同步区 */
 	.confirm-group {
-		margin: 4px 0 16px;
+		margin: 18px 0 16px;
 	}
-
 	.confirm-row {
 		min-height: 44px;
 		display: flex;
@@ -1045,90 +2377,329 @@
 		align-items: center;
 		gap: 8px;
 	}
-
 	.confirm-text {
 		flex: 1;
 		font-size: 13px;
 		line-height: 1.5;
-		color: var(--ink2);
+		color: #2C2C2A;
 	}
-
-	.saved-source {
-		margin-top: 16px;
-		padding-top: 16px;
-		border-top: 1px solid var(--line);
+	.result-sync-btn {
+		width: 100%;
+		height: 46px;
+		border-radius: 23px;
+		border: none;
+		background: #7EC8A0;
+		color: #FFFFFF;
+		font-size: 15px;
+		font-weight: 500;
 		display: flex;
-		flex-direction: row;
 		align-items: center;
-		justify-content: space-between;
+		justify-content: center;
+		box-sizing: border-box;
 	}
-
-	.saved-type,
-	.result-type {
-		font-size: 20px;
-		font-weight: 800;
-		color: var(--accent2);
+	.result-sync-btn[disabled] {
+		background: #C9E3D6;
 	}
-
-	.saved-label {
-		font-size: 12px;
-		color: var(--muted);
-	}
-
-	.dimension-list {
+	.result-back-btn {
+		margin-top: 10px;
+		width: 100%;
+		height: 44px;
+		border-radius: 22px;
+		border: 1px solid #D3D1C7;
+		background: transparent;
+		color: #5F5E5A;
+		font-size: 14px;
 		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		margin-bottom: 16px;
-	}
-
-	.dimension-row {
-		display: flex;
-		flex-direction: row;
 		align-items: center;
-		gap: 8px;
-	}
-
-	.dimension-pole {
-		width: 44px;
-		font-size: 11px;
-		font-weight: 700;
-		color: var(--ink2);
-	}
-
-	.dimension-pole-right {
-		text-align: right;
-	}
-
-	.dimension-track {
-		flex: 1;
-		height: 8px;
-		background: var(--warm);
-		overflow: hidden;
-	}
-
-	.dimension-fill {
-		height: 8px;
-		background: var(--accent);
-	}
-
-	.result-summary {
-		display: block;
-		margin-bottom: 12px;
+		justify-content: center;
+		box-sizing: border-box;
 	}
 
 	.disclaimer-band {
-		padding: 16px;
+		margin-top: 18px;
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
 	}
-
 	.disclaimer-text,
 	.disclaimer-version {
 		font-size: 11px;
 		line-height: 1.6;
-		color: var(--muted);
+		color: #9A9A95;
+		text-align: center;
+	}
+
+	.action-sheet {
+		padding-bottom: 8px;
+	}
+
+	.sheet-option {
+		padding: 18px 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.sheet-option-text {
+		font-size: 17px;
+		font-weight: 700;
+		color: var(--lab-text);
+	}
+
+	.sheet-option-cancel {
+		font-weight: 400;
+		color: var(--lab-text-3);
+	}
+
+	.sheet-divider {
+		height: 1px;
+		background: var(--warm);
+	}
+
+	/* 重新测试确认弹窗：替代 uni.showModal，避免 mp-weixin 不弹窗 */
+	.confirm-sheet {
+		padding: 8px 20px 28px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 24px;
+		font-family: SimSun, "Songti SC", "Noto Serif CJK SC", serif;
+	}
+
+	.confirm-sheet-text {
+		font-size: 15px;
+		line-height: 22px;
+		color: var(--lab-text-2);
+		text-align: center;
+	}
+
+	.confirm-sheet-actions {
+		display: flex;
+		flex-direction: row;
+		gap: 12px;
+		width: 100%;
+	}
+
+	.confirm-sheet-btn {
+		flex: 1;
+		height: 46px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 23px;
+		font-size: 15px;
+		font-weight: 600;
+	}
+
+	.confirm-sheet-cancel {
+		background: var(--lab-bg);
+		color: var(--lab-text);
+	}
+
+	.confirm-sheet-ok {
+		background: var(--lab-accent);
+		color: #FFFFFF;
+	}
+
+	.type-selector {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.type-row {
+		display: flex;
+		flex-direction: row;
+		gap: 8px;
+	}
+
+	/* 原稿 type cell：高 78px、圆角 14px、padding[6,4]、gap=4 */
+	.type-cell {
+		flex: 1;
+		min-width: 0;
+		height: 78px;
+		padding: 6px 4px;
+		border-radius: 14px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 4px;
+		border: 2px solid transparent;
+	}
+
+	/* 原稿 16 型四组配色：NT 紫 #EBE3F3/#6B5A80，NF 绿 #D8F0E4/#4A7A5E */
+	.tone-analyst {
+		background: var(--lab-nt-bg);
+	}
+
+	.tone-analyst .type-cell-label,
+	.tone-analyst .type-cell-nickname {
+		color: var(--lab-nt-text);
+	}
+
+	.tone-diplomat {
+		background: var(--lab-nf-bg);
+	}
+
+	.tone-diplomat .type-cell-label,
+	.tone-diplomat .type-cell-nickname {
+		color: var(--lab-nf-text);
+	}
+
+	/* SJ 蓝 #D8E8F4/#4A6A8A，SP 卡其 #F0E8DC/#8A7A5E */
+	.tone-sentinel {
+		background: var(--lab-sj-bg);
+	}
+
+	.tone-sentinel .type-cell-label,
+	.tone-sentinel .type-cell-nickname {
+		color: var(--lab-sj-text);
+	}
+
+	.tone-explorer {
+		background: var(--lab-sp-bg);
+	}
+
+	.tone-explorer .type-cell-label,
+	.tone-explorer .type-cell-nickname {
+		color: var(--lab-sp-text);
+	}
+
+	.type-cell-selected {
+		border-color: var(--lab-accent);
+	}
+
+	.type-cell-label {
+		font-size: 14px;
+		font-weight: 700;
+	}
+
+	.type-cell-nickname {
+		font-size: 10px;
+	}
+
+	.type-confirm {
+		margin-top: 12px;
+		padding-top: 8px;
+	}
+
+	.primary-button,
+	.ghost-button,
+	.text-button,
+	.retry-button {
+		margin: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		letter-spacing: 0;
+		box-sizing: border-box;
+	}
+
+	.primary-button::after,
+	.ghost-button::after,
+	.text-button::after,
+	.retry-button::after {
+		border: none;
+	}
+
+	/* 原稿 CTA：#7EC8A0 填充、24px 圆角、padding[14,0]、白字 16px/600、无阴影 */
+	.primary-button {
+		width: 100%;
+		padding: 14px 0;
+		min-height: 48px;
+		border-radius: 24px;
+		background: var(--lab-accent);
+		color: #FFFFFF;
+		font-size: 16px;
+		font-weight: 600;
+	}
+
+	.primary-button[disabled] {
+		background: var(--warm);
+		color: var(--lab-text-3);
+		opacity: 1;
+	}
+
+	.ghost-button {
+		padding: 14px 0;
+		min-height: 48px;
+		border-radius: 24px;
+		background: var(--lab-card);
+		border: 1px solid var(--line);
+		color: var(--lab-text);
+		font-size: 14px;
+	}
+
+	/* 历史解锁：48×48 圆形，白底+薄荷绿字，清新风格 */
+	@font-face {
+		font-family: "iconfont-home";
+		src: url('/static/婚恋小程序图标/首页推荐与匹配/iconfont.woff2') format('woff2'),
+		     url('/static/婚恋小程序图标/首页推荐与匹配/iconfont.woff') format('woff');
+	}
+	.ic {
+		font-style: normal;
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+	}
+	.ic-home {
+		font-family: "iconfont-home" !important;
+	}
+	.ic-history:before {
+		content: "\e658";
+	}
+
+	.history-circle-btn {
+		margin: 0;
+		padding: 0;
+		width: 48px;
+		height: 48px;
+		border-radius: 50%;
+		background: #FFFFFF;
+		border: 1px solid #E8F5F0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+	.history-circle-btn::after {
+		border: none;
+	}
+	.history-icon {
+		font-size: 24px;
+		color: #7EC8A0;
+	}
+
+	.ghost-button[disabled] {
+		color: var(--line);
+	}
+
+	.retry-button {
+		margin-top: 16px;
+		padding: 0 24px;
+		min-height: 44px;
+		border-radius: 24px;
+		background: var(--lab-card);
+		border: 1px solid var(--line);
+		color: var(--lab-text-2);
+		font-size: 14px;
+	}
+
+	.compact-button {
+		margin-top: 16px;
+		padding: 0 24px;
+	}
+
+	.text-button {
+		min-height: 44px;
+		margin: 12px auto 0;
+		padding: 0 12px;
+		background: transparent;
+		color: var(--lab-text-3);
+		font-size: 13px;
+	}
+
+	.text-button[disabled] {
+		color: var(--line);
 	}
 
 	.state-block {
@@ -1141,9 +2712,20 @@
 		text-align: center;
 	}
 
+	.compact-state {
+		min-height: 160px;
+		padding: 24px 16px;
+	}
+
 	.state-title {
 		font-size: 16px;
 		font-weight: 700;
 		margin-bottom: 8px;
+	}
+
+	.state-message {
+		font-size: 13px;
+		line-height: 1.65;
+		color: var(--lab-text-2);
 	}
 </style>

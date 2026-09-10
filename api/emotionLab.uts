@@ -9,6 +9,7 @@ import {
   submitEmotionLabSessionData,
   setEmotionLabProfileSourceData,
   discardEmotionLabSessionData,
+  getEmotionLabMatchesData,
   configureEmotionLabMockRuntime
 } from '@/mock/emotionLab.uts'
 import { syncMockMeMbtiProfileData } from '@/mock/user.uts'
@@ -245,6 +246,26 @@ export async function discardEmotionLabSession(sessionId: string) {
     url: '/emotion-lab/sessions/' + encodeURIComponent(sessionId) + '/discard',
     method: 'POST',
     data: {},
+    mockData: null
+  })
+}
+
+/**
+ * 「合拍的人」推荐列表。
+ * 后端 /emotion-lab/matches 尚未就绪，当前走 Mock；联调完成后去掉 EMOTION_LAB_USE_MOCK 短路即可。
+ */
+export async function getEmotionLabMatches(mbtiType: string = '') {
+  if (EMOTION_LAB_USE_MOCK) {
+    try {
+      return ok(getEmotionLabMatchesData(mbtiType))
+    } catch (error) {
+      return failed(error)
+    }
+  }
+  return request({
+    url: '/emotion-lab/matches',
+    method: 'GET',
+    data: { mbtiType: mbtiType },
     mockData: null
   })
 }
