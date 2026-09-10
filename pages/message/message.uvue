@@ -1,64 +1,45 @@
 <template>
 	<view class="message-page">
 		<scroll-view class="scroller" scroll-y @scrolltolower="handleLoadMore">
-			<!-- 快捷入口：对齐高保真消息中心 -->
+			<!-- 快捷入口 -->
 			<view class="shortcuts">
 				<view class="shortcut shortcut-application" @click="openApplications">
-					<view class="shortcut-notice" v-if="hasApplicationNotice"></view>
+					<view class="shortcut-badge shortcut-badge-num" v-if="applications.length > 0">
+						<text class="badge-inner">{{ applications.length > 99 ? '99+' : applications.length }}</text>
+					</view>
 					<view class="sc-copy">
 						<text class="sc-title">认识申请</text>
-						<text class="sc-desc text-muted">{{ applicationHint }}</text>
+						<text class="sc-desc">{{ applicationHint }}</text>
 					</view>
-					<text class="sc-arrow">›</text>
-					<view class="sc-art sc-art-application">
-						<view class="art-chat art-chat-large"></view>
-						<view class="art-chat art-chat-small"></view>
-					</view>
+					<image class="sc-art sc-art-application" :src="iconApplication" mode="aspectFit"></image>
 				</view>
 				<view class="shortcut shortcut-plane" @click="openPaperPlane">
-					<view class="shortcut-notice" v-if="hasPaperPlaneNotice"></view>
 					<view class="sc-copy">
 						<text class="sc-title">纸飞机</text>
-						<text class="sc-desc text-muted">匿名认真表达</text>
+						<text class="sc-desc">匿名投递心意</text>
 					</view>
-					<text class="sc-arrow">›</text>
-					<view class="sc-art sc-art-plane">
-						<view class="art-plane-wing"></view>
-						<view class="art-plane-tail"></view>
-					</view>
+					<image class="sc-art sc-art-plane" :src="iconPlane" mode="aspectFit"></image>
 				</view>
 				<view class="shortcut shortcut-dynamic" @click="openDynamicNotice">
-					<view class="shortcut-notice" v-if="hasDynamicNotice"></view>
 					<view class="sc-copy">
-						<text class="sc-title">Ta 的动态</text>
-						<text class="sc-desc text-muted">关注的人有更新</text>
+						<text class="sc-title">ta的动态</text>
+						<text class="sc-desc">捕捉Ta的日常</text>
 					</view>
-					<text class="sc-arrow">›</text>
-					<view class="sc-art sc-art-dynamic">
-						<view class="art-photo art-photo-back"></view>
-						<view class="art-photo art-photo-front">
-							<view class="art-photo-dot"></view>
-						</view>
-					</view>
+					<image class="sc-art sc-art-dynamic" :src="iconDynamic" mode="aspectFit"></image>
 				</view>
 				<view class="shortcut shortcut-lab" @click="openEmotionLab">
 					<view class="sc-copy">
 						<text class="sc-title">情感实验室</text>
-						<text class="sc-desc text-muted">完善匹配线索</text>
+						<text class="sc-desc">完善你的匹配画像</text>
 					</view>
-					<text class="sc-arrow">›</text>
-					<view class="sc-art sc-art-lab">
-						<view class="art-flask-neck"></view>
-						<view class="art-flask-body">
-							<view class="art-flask-liquid"></view>
-						</view>
-						<view class="art-flask-bubble art-flask-bubble-one"></view>
-						<view class="art-flask-bubble art-flask-bubble-two"></view>
-					</view>
+					<image class="sc-art sc-art-lab" :src="iconLab" mode="aspectFit"></image>
 				</view>
 			</view>
 
-			<button class="unread-clear-action" aria-label="清除未读" @click="clearUnreadNotices">清除未读</button>
+			<!-- 聊天列表 -->
+			<view class="chat-header">
+				<text class="section-title">聊天</text>
+			</view>
 
 			<XsaEmpty
 				v-if="messageList.length === 0 && !loading"
@@ -108,13 +89,14 @@
 			<view class="pin-actions">
 				<XsaButton
 					v-if="selectedMessage != null && selectedMessage.pinned === true"
+					class="pin-btn pin-btn-primary"
 					variant="primary"
 					size="medium"
 					@click="togglePin"
 				>取消置顶</XsaButton>
-				<XsaButton v-else variant="primary" size="medium" @click="togglePin">置顶</XsaButton>
-				<XsaButton variant="secondary" size="medium" @click="deleteSelectedMessage">删除</XsaButton>
-				<XsaButton variant="secondary" size="medium" @click="closePinSheet">取消</XsaButton>
+				<XsaButton v-else class="pin-btn pin-btn-primary" variant="primary" size="medium" @click="togglePin">置顶</XsaButton>
+				<XsaButton class="pin-btn pin-btn-delete" variant="secondary" size="medium" @click="deleteSelectedMessage">删除</XsaButton>
+				<XsaButton class="pin-btn pin-btn-cancel" variant="secondary" size="medium" @click="closePinSheet">取消</XsaButton>
 			</view>
 		</XsaSheet>
 
@@ -145,6 +127,10 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 	const READ_SHORTCUT_NOTICE_KEY = 'xsa-read-shortcut-notices'
 	const PAPER_PLANE_NOTICE_KEY = 'paper-plane:mock-1'
 	const DYNAMIC_NOTICE_KEY = 'dynamic:mock-1'
+	const iconApplication = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjQzlCOEUwIiBzdHJva2Utd2lkdGg9IjEuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48Y2lyY2xlIGN4PSI5IiBjeT0iOCIgcj0iMy4yIi8+PHBhdGggZD0iTTMuNSAxOWMwLTMgMi41LTUgNS41LTVzNS41IDIgNS41IDUiLz48Y2lyY2xlIGN4PSIxNyIgY3k9IjkiIHI9IjIuNCIvPjxwYXRoIGQ9Ik0xNS41IDE0LjRjMi4yLjMgNCAyLjEgNCA0LjEiLz48L3N2Zz4='
+	const iconPlane = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOUZDOUQ5IiBzdHJva2Utd2lkdGg9IjEuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMjEgMyAzIDEwLjVsNyAyLjUgMi41IDdMMjEgM1oiLz48cGF0aCBkPSJNMTAgMTMgMjEgMyIvPjwvc3ZnPg=='
+	const iconDynamic = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjQThENUJDIiBzdHJva2Utd2lkdGg9IjEuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIzIiB5PSI3IiB3aWR0aD0iMTgiIGhlaWdodD0iMTMiIHJ4PSIyLjUiLz48cGF0aCBkPSJNOCA3VjUuNUEyIDIgMCAwIDEgMTAgMy41aDRBMiAyIDAgMCAxIDE2IDUuNVY3Ii8+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMy41IiByPSIzLjIiLz48L3N2Zz4='
+	const iconLab = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRTNDOUE2IiBzdHJva2Utd2lkdGg9IjEuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNOSAzaDZNMTAgM3Y1bC00IDhhMyAzIDAgMCAwIDIuOCA0aDYuNEEzIDMgMCAwIDAgMTggMTZsLTQtOFYzIi8+PC9zdmc+'
 	const loading = ref(false)
 	const hasMore = ref(true)
 	const messageList = ref([])
@@ -564,56 +550,40 @@ const openPaperPlane = () => {
 <style scoped>
 	.message-page {
 		min-height: 100vh;
-		background: var(--canvas);
+		background: #FDFDFD;
 	}
 
 	.scroller {
 		height: 100vh;
-		padding: 14px 14px 88px;
+		padding: 16px 16px 96px;
 	}
 
-	.unread-clear-action {
+	.section-title {
 		display: block;
-		width: auto;
-		min-height: 0;
-		height: 24px;
-		margin: 0;
-		padding: 0;
-		border: 0;
-		border-radius: 0;
-		background: transparent;
-		color: var(--accent2);
-		font-size: 12px;
-		line-height: 24px;
-		text-align: left;
-		box-sizing: border-box;
-	}
-
-	.unread-clear-action::after {
-		border: 0;
-	}
-
-	.unread-clear-action:active {
-		color: var(--sage);
+		margin-bottom: 12px;
+		font-size: 28rpx;
+		font-weight: 700;
+		letter-spacing: 0.5rpx;
+		color: #2A2A2A;
 	}
 
 	.shortcuts {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
-		gap: 10px 8px;
-		margin-bottom: 18px;
+		gap: 24rpx;
+		margin-bottom: 48rpx;
 	}
 
 	.shortcut {
 		position: relative;
-		min-height: 96px;
-		padding: 15px 14px;
-		border-radius: 12px;
+		min-height: 208rpx;
+		padding: 32rpx 28rpx 36rpx;
+		border-radius: 18rpx;
 		display: flex;
 		flex-direction: column;
 		justify-content: flex-start;
 		overflow: hidden;
-		box-shadow: var(--shadow-sm);
+		box-shadow: 0 4rpx 20rpx rgba(60, 60, 70, 0.035);
 		transition: transform 0.18s ease-out;
 	}
 
@@ -621,84 +591,87 @@ const openPaperPlane = () => {
 		transform: scale(0.98);
 	}
 
-	.shortcut-notice {
-		position: absolute;
-		top: 7px;
-		left: 7px;
-		z-index: 4;
-		width: 9px;
-		height: 9px;
-		border: 2px solid var(--paper);
-		border-radius: 50%;
-		background: var(--accent);
-		box-sizing: border-box;
-	}
-
 	.shortcut-application {
-		background: var(--shortcut-application);
+		background: #F7F2FA;
 	}
 
 	.shortcut-plane {
-		background: var(--shortcut-plane);
+		background: #F0F8FA;
 	}
 
 	.shortcut-dynamic {
-		background: var(--shortcut-dynamic);
+		background: #F2F9F4;
 	}
 
 	.shortcut-lab {
-		background: var(--shortcut-lab);
+		background: #FDF3EB;
+	}
+
+	.shortcut-badge {
+		position: absolute;
+		top: 24rpx;
+		right: 24rpx;
+		z-index: 4;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: #EF6B6B;
+	}
+
+	.shortcut-badge-num {
+		min-width: 36rpx;
+		height: 36rpx;
+		border-radius: 18rpx;
+		padding: 0 10rpx;
+		box-sizing: border-box;
+	}
+
+	.badge-inner {
+		font-size: 22rpx;
+		font-weight: 600;
+		color: #FFFFFF;
 	}
 
 	.sc-copy {
 		position: relative;
 		z-index: 2;
-		max-width: 76%;
+		max-width: 72%;
 		display: flex;
 		flex-direction: column;
-		gap: 5px;
+		gap: 12rpx;
 	}
 
 	.sc-title {
-		font-size: 15px;
-		font-family: var(--sans);
+		font-size: 28rpx;
 		font-weight: 700;
-		line-height: 21px;
-		color: var(--ink);
+		line-height: 40rpx;
+		letter-spacing: 0.5rpx;
+		color: #2A2A2A;
 	}
 
 	.sc-desc {
-		font-size: 11px;
-		line-height: 17px;
+		font-size: 24rpx;
+		font-weight: 400;
+		line-height: 36rpx;
+		color: #9AA0A6;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 
-	.sc-arrow {
-		position: absolute;
-		top: 10px;
-		right: 12px;
-		z-index: 3;
-		font-size: 22px;
-		line-height: 22px;
-		color: var(--muted);
-		opacity: 0.72;
-	}
-
 	.sc-art {
 		position: absolute;
-		right: 10px;
-		bottom: 8px;
-		width: 54px;
-		height: 54px;
-		opacity: 0.18;
+		right: 28rpx;
+		bottom: 24rpx;
+		width: 128rpx;
+		height: 128rpx;
+		opacity: 0.42;
 		pointer-events: none;
 	}
 
 	.art-chat {
 		position: absolute;
-		background: var(--navy);
+		background: #C9B8E0;
 		border-radius: 10px;
 		transform: rotate(-8deg);
 	}
@@ -706,91 +679,91 @@ const openPaperPlane = () => {
 	.art-chat-large {
 		right: 0;
 		top: 5px;
-		width: 39px;
-		height: 27px;
+		width: 36px;
+		height: 24px;
 	}
 
 	.art-chat-small {
-		left: 1px;
+		left: 0;
 		bottom: 5px;
-		width: 29px;
-		height: 21px;
-		opacity: 0.72;
+		width: 26px;
+		height: 18px;
+		background: #C9B8E0;
 	}
 
 	.art-plane-wing {
 		position: absolute;
-		right: 1px;
-		top: 11px;
+		right: 0;
+		top: 10px;
 		width: 0;
 		height: 0;
-		border-top: 15px solid transparent;
-		border-bottom: 15px solid transparent;
-		border-left: 46px solid var(--accent);
+		border-top: 14px solid transparent;
+		border-bottom: 14px solid transparent;
+		border-left: 40px solid #9FC9D9;
 		transform: rotate(-15deg);
 	}
 
 	.art-plane-tail {
 		position: absolute;
-		left: 15px;
-		bottom: 5px;
-		width: 18px;
-		height: 8px;
-		background: var(--accent);
-		border-radius: 2px 8px 2px 8px;
+		left: 12px;
+		bottom: 4px;
+		width: 16px;
+		height: 7px;
+		background: #9FC9D9;
+		border-radius: 2px 7px 2px 7px;
 		transform: rotate(-34deg);
 	}
 
 	.art-photo {
 		position: absolute;
-		width: 36px;
-		height: 27px;
-		border-radius: 6px;
-		background: var(--sage);
+		width: 32px;
+		height: 24px;
+		border-radius: 5px;
+		background: #A8D5BC;
 	}
 
 	.art-photo-back {
 		left: 1px;
-		top: 7px;
+		top: 6px;
 		transform: rotate(-12deg);
-		opacity: 0.68;
+		background: #A8D5BC;
 	}
 
 	.art-photo-front {
 		right: 1px;
-		bottom: 7px;
+		bottom: 6px;
 		transform: rotate(8deg);
 	}
 
 	.art-photo-dot {
-		width: 8px;
-		height: 8px;
-		margin: 6px 0 0 7px;
+		width: 7px;
+		height: 7px;
+		margin: 5px 0 0 6px;
 		border-radius: 999px;
-		background: var(--surface);
+		background: #FFFFFF;
 	}
 
 	.art-flask-neck {
 		position: absolute;
-		left: 22px;
-		top: 4px;
-		width: 11px;
-		height: 18px;
-		border: 3px solid var(--sage);
+		left: 20px;
+		top: 3px;
+		width: 10px;
+		height: 16px;
+		border: 2.5px solid #E3C9A6;
 		border-bottom: 0;
-		border-radius: 4px 4px 0 0;
+		border-radius: 3px 3px 0 0;
 		box-sizing: border-box;
 	}
 
 	.art-flask-body {
 		position: absolute;
-		left: 11px;
-		top: 17px;
-		width: 33px;
-		height: 31px;
-		border: 3px solid var(--sage);
-		border-radius: 7px 7px 14px 14px;
-		background: var(--paper);
+		left: 10px;
+		top: 15px;
+		width: 30px;
+		height: 28px;
+		border: 2.5px solid #E3C9A6;
+		border-radius: 6px 6px 12px 12px;
+		background: #FDF3EB;
 		box-sizing: border-box;
 		transform: rotate(4deg);
 		overflow: hidden;
@@ -800,41 +773,69 @@ const openPaperPlane = () => {
 		position: absolute;
 		left: -3px;
 		bottom: -3px;
-		width: 33px;
-		height: 16px;
-		background: var(--sage);
-		opacity: 0.86;
+		width: 30px;
+		height: 14px;
+		background: #E3C9A6;
 		transform: rotate(-4deg);
 	}
 
 	.art-flask-bubble {
 		position: absolute;
 		border-radius: 999px;
-		background: var(--sage);
+		background: #E3C9A6;
 	}
 
 	.art-flask-bubble-one {
-		right: 3px;
-		top: 9px;
-		width: 7px;
-		height: 7px;
+		right: 2px;
+		top: 8px;
+		width: 6px;
+		height: 6px;
 	}
 
 	.art-flask-bubble-two {
 		right: 0;
-		top: 1px;
+		top: 0;
 		width: 4px;
 		height: 4px;
-		opacity: 0.72;
+		background: #E3C9A6;
+	}
+
+	.chat-header {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: flex-start;
+		margin: 0rpx 8rpx 16rpx;
+	}
+
+	.chat-header .section-title {
+		margin-bottom: 0;
 	}
 
 	.list {
 		display: flex;
 		flex-direction: column;
 		gap: 0;
-		margin: 0 -14px;
+		margin: 0 -16px;
 		padding: 0;
-		background: var(--surface);
+		background: #FDFDFD;
+	}
+
+	/* 会话列表项字体微调（覆盖 XsaMessageItem 默认，仅作用于消息页） */
+	.list :deep(.name) {
+		font-weight: 600;
+	}
+	.list :deep(.last-message) {
+		font-weight: 400;
+	}
+	.list :deep(.last-message.unread) {
+		font-weight: 600;
+	}
+	.list :deep(.time) {
+		opacity: 0.85;
+	}
+	.list :deep(.badge-text) {
+		font-weight: 600;
 	}
 
 	.load-more {
@@ -844,6 +845,7 @@ const openPaperPlane = () => {
 
 	.load-text {
 		font-size: 13px;
+		font-weight: 500;
 	}
 
 	.app-list {
@@ -857,7 +859,7 @@ const openPaperPlane = () => {
 		align-items: center;
 		gap: 10px;
 		padding-bottom: 12px;
-		border-bottom: 1px solid var(--line);
+		border-bottom: 1px solid #EFEFEF;
 	}
 
 	.app-avatar {
@@ -875,8 +877,9 @@ const openPaperPlane = () => {
 	}
 
 	.app-name {
-		font-size: 13px;
-		font-weight: 700;
+		font-size: 26rpx;
+		font-weight: 600;
+		color: #2A2A2A;
 	}
 
 	.app-msg {
@@ -902,5 +905,27 @@ const openPaperPlane = () => {
 		flex-direction: column;
 		align-items: stretch;
 		gap: 10px;
+	}
+
+	/* 底部弹窗按钮：清新配色，覆盖 XsaButton 默认主题色 */
+	.pin-actions .pin-btn {
+		border-radius: 14px;
+		font-weight: 600;
+	}
+	.pin-actions .pin-btn-primary {
+		background: rgba(126, 200, 160, 0.9) !important;
+		color: #FFFFFF !important;
+		border: none !important;
+		box-shadow: 0 4rpx 16rpx rgba(126, 200, 160, 0.22) !important;
+	}
+	.pin-actions .pin-btn-delete {
+		background: #FFFFFF !important;
+		color: #4A4A4A !important;
+		border: 1rpx solid #E8E8E8 !important;
+	}
+	.pin-actions .pin-btn-cancel {
+		background: #FFFFFF !important;
+		color: #8E8E93 !important;
+		border: 1rpx solid #E8E8E8 !important;
 	}
 </style>

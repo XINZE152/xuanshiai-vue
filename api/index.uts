@@ -132,6 +132,7 @@ export type {
 // 情感实验室相关
 export {
   getEmotionLabSummary,
+  getEmotionLabMatches,
   startMbtiAssessment,
   saveMbtiAnswer,
   submitMbtiAssessment,
