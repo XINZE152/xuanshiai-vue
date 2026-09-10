@@ -21,7 +21,7 @@
 			</view>
 			<view class="actions">
 				<button class="btn secondary" @click="handleClose">取消</button>
-				<button class="btn primary" :disabled="submitting || message.trim().length == 0" @click="handleSubmit">
+					<button class="btn primary" :class="{ 'is-disabled': submitting || message.trim().length == 0 }" :disabled="submitting || message.trim().length == 0" @click="handleSubmit">
 					{{ submitting ? '提交中…' : '发送申请' }}
 				</button>
 			</view>
@@ -230,7 +230,7 @@
 		color: var(--text-invert);
 	}
 
-	.btn[disabled] {
+	.btn.is-disabled {
 		opacity: 0.5;
 	}
 </style>
