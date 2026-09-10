@@ -73,7 +73,7 @@
 		/>
 		<!-- 角色形象区 -->
 		<view class="mm-hero" :class="'mm-hero-' + masterState">
-			<MoxiangMasterAvatar :state="masterState" />
+			<MoxiangMasterAvatar :state="masterState" size="large" />
 			<text class="mm-hero-name">{{ masterRoleName }}</text>
 			<text class="mm-hero-sub">{{ statusLabel }}</text>
 		</view>
@@ -112,7 +112,7 @@
 					<!-- 墨相师消息(左) -->
 					<view v-if="msg.role == 'master'" class="mm-msg mm-msg-left">
 						<view class="mm-msg-avatar">
-							<MoxiangMasterAvatar :state="masterState" />
+							<MoxiangMasterAvatar :state="masterState" size="small" />
 						</view>
 						<view class="mm-bubble mm-bubble-master">
 							<text class="mm-bubble-text">{{ msg.text }}</text>
@@ -132,7 +132,7 @@
 					<!-- 思考中 -->
 					<view v-if="msg.role == 'typing'" class="mm-msg mm-msg-left">
 						<view class="mm-msg-avatar">
-							<MoxiangMasterAvatar state="thinking" />
+						<MoxiangMasterAvatar state="thinking" size="small" />
 						</view>
 						<view class="mm-bubble mm-bubble-master mm-typing">
 							<view class="mm-dot"></view>
@@ -144,7 +144,7 @@
 					<!-- 确认卡片(建构模式) -->
 					<view v-if="msg.role == 'card' && msg.card != null" class="mm-msg mm-msg-left">
 						<view class="mm-msg-avatar">
-							<MoxiangMasterAvatar state="thinking" />
+						<MoxiangMasterAvatar state="thinking" size="small" />
 						</view>
 						<view class="mm-card">
 							<view class="mm-card-head" @tap="toggleCard(msg)">
@@ -1499,7 +1499,7 @@ const devMoxiangTrace = ref<any>(null)
 	flex-direction: column;
 	height: 100vh;
 	box-sizing: border-box;
-	background: #F7F1E5;
+	background: var(--canvas);
 }
 
 /* ===== 导航栏 ===== */
@@ -1512,7 +1512,7 @@ const devMoxiangTrace = ref<any>(null)
 	padding: 0 16px;
 	height: 44px;
 	padding-top: var(--status-bar-height, 0px);
-	background: #F7F1E5;
+	background: var(--canvas);
 }
 .mm-nav-back {
 	width: 44px;
@@ -1521,11 +1521,11 @@ const devMoxiangTrace = ref<any>(null)
 	align-items: center;
 	justify-content: center;
 }
-.mm-nav-back-text { font-size: 20px; color: #2E2418; }
+.mm-nav-back-text { font-size: 20px; color: var(--ink); }
 .mm-nav-title {
 	font-size: 17px;
 	font-weight: 700;
-	color: #2E2418;
+	color: var(--ink);
 	font-family: var(--serif, serif);
 }
 .mm-nav-side { width: 28px; }
@@ -1556,60 +1556,60 @@ const devMoxiangTrace = ref<any>(null)
 	flex-direction: column;
 	border-radius: 14px;
 	padding: 16px 18px;
-	background: #FFFCF5;
-	border: 1px solid #E6DAC4;
-	box-shadow: 0 2px 8px rgba(180, 118, 43, 0.06);
+	background: var(--surface);
+	border: 1px solid var(--line);
+	box-shadow: var(--shadow-sm);
 }
 .mm-stage-card-active {
-	border-color: #B4762B;
-	background: linear-gradient(135deg, #FFFCF5 0%, #FAF1DF 100%);
+	border-color: var(--accent2);
+	background: var(--accent-bg);
 }
 .mm-stage-card-done {
-	border-color: #5A9D8E;
-	background: linear-gradient(135deg, #FFFCF5 0%, #EAF3EF 100%);
+	border-color: var(--sage);
+	background: var(--sage-soft);
 }
 .mm-stage-card-locked {
 	opacity: 0.55;
-	background: #F4ECDC;
+	background: var(--warm);
 	border-color: #D6C8AE;
 }
 .mm-stage-card-title {
 	font-size: 18px;
 	font-weight: 700;
-	color: #2E2418;
+	color: var(--ink);
 	font-family: var(--serif, serif);
 }
 .mm-stage-card-sub {
 	font-size: 12px;
-	color: #5C4F3D;
+	color: var(--ink2);
 	margin-top: 4px;
 }
 .mm-stage-card-pct {
 	font-size: 26px;
 	font-weight: 700;
-	color: #B4762B;
+	color: var(--accent2);
 	margin-top: 12px;
 	align-self: flex-end;
 	font-family: var(--serif, serif);
 }
-.mm-stage-card-done .mm-stage-card-pct { color: #5A9D8E; }
+.mm-stage-card-done .mm-stage-card-pct { color: var(--sage); }
 .mm-stage-card-btn {
 	margin-top: 10px;
 	align-self: flex-start;
 	padding: 6px 14px;
 	border-radius: 14px;
-	border: 1px solid #B4762B;
-	background: #FFFCF5;
+	border: 1px solid var(--accent2);
+	background: var(--surface);
 }
 .mm-stage-card-done .mm-stage-card-btn {
-	border-color: #5A9D8E;
+	border-color: var(--sage);
 }
 .mm-stage-card-btn-text {
 	font-size: 12px;
-	color: #B4762B;
+	color: var(--accent2);
 	font-weight: 600;
 }
-.mm-stage-card-done .mm-stage-card-btn-text { color: #5A9D8E; }
+.mm-stage-card-done .mm-stage-card-btn-text { color: var(--sage); }
 .mm-entry-back {
 	margin-top: 12px;
 	padding: 10px 14px;
@@ -1619,7 +1619,7 @@ const devMoxiangTrace = ref<any>(null)
 }
 .mm-entry-back-text {
 	font-size: 12px;
-	color: #9A8C77;
+	color: var(--muted);
 }
 
 /* ===== 角色形象区 ===== */
@@ -1632,13 +1632,13 @@ const devMoxiangTrace = ref<any>(null)
 .mm-hero-name {
 	font-size: 18px;
 	font-weight: 700;
-	color: #2E2418;
+	color: var(--ink);
 	font-family: var(--serif, serif);
 	margin-top: 8px;
 }
 .mm-hero-sub {
 	font-size: 12px;
-	color: #9A8C77;
+	color: var(--muted);
 	margin-top: 2px;
 }
 
@@ -1668,15 +1668,15 @@ const devMoxiangTrace = ref<any>(null)
 	40% { opacity: 0.55; }
 	100% { transform: translateY(-8px) scale(1.2); opacity: 0; }
 }
-.mm-state-text { font-size: 15px; color: #5C4F3D; font-family: var(--serif, serif); }
-.mm-state-sub { font-size: 12px; color: #9A8C77; margin-top: 6px; text-align: center; padding: 0 32px; }
+.mm-state-text { font-size: 15px; color: var(--ink2); font-family: var(--serif, serif); }
+.mm-state-sub { font-size: 12px; color: var(--muted); margin-top: 6px; text-align: center; padding: 0 32px; }
 .mm-state-btn {
 	margin-top: 16px;
 	padding: 8px 24px;
 	border-radius: 8px;
-	background: #B4762B;
+	background: var(--accent2);
 }
-.mm-state-btn-text { font-size: 13px; color: #FFFCF5; font-weight: 700; }
+.mm-state-btn-text { font-size: 13px; color: var(--surface); font-weight: 700; }
 .mm-state-link { margin-top: 14px; padding: 8px 12px; }
 .mm-state-link-text { font-size: 12px; color: var(--accent2); text-decoration: underline; }
 
@@ -1740,11 +1740,11 @@ const devMoxiangTrace = ref<any>(null)
 	border-radius: 10px 10px 10px 0;
 }
 .mm-bubble-master {
-	background: #FFFCF5;
-	border: 1px solid #E6DAC4;
+	background: var(--surface);
+	border: 1px solid var(--line);
 }
 .mm-bubble-user {
-	background: #B4762B;
+	background: var(--accent2);
 	border-radius: 10px 10px 0 10px;
 }
 .mm-bubble-text {
@@ -1752,8 +1752,8 @@ const devMoxiangTrace = ref<any>(null)
 	line-height: 1.45;
 	word-break: break-all;
 }
-.mm-bubble-master .mm-bubble-text { color: #2E2418; }
-.mm-bubble-user .mm-bubble-text { color: #FFFCF5; }
+.mm-bubble-master .mm-bubble-text { color: var(--ink); }
+.mm-bubble-user .mm-bubble-text { color: var(--surface); }
 
 /* 听它读 */
 .mm-listen {
@@ -1763,7 +1763,7 @@ const devMoxiangTrace = ref<any>(null)
 	background: rgba(180, 118, 43, 0.1);
 	align-self: flex-start;
 }
-.mm-listen-text { font-size: 11px; color: #B4762B; }
+.mm-listen-text { font-size: 11px; color: var(--accent2); }
 
 /* 思考中 */
 .mm-typing {
@@ -1775,7 +1775,7 @@ const devMoxiangTrace = ref<any>(null)
 }
 .mm-dot {
 	width: 6px; height: 6px; border-radius: 999px;
-	background: #9A8C77;
+	background: var(--muted);
 	animation: mm-dot-bounce 1.2s ease-in-out infinite;
 }
 .mm-dot:nth-child(2) { animation-delay: 0.2s; }
@@ -1803,7 +1803,7 @@ const devMoxiangTrace = ref<any>(null)
 	background: rgba(201, 123, 87, 0.1);
 	gap: 12px;
 }
-.mm-tts-label { font-size: 12px; color: #5C4F3D; flex: 1; }
+.mm-tts-label { font-size: 12px; color: var(--ink2); flex: 1; }
 .mm-tts-replay {
 	padding: 4px 12px;
 	border-radius: 999px;
@@ -1811,15 +1811,15 @@ const devMoxiangTrace = ref<any>(null)
 }
 .mm-tts-replay-text { font-size: 11px; color: #A05A3E; }
 .mm-tts-close { padding: 4px 8px; }
-.mm-tts-close-text { font-size: 11px; color: #9A8C77; }
+.mm-tts-close-text { font-size: 11px; color: var(--muted); }
 
 /* ===== 底部输入区 ===== */
 .mm-input-bar {
 	flex-shrink: 0;
 	padding: 8px 12px;
 	padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-	background: #F7F1E5;
-	border-top: 1px solid #E6DAC4;
+	background: var(--canvas);
+	border-top: 1px solid var(--line);
 }
 .mm-input-row {
 	display: flex;
@@ -1832,10 +1832,10 @@ const devMoxiangTrace = ref<any>(null)
 	height: 38px;
 	padding: 0 14px;
 	border-radius: 8px;
-	background: #FFFCF5;
-	border: 1px solid #E6DAC4;
+	background: var(--surface);
+	border: 1px solid var(--line);
 	font-size: 14px;
-	color: #2E2418;
+	color: var(--ink);
 }
 .mm-send-btn {
 	padding: 0 16px;
@@ -1847,16 +1847,16 @@ const devMoxiangTrace = ref<any>(null)
 	justify-content: center;
 }
 .mm-send-active {
-	background: #B4762B;
+	background: var(--accent2);
 }
-.mm-send-text { font-size: 13px; color: #FFFCF5; font-weight: 700; }
+.mm-send-text { font-size: 13px; color: var(--surface); font-weight: 700; }
 
 .mm-mode-btn {
 	width: 38px;
 	height: 38px;
 	border-radius: 8px;
-	background: #FFFCF5;
-	border: 1px solid #E6DAC4;
+	background: var(--surface);
+	border: 1px solid var(--line);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -1868,8 +1868,8 @@ const devMoxiangTrace = ref<any>(null)
 	flex: 1;
 	height: 38px;
 	border-radius: 8px;
-	background: #FFFCF5;
-	border: 1px solid #E6DAC4;
+	background: var(--surface);
+	border: 1px solid var(--line);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -1878,7 +1878,7 @@ const devMoxiangTrace = ref<any>(null)
 	background: rgba(201, 123, 87, 0.15);
 	border-color: #C97B57;
 }
-.mm-voice-btn-text { font-size: 14px; color: #2E2418; font-weight: 600; }
+.mm-voice-btn-text { font-size: 14px; color: var(--ink); font-weight: 600; }
 
 .mm-listen-btn {
 	padding: 0 16px;
@@ -1889,7 +1889,7 @@ const devMoxiangTrace = ref<any>(null)
 	align-items: center;
 	justify-content: center;
 }
-.mm-listen-btn-text { font-size: 13px; color: #B4762B; }
+.mm-listen-btn-text { font-size: 13px; color: var(--accent2); }
 
 /* ===== 发布就绪 ===== */
 .mm-ready {
@@ -1902,7 +1902,7 @@ const devMoxiangTrace = ref<any>(null)
 	flex-direction: column;
 	align-items: stretch;
 }
-.mm-ready-text { font-size: 13px; color: #B4762B; font-weight: 700; text-align: center; }
+.mm-ready-text { font-size: 13px; color: var(--accent2); font-weight: 700; text-align: center; }
 .mm-ready-actions { display: flex; flex-direction: row; margin-top: 9px; }
 .mm-ready-btn {
 	flex: 1;
@@ -1921,8 +1921,8 @@ const devMoxiangTrace = ref<any>(null)
 /* ===== 确认卡片 ===== */
 .mm-card {
 	max-width: 78%;
-	background: #FFFCF5;
-	border: 1px solid #E6DAC4;
+	background: var(--surface);
+	border: 1px solid var(--line);
 	border-radius: 12px;
 	padding: 12px;
 }
@@ -1932,8 +1932,8 @@ const devMoxiangTrace = ref<any>(null)
 	align-items: center;
 	justify-content: space-between;
 }
-.mm-card-title { font-size: 14px; font-weight: 700; color: #2E2418; }
-.mm-card-fold { font-size: 11px; color: #9A8C77; }
+.mm-card-title { font-size: 14px; font-weight: 700; color: var(--ink); }
+.mm-card-fold { font-size: 11px; color: var(--muted); }
 .mm-card-list { display: flex; flex-direction: column; }
 .mm-card-item {
 	display: flex;
@@ -1945,7 +1945,7 @@ const devMoxiangTrace = ref<any>(null)
 }
 .mm-card-cat {
 	font-size: 11px;
-	color: #B4762B;
+	color: var(--accent2);
 	background: rgba(180, 118, 43, 0.1);
 	border-radius: 999px;
 	padding: 2px 8px;
@@ -1953,10 +1953,10 @@ const devMoxiangTrace = ref<any>(null)
 .mm-card-content {
 	margin-top: 6px;
 	font-size: 13px;
-	color: #2E2418;
+	color: var(--ink);
 	line-height: 1.5;
 }
-.mm-card-value { margin-top: 4px; font-size: 12px; color: #5C4F3D; }
+.mm-card-value { margin-top: 4px; font-size: 12px; color: var(--ink2); }
 .mm-card-actions {
 	display: flex;
 	flex-direction: row;
@@ -1973,10 +1973,10 @@ const devMoxiangTrace = ref<any>(null)
 	align-items: center;
 	justify-content: center;
 }
-.mm-card-btn-text { font-size: 12px; color: #B4762B; }
-.mm-card-btn-primary { background: #B4762B; flex: 1; }
+.mm-card-btn-text { font-size: 12px; color: var(--accent2); }
+.mm-card-btn-primary { background: var(--accent2); flex: 1; }
 .mm-card-btn-disabled { opacity: 0.55; }
-.mm-card-btn-text-primary { font-size: 12px; color: #FFFCF5; font-weight: 700; }
+.mm-card-btn-text-primary { font-size: 12px; color: var(--surface); font-weight: 700; }
 .mm-card-edit {
 	display: flex;
 	flex-direction: column;
@@ -1987,20 +1987,20 @@ const devMoxiangTrace = ref<any>(null)
 	height: 72px;
 	padding: 8px 10px;
 	border-radius: 8px;
-	background: #F7F1E5;
-	border: 1px solid #E6DAC4;
+	background: var(--canvas);
+	border: 1px solid var(--line);
 	font-size: 13px;
-	color: #2E2418;
+	color: var(--ink);
 }
 .mm-card-confirm {
 	margin-top: 12px;
 	height: 36px;
 	border-radius: 8px;
-	background: #B4762B;
+	background: var(--accent2);
 	display: flex;
 	align-items: center;
 	justify-content: center;
 }
-.mm-card-confirm-text { font-size: 13px; color: #FFFCF5; font-weight: 700; }
+.mm-card-confirm-text { font-size: 13px; color: var(--surface); font-weight: 700; }
 
 </style>

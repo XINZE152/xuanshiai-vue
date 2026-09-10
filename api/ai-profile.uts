@@ -658,3 +658,13 @@ export async function confirmPortraitNarrative(subject: string): Promise<any> {
     data: {}
   })
 }
+
+/** 重新生成画像叙事层（每日限 5 次），返回 202 + task_id 供轮询。 */
+export async function regeneratePortraitNarrative(subject: string): Promise<any> {
+  return request({
+    url: '/ai/profiles/' + subject + '/narrative/regenerate',
+    method: 'POST',
+    data: {},
+    headers: { 'Idempotency-Key': genIdempotencyKey() }
+  })
+}

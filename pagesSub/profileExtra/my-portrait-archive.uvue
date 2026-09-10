@@ -20,8 +20,12 @@
 			<view class="mpa-subject" :class="mpa-subject-personal">
 				<text class="mpa-subject-title">我的墨相</text>
 				<text class="mpa-subject-sub">{{ personalStateSub }}</text>
-				<text v-if="archive.personal.consentActive" class="mpa-badge">授权中</text>
+				<text v-if="personalConsentActive" class="mpa-badge">授权中</text>
 				<text v-else class="mpa-badge mpa-badge-off">未授权</text>
+				<view v-if="personalOverallPercent > 0" class="mpa-progress">
+					<view class="mpa-progress-track"><view class="mpa-progress-fill" :style="{ width: personalOverallPercent + '%' }"></view></view>
+					<text class="mpa-progress-num">{{ personalOverallPercent }}%</text>
+				</view>
 				<view class="mpa-subject-actions">
 					<view class="mpa-btn" @tap="goMaster('personal')">
 						<text class="mpa-btn-text">{{ personalCta }}</text>
@@ -46,8 +50,12 @@
 			<view class="mpa-subject" :class="mpa-subject-ideal">
 				<text class="mpa-subject-title">愿遇之相</text>
 				<text class="mpa-subject-sub">{{ idealPartnerStateSub }}</text>
-				<text v-if="archive.idealPartner.consentActive" class="mpa-badge">授权中</text>
+				<text v-if="idealConsentActive" class="mpa-badge">授权中</text>
 				<text v-else class="mpa-badge mpa-badge-off">未授权</text>
+				<view v-if="idealOverallPercent > 0" class="mpa-progress">
+					<view class="mpa-progress-track"><view class="mpa-progress-fill" :style="{ width: idealOverallPercent + '%' }"></view></view>
+					<text class="mpa-progress-num">{{ idealOverallPercent }}%</text>
+				</view>
 				<view class="mpa-subject-actions">
 					<view class="mpa-btn" @tap="goMaster('ideal_partner')">
 						<text class="mpa-btn-text">{{ idealPartnerCta }}</text>
@@ -92,7 +100,7 @@
 	 * 2. 双主体资产卡独立展示,主体互不干扰
 	 * 3. 撤回授权后,主体资产卡仍可读(只把 consentActive 标 false)
 	 */
-	import { getMoxiangArchive, type MoxiangArchiveResponse, type ArchiveSubject } from '@/api/ai-moxiang.uts'
+	import { getMoxiangArchive, getMoxiangState, type MoxiangArchiveResponse, type ArchiveSubject, type MoxiangStateResponse } from '@/api/ai-moxiang.uts'
 	import MemoryManagementSheet from '@/components/MemoryManagementSheet.uvue'
 
 	function emptySubject(subject: 'personal' | 'ideal_partner'): ArchiveSubject {
@@ -107,6 +115,38 @@
 		}
 	}
 
+	function emptyState(): MoxiangStateResponse {
+		return {
+			consentGranted: false,
+			activeSubject: 'personal',
+			personal: {
+				sessionId: null,
+				journeyStage: null,
+				lastTurnAt: null,
+				lastTopicExcerpt: '',
+				overallPercent: 0,
+				dimensions: {} as any,
+				pendingBuildInviteId: null,
+				pendingConfirmCard: false,
+				publishedRevisionId: null,
+				canStartIdealPartner: false
+			},
+			idealPartner: {
+				sessionId: null,
+				journeyStage: null,
+				lastTurnAt: null,
+				lastTopicExcerpt: '',
+				overallPercent: 0,
+				dimensions: {} as any,
+				pendingBuildInviteId: null,
+				pendingConfirmCard: false,
+				publishedRevisionId: null,
+				canStartIdealPartner: false
+			},
+			canStartIdealPartner: false
+		}
+	}
+
 	export default {
 		components: { MemoryManagementSheet },
 		data() {
@@ -118,32 +158,55 @@
 					personal: emptySubject('personal'),
 					idealPartner: emptySubject('ideal_partner'),
 					fallbackAvailable: false
-				} as MoxiangArchiveResponse
+				} as MoxiangArchiveResponse,
+				state: emptyState() as MoxiangStateResponse | null
 			}
 		},
 		computed: {
+			personalOverallPercent(): number {
+				const s = this.state
+				if (s == null) return 0
+				return Math.round(Number(s.personal.overallPercent ?? 0))
+			},
+			idealOverallPercent(): number {
+				const s = this.state
+				if (s == null) return 0
+				return Math.round(Number(s.idealPartner.overallPercent ?? 0))
+			},
+			personalConsentActive(): boolean {
+				if (this.state != null) return this.state.consentGranted
+				return this.archive.personal.consentActive
+			},
+			idealConsentActive(): boolean {
+				if (this.state != null) return this.state.consentGranted
+				return this.archive.idealPartner.consentActive
+			},
 			personalStateSub(): string {
 				const p = this.archive.personal
 				if (p.currentRevision) return '已发布第 ' + p.currentRevision.revisionNo + ' 版'
 				if (p.activeDraft) return '草稿进行中 · rev ' + p.activeDraft.expectedRevision
+				if (this.personalOverallPercent > 0) return '知遇已理解你 ' + this.personalOverallPercent + '% · 继续聊聊就能成稿'
 				return '尚未开始'
 			},
 			idealPartnerStateSub(): string {
 				const p = this.archive.idealPartner
 				if (p.currentRevision) return '已发布第 ' + p.currentRevision.revisionNo + ' 版'
 				if (p.activeDraft) return '草稿进行中 · rev ' + p.activeDraft.expectedRevision
-				return '需要先完成我的墨相'
+				if (this.idealOverallPercent > 0) return '知遇已理解你的期待 ' + this.idealOverallPercent + '% · 继续聊聊就能成稿'
+				if (this.state != null && !this.state.canStartIdealPartner) return '需要先完成我的墨相'
+				return '尚未开始'
 			},
 			personalCta(): string {
 				const p = this.archive.personal
 				if (p.currentRevision) return '继续完善'
-				if (p.activeDraft) return '继续聊聊'
+				if (p.activeDraft || this.personalOverallPercent > 0) return '继续聊聊'
 				return '开始聊聊'
 			},
 			idealPartnerCta(): string {
 				const p = this.archive.idealPartner
 				if (p.currentRevision) return '继续完善'
-				if (p.activeDraft) return '继续聊聊'
+				if (p.activeDraft || this.idealOverallPercent > 0) return '继续聊聊'
+				if (this.state != null && !this.state.canStartIdealPartner) return '先完成我的墨相'
 				return '开始聊聊'
 			}
 		},
@@ -170,8 +233,16 @@
 				this.loading = true
 				this.errorMessage = ''
 				try {
-					const data = await getMoxiangArchive()
-					this.archive = data
+					// archive 只覆盖已发布/草稿资产；旅程中的理解进度在 state 里，两个都要。
+					const results = await Promise.all([
+						getMoxiangArchive(),
+						getMoxiangState().catch((e: any) => {
+							console.log('moxiang state load failed', e)
+							return null
+						})
+					])
+					this.archive = results[0]
+					this.state = results[1]
 				} catch (e: any) {
 					this.errorMessage = '读取档案失败:' + (e?.message ?? String(e))
 				} finally {
@@ -179,6 +250,11 @@
 				}
 			},
 			goMaster(subject: string) {
+				// 愿遇之相需先完成（发布）我的墨相，锁定时提示而不是推进聊天。
+				if (subject == 'ideal_partner' && this.state != null && !this.state.canStartIdealPartner) {
+					uni.showToast({ title: '先完成「我的墨相」发布，再开启愿遇之相', icon: 'none', duration: 2500 })
+					return
+				}
 				uni.redirectTo({ url: '/pagesSub/profileExtra/my-portrait-master?subject=' + subject })
 			},
 			goResult(subject: string) {
@@ -195,7 +271,7 @@
 
 <style>
 	.mpa-page { min-height: 100vh; background: #faf7f2; padding: 0 0 80rpx 0; }
-	.mpa-nav { display: flex; align-items: center; padding: 32rpx 32rpx 24rpx 32rpx; }
+	.mpa-nav { position: sticky; top: 0; z-index: 100; display: flex; align-items: center; padding: 32rpx 32rpx 24rpx 32rpx; background: #faf7f2; }
 	.mpa-nav-back { width: 64rpx; height: 64rpx; display: flex; align-items: center; justify-content: center; }
 	.mpa-nav-back-text { font-size: 36rpx; color: #5a4632; }
 	.mpa-nav-title { flex: 1; text-align: center; font-size: 32rpx; color: #3a2c1f; font-weight: 600; }
@@ -211,6 +287,10 @@
 	.mpa-subject-sub { font-size: 26rpx; color: #8c7860; display: block; margin-top: 8rpx; }
 	.mpa-badge { display: inline-block; margin-top: 12rpx; padding: 4rpx 16rpx; font-size: 22rpx; border-radius: 999rpx; background: #efe6d9; color: #5a4632; }
 	.mpa-badge-off { background: #f0e0d0; color: #8c7860; }
+	.mpa-progress { display: flex; flex-direction: row; align-items: center; gap: 16rpx; margin-top: 20rpx; }
+	.mpa-progress-track { flex: 1; height: 12rpx; border-radius: 999rpx; background: #efe6d9; overflow: hidden; }
+	.mpa-progress-fill { height: 100%; border-radius: 999rpx; background: #b89878; }
+	.mpa-progress-num { width: 72rpx; text-align: right; font-size: 22rpx; color: #8c7860; }
 	.mpa-subject-actions { display: flex; gap: 16rpx; margin-top: 24rpx; }
 	.mpa-btn { flex: 1; padding: 20rpx 0; background: #b89878; border-radius: 12rpx; text-align: center; }
 	.mpa-btn-ghost { background: transparent; border: 1rpx solid #b89878; }

@@ -38,8 +38,12 @@
 		<view v-else-if="publishedMode && !narrativeReady" class="mpr-state">
 			<text class="mpr-state-title">正在写下完整画像</text>
 			<text class="mpr-state-copy">成稿已经发布，完整理解仍在后台整理。稍后刷新即可，不需要重复发布。</text>
+			<text v-if="narrativeFailure != ''" class="mpr-state-copy mpr-fail">上次整理失败：{{ narrativeFailure }}。可稍后刷新重试，不影响已发布的成稿。</text>
 			<view class="mpr-btn mpr-btn-primary" @tap="retryLoad">
 				<text class="mpr-btn-primary-text">刷新画像</text>
+			</view>
+			<view v-if="narrativeFailure != ''" class="mpr-btn" :class="{ 'mpr-btn-disabled': regenerating }" @tap="onRegenerateNarrative">
+				<text class="mpr-btn-text">{{ regenerating ? '正在重新生成…' : '重新生成完整画像' }}</text>
 			</view>
 			<view class="mpr-btn mpr-btn-ghost" @tap="onBackToArchive"><text class="mpr-btn-text">先返回档案</text></view>
 		</view>
@@ -116,7 +120,7 @@
 
 <script lang="uts">
 	import { createProfilePreview, getProfilePreview, type ProfilePreviewRecord } from '@/api/ai-moxiang.uts'
-	import { publishProfileDraft, pollTaskUntilTerminal, getPortraitNarrative, confirmPortraitNarrative } from '@/api/ai-profile.uts'
+	import { publishProfileDraft, pollTaskUntilTerminal, getPortraitNarrative, confirmPortraitNarrative, regeneratePortraitNarrative } from '@/api/ai-profile.uts'
 
 	export default {
 		data() {
@@ -134,7 +138,9 @@
 				confirming: false,
 				pageAlive: true,
 				stateMessage: '正在整理成稿…',
-				errorMessage: ''
+				errorMessage: '',
+				narrativeFailure: '',
+				regenerating: false
 			}
 		},
 		computed: {
@@ -249,7 +255,9 @@
 						const narrativeTask = await pollTaskUntilTerminal(narrativeTaskId, 40, () => this.pageAlive)
 						if (!narrativeTask.done || narrativeTask.status != 'succeeded') {
 							this.narrative = { status: 'pending' }
-							uni.showToast({ title: '成稿已发布，完整画像仍在整理', icon: 'none' })
+							// 叙事失败必须可见：留错误详情而不是只说"仍在整理"。
+							this.narrativeFailure = narrativeTask.error != '' ? narrativeTask.error : '叙事生成超时'
+							uni.showToast({ title: '成稿已发布，完整画像整理失败', icon: 'none' })
 							return
 						}
 					}
@@ -276,6 +284,30 @@
 					this.confirming = false
 				}
 			},
+			async onRegenerateNarrative() {
+				if (this.regenerating) return
+				this.regenerating = true
+				try {
+					const res = await regeneratePortraitNarrative(this.subject)
+					if (!res.success || res.data == null) throw new Error(String(res.message ?? '重新生成失败'))
+					const taskId = String(res.data.task_id ?? '')
+					if (taskId != '') {
+						const task = await pollTaskUntilTerminal(taskId, 40, () => this.pageAlive)
+						if (!task.done || task.status != 'succeeded') {
+							this.narrativeFailure = task.error != '' ? task.error : '重新生成超时'
+							uni.showToast({ title: '整理仍未完成，可稍后再试', icon: 'none' })
+							return
+						}
+					}
+					this.narrativeFailure = ''
+					await this.loadNarrative(false)
+				} catch (e: any) {
+					this.narrativeFailure = e?.message ?? String(e)
+					uni.showToast({ title: '重新生成失败，请稍后再试', icon: 'none' })
+				} finally {
+					this.regenerating = false
+				}
+			},
 			onContinueChat() {
 				uni.redirectTo({ url: '/pagesSub/profileExtra/my-portrait-master?subject=' + this.subject })
 			},
@@ -288,7 +320,7 @@
 
 <style>
 	.mpr-page { min-height: 100vh; background: var(--canvas); color: var(--ink); }
-	.mpr-nav { display: flex; align-items: center; padding: 16px 16px 12px; }
+	.mpr-nav { position: sticky; top: 0; z-index: 100; display: flex; align-items: center; padding: 16px 16px 12px; background: var(--canvas); }
 	.mpr-nav-back, .mpr-nav-side { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
 	.mpr-nav-back-text { font-size: 24px; color: var(--ink); }
 	.mpr-nav-title { flex: 1; text-align: center; font-size: 17px; color: var(--ink); font-weight: 700; }
@@ -296,6 +328,7 @@
 	.mpr-loading-dot { width: 12px; height: 12px; border-radius: 999px; background: var(--accent); margin-bottom: 16px; }
 	.mpr-state-title { font-size: 18px; color: var(--ink); font-weight: 700; text-align: center; }
 	.mpr-state-copy { font-size: 13px; color: var(--ink2); line-height: 1.7; text-align: center; margin-top: 10px; }
+	.mpr-fail { color: #a05a2c; }
 	.mpr-scroll { height: calc(100vh - 72px); }
 	.mpr-body { padding: 12px 16px 48px; }
 	.mpr-paper { background: var(--paper); padding: 28px 22px; border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow-sm); }

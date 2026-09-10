@@ -726,7 +726,6 @@
 	import { getDiscoveryRecommendations, getDiscoveryPlaza, getDynamicList, getDynamicDetail, getUserDetail, getOwnProfile, getProfileCompletion } from '@/api'
 	import { getMembershipPackages } from '@/api/discovery.uts'
 	import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
-	import locationJson from '@/data/location.json'
 	import {
 		recordProfileView,
 		resetDailyIfNeeded,
@@ -824,11 +823,6 @@
 	const locationTextByCityCode = (rawCode: any): string => {
 		const cityCode = rawCode != null ? '' + rawCode : ''
 		if (cityCode == '') return '未填写'
-		const provinces = Array.isArray(locationJson) ? locationJson as any[] : []
-		for (const province of provinces) {
-			const cities = Array.isArray(province.city) ? province.city as any[] : []
-			for (const city of cities) if ('' + city.code == cityCode) return province.name + ' ' + city.name
-		}
 		return cityCode
 	}
 	const basicInfoRows = computed(() => [
