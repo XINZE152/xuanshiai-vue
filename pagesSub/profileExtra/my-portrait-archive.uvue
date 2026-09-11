@@ -1,8 +1,11 @@
 <template>
 	<view class="mpa-page">
-		<view class="mpa-nav">
-			<view class="mpa-nav-back" @tap="navBack"><text class="mpa-nav-back-text">←</text></view>
-			<text class="mpa-nav-title">我的墨相档案</text>
+		<!-- 导航栏 -->
+		<view class="mpa-nav" :style="{ paddingTop: navPadTop + 'px', paddingRight: (menuButtonSpacing + 8) + 'px' }">
+			<view class="mpa-nav-side mpa-nav-back" @tap="navBack">
+				<text class="mpa-nav-back-text">‹</text>
+			</view>
+			<text class="mpa-nav-title" :style="{ top: navPadTop + 'px' }">我的画像档案</text>
 			<view class="mpa-nav-side"></view>
 		</view>
 
@@ -17,11 +20,17 @@
 		</view>
 
 		<view v-else class="mpa-body">
-			<view class="mpa-subject" :class="mpa-subject-personal">
-				<text class="mpa-subject-title">我的墨相</text>
+			<!-- 自我画像资产卡 -->
+			<view class="mpa-subject mpa-subject-personal">
+				<view class="mpa-subject-head">
+					<view class="mpa-subject-title-box">
+						<text class="mpa-subject-title">我的画像</text>
+						<text class="mpa-subject-tag">关于我</text>
+					</view>
+					<text v-if="personalConsentActive" class="mpa-badge">授权中</text>
+					<text v-else class="mpa-badge mpa-badge-off">未授权</text>
+				</view>
 				<text class="mpa-subject-sub">{{ personalStateSub }}</text>
-				<text v-if="personalConsentActive" class="mpa-badge">授权中</text>
-				<text v-else class="mpa-badge mpa-badge-off">未授权</text>
 				<view v-if="personalOverallPercent > 0" class="mpa-progress">
 					<view class="mpa-progress-track"><view class="mpa-progress-fill" :style="{ width: personalOverallPercent + '%' }"></view></view>
 					<text class="mpa-progress-num">{{ personalOverallPercent }}%</text>
@@ -33,6 +42,9 @@
 					<view v-if="archive.personal.currentRevision" class="mpa-btn mpa-btn-ghost" @tap="goResult('personal')">
 						<text class="mpa-btn-text">看成稿</text>
 					</view>
+					<view v-if="archive.personal.currentRevision" class="mpa-btn mpa-btn-ghost" @tap="goPoster('personal')">
+						<text class="mpa-btn-text">生成海报</text>
+					</view>
 				</view>
 				<view v-if="archive.personal.history.length > 0" class="mpa-history">
 					<text class="mpa-history-title">历史版本</text>
@@ -43,15 +55,21 @@
 					</view>
 				</view>
 				<view v-if="archive.personal.preview" class="mpa-preview-tip">
-					<text class="mpa-preview-tip-text">草稿上有未发布的预览(rev {{ archive.personal.preview.expectedRevision }})</text>
+					<text class="mpa-preview-tip-text">草稿上有未发布的预览 (rev {{ archive.personal.preview.expectedRevision }})</text>
 				</view>
 			</view>
 
-			<view class="mpa-subject" :class="mpa-subject-ideal">
-				<text class="mpa-subject-title">愿遇之相</text>
+			<!-- 伴侣画像资产卡 -->
+			<view class="mpa-subject mpa-subject-ideal">
+				<view class="mpa-subject-head">
+					<view class="mpa-subject-title-box">
+						<text class="mpa-subject-title">伴侣画像</text>
+						<text class="mpa-subject-tag">期待的关系</text>
+					</view>
+					<text v-if="idealConsentActive" class="mpa-badge">授权中</text>
+					<text v-else class="mpa-badge mpa-badge-off">未授权</text>
+				</view>
 				<text class="mpa-subject-sub">{{ idealPartnerStateSub }}</text>
-				<text v-if="idealConsentActive" class="mpa-badge">授权中</text>
-				<text v-else class="mpa-badge mpa-badge-off">未授权</text>
 				<view v-if="idealOverallPercent > 0" class="mpa-progress">
 					<view class="mpa-progress-track"><view class="mpa-progress-fill" :style="{ width: idealOverallPercent + '%' }"></view></view>
 					<text class="mpa-progress-num">{{ idealOverallPercent }}%</text>
@@ -73,15 +91,22 @@
 					</view>
 				</view>
 				<view v-if="archive.idealPartner.preview" class="mpa-preview-tip">
-					<text class="mpa-preview-tip-text">草稿上有未发布的预览(rev {{ archive.idealPartner.preview.expectedRevision }})</text>
+					<text class="mpa-preview-tip-text">草稿上有未发布的预览 (rev {{ archive.idealPartner.preview.expectedRevision }})</text>
 				</view>
 			</view>
+
+			<!-- 记忆管理卡片 -->
 			<view class="mpa-memory-entry" @tap="openMemorySheet">
+				<view class="mpa-memory-entry-icon">
+					<text class="mpa-memory-entry-icon-text">记</text>
+				</view>
 				<view class="mpa-memory-entry-copy">
 					<text class="mpa-memory-entry-title">记忆管理</text>
-					<text class="mpa-memory-entry-sub">查看、确认或停止使用 AI 从对话中整理的理解</text>
+					<text class="mpa-memory-entry-sub">查看、确认或停止使用 AI 从对话中梳理的理解</text>
 				</view>
-				<text class="mpa-memory-entry-arrow">›</text>
+				<view class="mpa-memory-entry-arrow-box">
+					<text class="mpa-memory-entry-arrow">➔</text>
+				</view>
 			</view>
 		</view>
 		<MemoryManagementSheet :visible="memorySheetVisible" @close="closeMemorySheet" />
@@ -147,10 +172,18 @@
 		}
 	}
 
+	const systemInfo = uni.getSystemInfoSync()
+	const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
+	const menuButtonInfo = uni.getMenuButtonBoundingClientRect()
+	const navPadTop = menuButtonInfo != null && menuButtonInfo.top > statusBarHeight ? menuButtonInfo.top : statusBarHeight + 6
+	const menuButtonSpacing = menuButtonInfo != null ? (systemInfo.windowWidth - menuButtonInfo.left) : 8
+
 	export default {
 		components: { MemoryManagementSheet },
 		data() {
 			return {
+				navPadTop: navPadTop,
+				menuButtonSpacing: menuButtonSpacing,
 				loading: true,
 				errorMessage: '',
 				memorySheetVisible: false,
@@ -193,7 +226,7 @@
 				if (p.currentRevision) return '已发布第 ' + p.currentRevision.revisionNo + ' 版'
 				if (p.activeDraft) return '草稿进行中 · rev ' + p.activeDraft.expectedRevision
 				if (this.idealOverallPercent > 0) return '知遇已理解你的期待 ' + this.idealOverallPercent + '% · 继续聊聊就能成稿'
-				if (this.state != null && !this.state.canStartIdealPartner) return '需要先完成我的墨相'
+				if (this.state != null && !this.state.canStartIdealPartner) return '需要先完成自我画像'
 				return '尚未开始'
 			},
 			personalCta(): string {
@@ -206,7 +239,7 @@
 				const p = this.archive.idealPartner
 				if (p.currentRevision) return '继续完善'
 				if (p.activeDraft || this.idealOverallPercent > 0) return '继续聊聊'
-				if (this.state != null && !this.state.canStartIdealPartner) return '先完成我的墨相'
+				if (this.state != null && !this.state.canStartIdealPartner) return '先完成我的画像'
 				return '开始聊聊'
 			}
 		},
@@ -250,15 +283,18 @@
 				}
 			},
 			goMaster(subject: string) {
-				// 愿遇之相需先完成（发布）我的墨相，锁定时提示而不是推进聊天。
+				// 伴侣画像需先完成（发布）我的画像，锁定时提示而不是推进聊天。
 				if (subject == 'ideal_partner' && this.state != null && !this.state.canStartIdealPartner) {
-					uni.showToast({ title: '先完成「我的墨相」发布，再开启愿遇之相', icon: 'none', duration: 2500 })
+					uni.showToast({ title: '先完成「我的画像」发布，再开启伴侣画像', icon: 'none', duration: 2500 })
 					return
 				}
 				uni.redirectTo({ url: '/pagesSub/profileExtra/my-portrait-master?subject=' + subject })
 			},
 			goResult(subject: string) {
-				uni.redirectTo({ url: '/pagesSub/profileExtra/my-portrait-result?subject=' + subject })
+				uni.navigateTo({ url: '/pagesSub/profileExtra/my-portrait-result?subject=' + subject })
+			},
+			goPoster(subject: string) {
+				uni.navigateTo({ url: '/pagesSub/profileExtra/my-portrait-result?subject=' + subject + '&openPoster=1' })
 			},
 			formatTime(t: string | null): string {
 				if (!t) return ''
@@ -270,43 +306,373 @@
 </script>
 
 <style>
-	.mpa-page { min-height: 100vh; background: #faf7f2; padding: 0 0 80rpx 0; }
-	.mpa-nav { position: sticky; top: 0; z-index: 100; display: flex; align-items: center; padding: 32rpx 32rpx 24rpx 32rpx; background: #faf7f2; }
-	.mpa-nav-back { width: 64rpx; height: 64rpx; display: flex; align-items: center; justify-content: center; }
-	.mpa-nav-back-text { font-size: 36rpx; color: #5a4632; }
-	.mpa-nav-title { flex: 1; text-align: center; font-size: 32rpx; color: #3a2c1f; font-weight: 600; }
-	.mpa-nav-side { width: 64rpx; }
-	.mpa-loading, .mpa-error { padding: 120rpx 32rpx; text-align: center; }
-	.mpa-loading-dot { width: 24rpx; height: 24rpx; border-radius: 50%; background: #b89878; margin: 0 auto 16rpx; }
-	.mpa-loading-text, .mpa-error-text { font-size: 28rpx; color: #5a4632; }
-	.mpa-error-btn { margin-top: 32rpx; padding: 24rpx 0; background: #efe6d9; border-radius: 12rpx; }
-	.mpa-error-btn-text { font-size: 28rpx; color: #3a2c1f; }
-	.mpa-body { padding: 0 32rpx; }
-	.mpa-subject { background: #fff; border-radius: 16rpx; padding: 32rpx; margin-top: 24rpx; box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04); }
-	.mpa-subject-title { font-size: 32rpx; color: #3a2c1f; font-weight: 600; display: block; }
-	.mpa-subject-sub { font-size: 26rpx; color: #8c7860; display: block; margin-top: 8rpx; }
-	.mpa-badge { display: inline-block; margin-top: 12rpx; padding: 4rpx 16rpx; font-size: 22rpx; border-radius: 999rpx; background: #efe6d9; color: #5a4632; }
-	.mpa-badge-off { background: #f0e0d0; color: #8c7860; }
-	.mpa-progress { display: flex; flex-direction: row; align-items: center; gap: 16rpx; margin-top: 20rpx; }
-	.mpa-progress-track { flex: 1; height: 12rpx; border-radius: 999rpx; background: #efe6d9; overflow: hidden; }
-	.mpa-progress-fill { height: 100%; border-radius: 999rpx; background: #b89878; }
-	.mpa-progress-num { width: 72rpx; text-align: right; font-size: 22rpx; color: #8c7860; }
-	.mpa-subject-actions { display: flex; gap: 16rpx; margin-top: 24rpx; }
-	.mpa-btn { flex: 1; padding: 20rpx 0; background: #b89878; border-radius: 12rpx; text-align: center; }
-	.mpa-btn-ghost { background: transparent; border: 1rpx solid #b89878; }
-	.mpa-btn-text { font-size: 26rpx; color: #fff; }
-	.mpa-btn-ghost .mpa-btn-text { color: #b89878; }
-	.mpa-history { margin-top: 24rpx; padding-top: 16rpx; border-top: 1rpx solid #efe6d9; }
-	.mpa-history-title { font-size: 22rpx; color: #8c7860; display: block; margin-bottom: 8rpx; }
-	.mpa-history-item { display: flex; gap: 24rpx; padding: 8rpx 0; font-size: 24rpx; color: #5a4632; }
-	.mpa-history-no { color: #b89878; font-weight: 600; }
-	.mpa-history-time { color: #8c7860; }
-	.mpa-history-fields { color: #5a4632; }
-	.mpa-preview-tip { margin-top: 16rpx; padding: 12rpx 16rpx; background: #fdf3e0; border-radius: 8rpx; }
-	.mpa-preview-tip-text { font-size: 22rpx; color: #8a6a3a; }
-	.mpa-memory-entry { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 16rpx; margin-top: 24rpx; padding: 24rpx 28rpx; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
-	.mpa-memory-entry-copy { display: flex; flex: 1; flex-direction: column; gap: 8rpx; }
-	.mpa-memory-entry-title { font-size: 30rpx; color: var(--ink); font-weight: 700; }
-	.mpa-memory-entry-sub { font-size: 24rpx; color: var(--ink2); line-height: 1.5; }
-	.mpa-memory-entry-arrow { min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; font-size: 38rpx; color: var(--accent2); }
+	.mpa-page {
+		min-height: 100vh;
+		background: #F3EFE8;
+		padding: 0 0 60px 0;
+		color: #23201E;
+		--canvas: #F3EFE8;
+		--primary: #9C5B42;
+		--primary-dark: #854B35;
+		--warm-gold: #C29F68;
+		--surface: #FFFFFF;
+		--surface-warm: #FAF7F2;
+		--line: #E8E2D8;
+		--border-card: #D8D2C7;
+		--ink: #23201E;
+		--ink2: #6C665F;
+		--muted: #9E978E;
+		--accent: #9C5B42;
+		--accent2: #9C5B42;
+		--warm: #F5EAE4;
+		--text-invert: #FFFFFF;
+	}
+
+	.mpa-nav {
+		position: sticky;
+		top: 0;
+		z-index: 100;
+		box-sizing: content-box;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding-left: 10px;
+		padding-bottom: 8px;
+		background: #F3EFE8;
+		border-bottom: 1px solid rgba(232, 226, 216, 0.7);
+	}
+
+	.mpa-nav-side {
+		z-index: 1;
+		min-width: 44px;
+		height: 40px;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: flex-end;
+	}
+
+	.mpa-nav-back {
+		justify-content: flex-start;
+	}
+
+	.mpa-nav-back-text {
+		font-size: 28px;
+		color: #23201E;
+		padding: 0 8px;
+		line-height: 1;
+	}
+
+	.mpa-nav-title {
+		position: absolute;
+		left: 0;
+		right: 0;
+		height: 40px;
+		line-height: 40px;
+		text-align: center;
+		font-size: 17px;
+		font-weight: 700;
+		color: #23201E;
+		pointer-events: none;
+		z-index: 1;
+	}
+
+	.mpa-loading, .mpa-error {
+		padding: 80px 24px 48px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+
+	.mpa-loading-dot {
+		width: 14px;
+		height: 14px;
+		border-radius: 999px;
+		background: #9C5B42;
+		margin-bottom: 16px;
+		box-shadow: 0 2px 8px rgba(156, 91, 66, 0.3);
+	}
+
+	.mpa-loading-text, .mpa-error-text {
+		font-size: 14px;
+		color: #6C665F;
+		text-align: center;
+	}
+
+	.mpa-error-btn {
+		margin-top: 20px;
+		min-height: 44px;
+		height: 44px;
+		padding: 0 24px;
+		background: #9C5B42;
+		border-radius: 22px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-shadow: 0 4px 12px rgba(156, 91, 66, 0.22);
+	}
+
+	.mpa-error-btn-text {
+		font-size: 14px;
+		color: #FFFFFF;
+		font-weight: 700;
+	}
+
+	.mpa-body {
+		padding: 16px 16px 40px;
+	}
+
+	.mpa-subject {
+		background: #FFFFFF;
+		border-radius: 16px;
+		padding: 20px 18px;
+		margin-top: 14px;
+		border: 1px solid #E8E2D8;
+		box-shadow: 0 4px 16px rgba(156, 91, 66, 0.05);
+	}
+
+	.mpa-subject-head {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.mpa-subject-title-box {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.mpa-subject-title {
+		font-size: 17px;
+		color: #23201E;
+		font-weight: 700;
+	}
+
+	.mpa-subject-tag {
+		font-size: 11px;
+		color: #9C5B42;
+		background-color: #F5EAE4;
+		padding: 2px 6px;
+		border-radius: 4px;
+		font-weight: 600;
+	}
+
+	.mpa-badge {
+		padding: 3px 10px;
+		font-size: 11px;
+		font-weight: 600;
+		border-radius: 6px;
+		background: #F5EAE4;
+		color: #9C5B42;
+	}
+
+	.mpa-badge-off {
+		background: #EFECE6;
+		color: #9E978E;
+	}
+
+	.mpa-subject-sub {
+		font-size: 13px;
+		color: #6C665F;
+		display: block;
+		margin-top: 8px;
+		line-height: 1.5;
+	}
+
+	.mpa-progress {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 12px;
+		margin-top: 16px;
+	}
+
+	.mpa-progress-track {
+		flex: 1;
+		height: 8px;
+		border-radius: 4px;
+		background: #EFE9E0;
+		overflow: hidden;
+	}
+
+	.mpa-progress-fill {
+		height: 100%;
+		border-radius: 4px;
+		background: #9C5B42;
+	}
+
+	.mpa-progress-num {
+		width: 40px;
+		text-align: right;
+		font-size: 12px;
+		color: #9C5B42;
+		font-weight: 700;
+	}
+
+	.mpa-subject-actions {
+		display: flex;
+		flex-direction: row;
+		gap: 12px;
+		margin-top: 18px;
+	}
+
+	.mpa-btn {
+		flex: 1;
+		min-height: 44px;
+		height: 44px;
+		padding: 0 16px;
+		background: #9C5B42;
+		border-radius: 22px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-sizing: border-box;
+		box-shadow: 0 4px 12px rgba(156, 91, 66, 0.22);
+	}
+
+	.mpa-btn-ghost {
+		background: #FFFFFF;
+		border: 1px solid #D8D2C7;
+		box-shadow: none;
+	}
+
+	.mpa-btn-text {
+		font-size: 14px;
+		color: #FFFFFF;
+		font-weight: 700;
+	}
+
+	.mpa-btn-ghost .mpa-btn-text {
+		color: #23201E;
+		font-weight: 600;
+	}
+
+	.mpa-history {
+		margin-top: 18px;
+		padding-top: 14px;
+		border-top: 1px solid #E8E2D8;
+	}
+
+	.mpa-history-title {
+		font-size: 12px;
+		color: #9E978E;
+		font-weight: 700;
+		display: block;
+		margin-bottom: 8px;
+		letter-spacing: 0.04em;
+	}
+
+	.mpa-history-item {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 8px 12px;
+		margin-top: 6px;
+		border-radius: 8px;
+		background: #FAF7F2;
+		border: 1px solid #E8E2D8;
+		font-size: 12px;
+	}
+
+	.mpa-history-no {
+		color: #9C5B42;
+		font-weight: 700;
+	}
+
+	.mpa-history-time {
+		color: #6C665F;
+	}
+
+	.mpa-history-fields {
+		color: #23201E;
+		font-weight: 500;
+	}
+
+	.mpa-preview-tip {
+		margin-top: 14px;
+		padding: 10px 14px;
+		background: #FFF8EB;
+		border: 1px solid #F3E0B5;
+		border-radius: 10px;
+	}
+
+	.mpa-preview-tip-text {
+		font-size: 12px;
+		color: #A66B24;
+		line-height: 1.5;
+	}
+
+	.mpa-memory-entry {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 14px;
+		margin-top: 18px;
+		padding: 16px 18px;
+		border: 1px solid #E8E2D8;
+		border-radius: 16px;
+		background: #FFFFFF;
+		box-shadow: 0 4px 16px rgba(156, 91, 66, 0.05);
+	}
+
+	.mpa-memory-entry-icon {
+		width: 36px;
+		height: 36px;
+		border-radius: 10px;
+		background-color: #FAF7F2;
+		border: 1px solid #E8E2D8;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+
+	.mpa-memory-entry-icon-text {
+		font-size: 15px;
+		font-weight: 700;
+		color: #9C5B42;
+	}
+
+	.mpa-memory-entry-copy {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		gap: 4px;
+		min-width: 0;
+	}
+
+	.mpa-memory-entry-title {
+		font-size: 15px;
+		color: #23201E;
+		font-weight: 700;
+	}
+
+	.mpa-memory-entry-sub {
+		font-size: 12px;
+		color: #6C665F;
+		line-height: 1.5;
+	}
+
+	.mpa-memory-entry-arrow-box {
+		width: 28px;
+		height: 28px;
+		border-radius: 14px;
+		background-color: #FAF7F2;
+		border: 1px solid #E8E2D8;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+
+	.mpa-memory-entry-arrow {
+		font-size: 12px;
+		color: #9C5B42;
+	}
+
 </style>

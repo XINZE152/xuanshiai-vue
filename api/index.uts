@@ -339,13 +339,6 @@ export {
 
 // AI 画像相关（M04）
 export {
-  createProfileSession,
-  getProfileSession,
-  submitProfileTurn,
-  deleteProfileSession,
-  pauseProfileSession,
-  resumeProfileSession,
-  skipProfileQuestion,
   getProfileDraft,
   patchProfileDraft,
   publishProfileDraft,
@@ -354,7 +347,6 @@ export {
 	  deleteAiProfile,
 	  pollTask,
   pollTaskUntilTerminal,
-  pollExtractionAndLoadDraft,
   mapProfileError,
   transcribeAudio,
   synthesizeSpeech,

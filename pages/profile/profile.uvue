@@ -1,4 +1,4 @@
-﻿<template>
+<template>
 	<view class="page">
 		<!-- 导航栏 -->
 		<view class="nav-bar" :style="{ paddingTop: (statusBarHeight + 12) + 'px', paddingRight: (menuButtonSpacing + 8) + 'px' }">
@@ -25,7 +25,22 @@
 					<text v-else class="ic ic-social ic-touxiang avatar-icon"></text>
 				</view>
 				<view class="profile-info">
-					<text class="nickname">{{ user.nickname }}</text>
+					<view class="nickname-row">
+						<text class="nickname">{{ user.nickname }}</text>
+						<view v-if="aiAttachmentStyleLabel != ''" class="moxiang-attachment-badge">
+							<text class="moxiang-attachment-text">{{ aiAttachmentStyleLabel }}</text>
+						</view>
+					</view>
+					<!-- 墨相心性称号与特质标签行（点击直达我的画像） -->
+					<view v-if="aiPersonaTitle != '' || aiPersonaTags.length > 0" class="moxiang-badge-wrap" @tap="onAiPortrait">
+						<view v-if="aiPersonaTitle != ''" class="moxiang-title-badge">
+							<text class="moxiang-title-seal">墨</text>
+							<text class="moxiang-title-text">{{ aiPersonaTitle }}</text>
+						</view>
+						<view v-for="tag in aiPersonaTags" :key="tag" class="moxiang-tag-pill">
+							<text class="moxiang-tag-text">{{ tag }}</text>
+						</view>
+					</view>
 					<view class="vip-tag-row">
 						<view v-if="user.isVip" class="vip-tag">
 							<text class="vip-tag-text">VIP会员</text>
@@ -71,25 +86,28 @@
 						</view>
 					</view>
 				</view>
-				<!-- 墨相师·主入口(继续聊) -->
+				<!-- 主入口：与知遇聊聊(轻奢灵动AI卡) -->
 				<view class="zone-master" @tap="onMoxiangMaster">
 					<view class="zone-master-figure">
-						<text class="zone-master-seal">墨</text>
+						<text class="ic ic-home ic-star zone-master-icon"></text>
 					</view>
 					<view class="zone-master-text">
-						<text class="zone-master-name">墨相师 · 聊出你的两幅像</text>
-						<text class="zone-master-desc">先认识自己，再聊你期待的关系</text>
+						<view class="zone-master-title-row">
+							<text class="zone-master-name">与知遇聊聊</text>
+							<text class="zone-master-tag">{{ portraitTag }}</text>
+						</view>
+						<text class="zone-master-desc">{{ portraitDesc }}</text>
 					</view>
 					<text class="zone-master-arrow">›</text>
 				</view>
-				<!-- P3-04 我的墨相档案·双入口(看成稿/历史/撤回授权) -->
+				<!-- 次入口：我的画像(低权重线框归档卡) -->
 				<view class="zone-master zone-master-archive" @tap="onMoxiangArchive">
 					<view class="zone-master-figure zone-master-figure-archive">
-						<text class="zone-master-seal">档</text>
+						<text class="zone-master-seal zone-master-seal-archive">档</text>
 					</view>
 					<view class="zone-master-text">
-						<text class="zone-master-name">我的墨相档案</text>
-						<text class="zone-master-desc">看成稿、历史版本、撤回授权</text>
+						<text class="zone-master-name">我的画像</text>
+						<text class="zone-master-desc">成稿、历史版本及授权管理</text>
 					</view>
 					<text class="zone-master-arrow">›</text>
 				</view>
@@ -177,9 +195,11 @@
 </template>
 
 <script setup lang="uts">
+import { ref, computed } from 'vue'
 import XsaTabBar from '@/components/XsaTabBar.uvue'
 import { getProfileOverview, getProfileCompletion, getMembershipStatus, getPortraitNarrative } from '@/api'
 import { resolveMediaUrl } from '@/api/config.uts'
+import { attachmentStyleLabel, narrativeBadgeVisible } from '@/utils/moxiang-badge.uts'
 
 const systemInfo = uni.getSystemInfoSync()
 const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
@@ -200,6 +220,14 @@ const stats = ref([
 	{ value: '0', label: '我的爆灯', route: '/pagesSub/profileExtra/spotlights' },
 ])
 
+const portraitTag = ref('点击开启')
+const portraitDesc = ref('自然对话，探索你的婚恋心相')
+const aiPersonaTitle = ref('')
+const aiPersonaTags = ref([] as string[])
+const aiAttachmentStyle = ref('')
+
+const aiAttachmentStyleLabel = computed((): string => attachmentStyleLabel(aiAttachmentStyle.value))
+
 const loadOverview = async () => {
 	try {
 		const membershipRes = await getMembershipStatus()
@@ -208,6 +236,39 @@ const loadOverview = async () => {
 		}
 	} catch (error) {
 		console.error('[Profile] membership refresh failed', error)
+	}
+	try {
+		const portraitRes = await getPortraitNarrative('personal')
+		if (portraitRes != null && portraitRes.success === true && portraitRes.data != null) {
+			const pData = portraitRes.data as any
+			portraitTag.value = '已生成'
+			portraitDesc.value = '专属心相与伴侣期待已就绪'
+			// 该接口透传 status 交前端驱动确认 UI：入口卡照常提示「已生成」并可进
+			// 确认页，但未确认的成稿不作为既成特质印在头部徽章区。
+			if (narrativeBadgeVisible(pData)) {
+				aiPersonaTitle.value = pData.persona_title != null ? String(pData.persona_title).trim() : ''
+				const rawTags = pData.persona_tags != null && Array.isArray(pData.persona_tags) ? pData.persona_tags as any[] : []
+				aiPersonaTags.value = rawTags.map((t: any): string => String(t).trim()).filter((t: string): boolean => t != '')
+				const ei = pData.emotional_insight != null ? pData.emotional_insight as any : null
+				aiAttachmentStyle.value = ei != null && ei.attachment_style != null ? String(ei.attachment_style).trim() : ''
+			} else {
+				aiPersonaTitle.value = ''
+				aiPersonaTags.value = []
+				aiAttachmentStyle.value = ''
+			}
+		} else {
+			portraitTag.value = '点击开启'
+			portraitDesc.value = '自然对话，探索你的婚恋心相'
+			aiPersonaTitle.value = ''
+			aiPersonaTags.value = []
+			aiAttachmentStyle.value = ''
+		}
+	} catch (e) {
+		portraitTag.value = '点击开启'
+		portraitDesc.value = '自然对话，探索你的婚恋心相'
+		aiPersonaTitle.value = ''
+		aiPersonaTags.value = []
+		aiAttachmentStyle.value = ''
 	}
 	const res = await getProfileOverview()
 	if (!res.success || res.data == null) return
@@ -637,11 +698,91 @@ page {
 	gap: 4px;
 }
 
+.nickname-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
 .nickname {
 	font-size: 20px;
 	font-weight: 600;
 	color: var(--profile-text);
 	line-height: 1.3;
+}
+
+.moxiang-attachment-badge {
+	padding: 1px 6px;
+	border-radius: 4px;
+	background-color: #F5EFEB;
+	border: 1px solid #DFC9BE;
+}
+
+.moxiang-attachment-text {
+	font-size: 10px;
+	font-weight: 500;
+	color: #9C5B42;
+	line-height: 1.3;
+}
+
+.moxiang-badge-wrap {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+	margin-top: 2px;
+	margin-bottom: 2px;
+}
+
+.moxiang-title-badge {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 7px 2px 4px;
+	border-radius: 4px;
+	background-color: #F5F2EB;
+	border: 1px solid #D6CEBE;
+}
+
+.moxiang-title-seal {
+	width: 14px;
+	height: 14px;
+	line-height: 14px;
+	text-align: center;
+	border-radius: 2px;
+	background-color: #A8383B;
+	color: #FFFFFF;
+	font-size: 9px;
+	font-weight: 600;
+}
+
+.moxiang-title-text {
+	font-size: 11px;
+	font-weight: 600;
+	color: #4A4540;
+	line-height: 1.2;
+	/* 称号上限 64 字（后端 NarrativeResult.persona_title），长标题在徽章内省略。 */
+	max-width: 150px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.moxiang-tag-pill {
+	padding: 2px 6px;
+	border-radius: 4px;
+	background-color: #F8F6F2;
+	border: 0.8px solid #EBE4D8;
+}
+
+.moxiang-tag-text {
+	font-size: 10px;
+	color: #6E4535;
+	line-height: 1.2;
 }
 
 .vip-tag-row {
@@ -818,12 +959,14 @@ page {
 	color: var(--profile-text-secondary);
 }
 
-/* ===== 墨相师·建构入口(直指 my-portrait-master) ===== */
+/* ===== 婚恋心相·主入口 ===== */
 .zone-master {
 	margin-top: 10px;
-	height: 72px;
-	border-radius: 18px;
-	background-color: rgba(255, 255, 255, 0.85);
+	height: 74px;
+	border-radius: 16px;
+	background-image: linear-gradient(135deg, #FFFDFB 0%, #F8EFE4 100%);
+	border: 1px solid #E8DCCF;
+	box-shadow: 0 4px 14px rgba(156, 91, 66, 0.06);
 	display: flex;
 	flex-direction: row;
 	align-items: center;
@@ -831,30 +974,46 @@ page {
 	gap: 12px;
 }
 
-/* P3-04 我的墨相档案·双入口(次级卡) */
+/* 次入口：低权重线框归档卡 */
 .zone-master-archive {
 	margin-top: 8px;
-	background-color: rgba(255, 255, 255, 0.6);
-}
-.zone-master-figure-archive {
-	background-color: #8c7860;
+	height: 56px;
+	background-image: none;
+	background-color: rgba(255, 255, 255, 0.7);
+	border: 1px solid #D8D2C7;
+	box-shadow: none;
+	border-radius: 14px;
 }
 
 .zone-master-figure {
-	width: 44px;
-	height: 44px;
-	border-radius: 22px;
-	background-color: var(--profile-dark);
+	width: 46px;
+	height: 46px;
+	border-radius: 14px;
+	background-image: linear-gradient(135deg, #FFEDE4 0%, #F5D3C4 100%);
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	flex-shrink: 0;
+	box-shadow: 0 4px 10px rgba(185, 138, 126, 0.22);
 }
 
-.zone-master-seal {
-	font-size: 20px;
-	font-weight: 700;
-	color: var(--profile-rose);
+.zone-master-icon {
+	font-size: 22px;
+	color: #B98A7E;
+}
+
+.zone-master-figure-archive {
+	width: 32px;
+	height: 32px;
+	border-radius: 8px;
+	background-color: #EFE9E0;
+	box-shadow: none;
+}
+
+.zone-master-seal-archive {
+	font-size: 13px;
+	color: #807B75;
+	font-weight: 600;
 }
 
 .zone-master-text {
@@ -862,22 +1021,41 @@ page {
 	display: flex;
 	flex-direction: column;
 	gap: 3px;
+	min-width: 0;
+}
+
+.zone-master-title-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
 }
 
 .zone-master-name {
 	font-size: 15px;
+	font-weight: 700;
+	color: #23201E;
+}
+
+.zone-master-tag {
+	font-size: 11px;
+	color: #9C5B42;
+	background-color: #F5EAE4;
+	padding: 2px 6px;
+	border-radius: 4px;
 	font-weight: 600;
-	color: var(--profile-text);
 }
 
 .zone-master-desc {
-	font-size: 11px;
-	color: var(--profile-text-secondary);
+	font-size: 12px;
+	color: #6C665F;
+	line-height: 16px;
 }
 
 .zone-master-arrow {
-	font-size: 20px;
-	color: var(--profile-text-muted);
+	font-size: 18px;
+	color: #B8B0A6;
+	line-height: 18px;
 }
 
 /* ==================== VIP 会员卡 ==================== */

@@ -1,8 +1,11 @@
 <template>
 	<view class="mpr-page">
-		<view class="mpr-nav">
-			<view class="mpr-nav-back" @tap="navBack"><text class="mpr-nav-back-text">←</text></view>
-			<text class="mpr-nav-title">{{ subjectLabel }}</text>
+		<!-- 导航栏 -->
+		<view class="mpr-nav" :style="{ paddingTop: navPadTop + 'px', paddingRight: (menuButtonSpacing + 8) + 'px' }">
+			<view class="mpr-nav-side mpr-nav-back" @tap="navBack">
+				<text class="mpr-nav-back-text">‹</text>
+			</view>
+			<text class="mpr-nav-title" :style="{ top: navPadTop + 'px' }">{{ subjectLabel }}</text>
 			<view class="mpr-nav-side"></view>
 		</view>
 
@@ -29,7 +32,7 @@
 					<text class="mpr-btn-primary-text">{{ publishing ? '正在发布…' : '发布这份成稿' }}</text>
 				</view>
 				<view class="mpr-btn" @tap="onContinueChat"><text class="mpr-btn-text">继续聊聊完善</text></view>
-				<view class="mpr-btn mpr-btn-ghost" @tap="onBackToArchive"><text class="mpr-btn-text">返回墨相档案</text></view>
+				<view class="mpr-btn mpr-btn-ghost" @tap="onBackToArchive"><text class="mpr-btn-text">返回画像档案</text></view>
 			</view>
 			<text class="mpr-hint">发布的是你此刻看到的这一版。发布完成后，AI 会整理完整画像并交给你确认。</text>
 		</view>
@@ -61,7 +64,7 @@
 
 					<view v-if="narrative.insight != null && narrative.insight != ''" class="mpr-section">
 						<text class="mpr-section-label">AI 的理解</text>
-						<text class="mpr-section-copy mpr-serif">{{ narrative.insight }}</text>
+						<text class="mpr-section-copy">{{ narrative.insight }}</text>
 					</view>
 
 					<view v-if="narrative.dimensions != null && narrative.dimensions.length > 0" class="mpr-section">
@@ -94,9 +97,40 @@
 						</view>
 					</view>
 
+					<view v-if="narrative.emotional_insight != null" class="mpr-section mpr-emotional-insight">
+						<view class="mpr-insight-header">
+							<text class="mpr-section-label">情感气质透视</text>
+							<view class="mpr-attachment-badge">
+								<text class="mpr-attachment-badge-text">{{ attachmentStyleLabel(narrative.emotional_insight.attachment_style) }}</text>
+							</view>
+						</view>
+						<text v-if="narrative.emotional_insight.attachment_summary != null && narrative.emotional_insight.attachment_summary != ''" class="mpr-attachment-summary">{{ narrative.emotional_insight.attachment_summary }}</text>
+
+						<view v-if="narrative.emotional_insight.highlights != null && narrative.emotional_insight.highlights.length > 0" class="mpr-sub-block">
+							<text class="mpr-sub-title">相处闪光点</text>
+							<view v-for="(hl, idx) in narrative.emotional_insight.highlights" :key="'hl-' + idx" class="mpr-bullet-row">
+								<text class="mpr-bullet-dot">✦</text>
+								<text class="mpr-bullet-copy">{{ hl }}</text>
+							</view>
+						</view>
+
+						<view v-if="narrative.emotional_insight.boundaries != null && narrative.emotional_insight.boundaries.length > 0" class="mpr-sub-block">
+							<text class="mpr-sub-title">相处安全边界</text>
+							<view v-for="(bd, idx) in narrative.emotional_insight.boundaries" :key="'bd-' + idx" class="mpr-bullet-row">
+								<text class="mpr-bullet-dot">◇</text>
+								<text class="mpr-bullet-copy">{{ bd }}</text>
+							</view>
+						</view>
+
+						<view v-if="narrative.emotional_insight.master_message != null && narrative.emotional_insight.master_message != ''" class="mpr-master-quote">
+							<text class="mpr-master-quote-mark">“</text>
+							<text class="mpr-master-quote-text">{{ narrative.emotional_insight.master_message }}</text>
+						</view>
+					</view>
+
 					<view v-if="narrative.conclusion != null && narrative.conclusion != ''" class="mpr-section mpr-conclusion">
 						<text class="mpr-section-label">收束</text>
-						<text class="mpr-section-copy mpr-serif">{{ narrative.conclusion }}</text>
+						<text class="mpr-section-copy">{{ narrative.conclusion }}</text>
 					</view>
 				</view>
 
@@ -104,8 +138,11 @@
 					<view v-if="awaitingNarrativeConfirmation" class="mpr-btn mpr-btn-primary" :class="{ 'mpr-btn-disabled': confirming }" @tap="onConfirmNarrative">
 						<text class="mpr-btn-primary-text">{{ confirming ? '正在确认…' : '这份画像符合我' }}</text>
 					</view>
+					<view v-if="narrativeReady && subject == 'personal'" class="mpr-btn mpr-btn-poster" @tap="onOpenPoster">
+						<text class="mpr-btn-poster-text">生成专属墨相海报</text>
+					</view>
 					<view class="mpr-btn" @tap="onContinueChat"><text class="mpr-btn-text">继续聊聊完善</text></view>
-					<view class="mpr-btn mpr-btn-ghost" @tap="onBackToArchive"><text class="mpr-btn-text">返回墨相档案</text></view>
+					<view class="mpr-btn mpr-btn-ghost" @tap="onBackToArchive"><text class="mpr-btn-text">返回画像档案</text></view>
 				</view>
 				<text v-if="awaitingNarrativeConfirmation" class="mpr-hint">确认前请先完整看一遍。确认只表示这份文字符合你的自我理解，不代表平台替你作出事实认证。</text>
 			</view>
@@ -115,16 +152,33 @@
 			<text class="mpr-state-title">还没有可整理的{{ subjectLabel }}</text>
 			<view class="mpr-btn" @tap="onContinueChat"><text class="mpr-btn-text">去聊一聊</text></view>
 		</view>
+
+		<!-- 专属墨相海报弹窗 -->
+		<MoxiangPosterSheet :visible="showPosterSheet" :data="posterData" @close="showPosterSheet = false" />
 	</view>
 </template>
 
 <script lang="uts">
 	import { createProfilePreview, getProfilePreview, type ProfilePreviewRecord } from '@/api/ai-moxiang.uts'
 	import { publishProfileDraft, pollTaskUntilTerminal, getPortraitNarrative, confirmPortraitNarrative, regeneratePortraitNarrative } from '@/api/ai-profile.uts'
+	import { getMeProfile, getOwnProfile } from '@/api/user.uts'
+	import MoxiangPosterSheet from '@/components/moxiang/MoxiangPosterSheet.uvue'
+	import type { MoxiangPosterData } from '@/utils/moxiang-poster-drawer.uts'
+
+	const systemInfo = uni.getSystemInfoSync()
+	const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
+	const menuButtonInfo = uni.getMenuButtonBoundingClientRect()
+	const navPadTop = menuButtonInfo != null && menuButtonInfo.top > statusBarHeight ? menuButtonInfo.top : statusBarHeight + 6
+	const menuButtonSpacing = menuButtonInfo != null ? (systemInfo.windowWidth - menuButtonInfo.left) : 8
 
 	export default {
+		components: {
+			MoxiangPosterSheet
+		},
 		data() {
 			return {
+				navPadTop: navPadTop,
+				menuButtonSpacing: menuButtonSpacing,
 				subject: 'personal',
 				subjectLabel: '我的墨相',
 				draftId: '',
@@ -140,7 +194,10 @@
 				stateMessage: '正在整理成稿…',
 				errorMessage: '',
 				narrativeFailure: '',
-				regenerating: false
+				regenerating: false,
+				showPosterSheet: false,
+				openPosterOnReady: false,
+				posterIdentity: { nickname: '', ageText: '', cityText: '', verifiedBadge: '' }
 			}
 		},
 		computed: {
@@ -155,6 +212,23 @@
 			narrativeStatusLabel(): string {
 				if (this.awaitingNarrativeConfirmation) return '完整画像 · 待你确认'
 				return '完整画像 · 已确认'
+			},
+			posterData(): MoxiangPosterData | null {
+				if (this.narrative == null) return null
+				const ei = this.narrative.emotional_insight != null ? this.narrative.emotional_insight : null
+				return {
+					personaTitle: String(this.narrative.persona_title ?? ''),
+					personaTags: (this.narrative.persona_tags != null ? (this.narrative.persona_tags as any[]) : []).map((t: any): string => String(t)),
+					attachmentStyle: String(ei != null ? (ei.attachment_style ?? '') : ''),
+					attachmentSummary: String(ei != null ? (ei.attachment_summary ?? '') : ''),
+					highlights: (ei != null && ei.highlights != null ? (ei.highlights as any[]) : []).map((h: any): string => String(h)),
+					boundaries: (ei != null && ei.boundaries != null ? (ei.boundaries as any[]) : []).map((b: any): string => String(b)),
+					masterMessage: String(ei != null ? (ei.master_message ?? '') : ''),
+					nickname: String(this.posterIdentity.nickname ?? ''),
+					ageText: String(this.posterIdentity.ageText ?? ''),
+					cityText: String(this.posterIdentity.cityText ?? ''),
+					verifiedBadge: String(this.posterIdentity.verifiedBadge ?? '')
+				} as MoxiangPosterData
 			}
 		},
 		onLoad(query: any) {
@@ -165,6 +239,9 @@
 			this.expectedRevision = Number(q.expected_revision ?? 0)
 			this.previewId = String(q.preview_id ?? '')
 			this.publishedMode = this.draftId == '' && this.previewId == ''
+			if (q.openPoster == '1') {
+				this.openPosterOnReady = true
+			}
 			if (this.publishedMode) this.loadNarrative()
 			else this.loadPreview()
 		},
@@ -172,6 +249,43 @@
 			this.pageAlive = false
 		},
 		methods: {
+			onOpenPoster() {
+				this.showPosterSheet = true
+			},
+			// 海报身份元素（脱敏白名单内）：昵称、年龄段、城市中文、认证徽章。
+			// 任一接口失败都不阻塞海报——身份行留空即可。
+			async loadPosterIdentity() {
+				if (this.subject != 'personal') return
+				try {
+					const [meRes, profileRes] = await Promise.all([getMeProfile(), getOwnProfile()])
+					let nickname = ''
+					let verifiedBadge = ''
+					if (meRes.success && meRes.data != null) {
+						nickname = String(meRes.data.nickname ?? '')
+						if (String(meRes.data.realNameStatus ?? '') == 'passed') {
+							verifiedBadge = '实名认证'
+						}
+					}
+					let ageText = ''
+					let cityText = ''
+					if (profileRes.success && profileRes.data != null) {
+						const age = profileRes.data.age
+						if (age != null && Number(age) > 0) ageText = Number(age) + '岁'
+						cityText = String(profileRes.data.residence_display ?? '')
+					}
+					this.posterIdentity = { nickname: nickname, ageText: ageText, cityText: cityText, verifiedBadge: verifiedBadge }
+				} catch (e) {
+					// 静默：海报身份区留空，不阻塞主流程。
+				}
+			},
+			attachmentStyleLabel(style: any): string {
+				const s = String(style ?? '')
+				if (s == 'secure') return '安全型依恋'
+				if (s == 'anxious') return '焦虑型依恋'
+				if (s == 'avoidant') return '回避型依恋'
+				if (s == 'fearful') return '恐惧回避型依恋'
+				return s != '' ? s : '情感气质'
+			},
 			navBack() {
 				uni.navigateBack({ delta: 1, fail: () => { uni.switchTab({ url: '/pages/profile/profile' }) } })
 			},
@@ -212,6 +326,11 @@
 					const res = await getPortraitNarrative(this.subject)
 					if (!res.success || res.data == null) throw new Error(String(res.message ?? '画像读取失败'))
 					this.narrative = res.data
+					if (this.subject == 'personal') this.loadPosterIdentity()
+					if (this.openPosterOnReady && this.narrativeReady) {
+						this.showPosterSheet = true
+						this.openPosterOnReady = false
+					}
 				} catch (e: any) {
 					this.errorMessage = '读取完整画像失败：' + (e?.message ?? String(e))
 				} finally {
@@ -241,6 +360,12 @@
 				try {
 					const res = await publishProfileDraft(this.draftId, this.expectedRevision, this.previewId)
 					if (!res.success || res.data == null) throw new Error(String(res.message ?? '发布失败'))
+					const synced = (res.data != null && res.data.synced_profile_fields != null) ? (res.data.synced_profile_fields as any[]) : []
+					if (synced.length > 0) {
+						setTimeout(() => {
+							uni.showToast({ title: '知遇已同步补充基础资料，无需重复填写', icon: 'none', duration: 2500 })
+						}, 2000)
+					}
 					const taskId = String(res.data.task_id ?? '')
 					if (taskId != '') {
 						const task = await pollTaskUntilTerminal(taskId, 40, () => this.pageAlive)
@@ -319,43 +444,432 @@
 </script>
 
 <style>
-	.mpr-page { min-height: 100vh; background: var(--canvas); color: var(--ink); }
-	.mpr-nav { position: sticky; top: 0; z-index: 100; display: flex; align-items: center; padding: 16px 16px 12px; background: var(--canvas); }
-	.mpr-nav-back, .mpr-nav-side { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
-	.mpr-nav-back-text { font-size: 24px; color: var(--ink); }
-	.mpr-nav-title { flex: 1; text-align: center; font-size: 17px; color: var(--ink); font-weight: 700; }
-	.mpr-state { padding: 96px 24px 48px; display: flex; flex-direction: column; align-items: center; }
-	.mpr-loading-dot { width: 12px; height: 12px; border-radius: 999px; background: var(--accent); margin-bottom: 16px; }
-	.mpr-state-title { font-size: 18px; color: var(--ink); font-weight: 700; text-align: center; }
-	.mpr-state-copy { font-size: 13px; color: var(--ink2); line-height: 1.7; text-align: center; margin-top: 10px; }
-	.mpr-fail { color: #a05a2c; }
-	.mpr-scroll { height: calc(100vh - 72px); }
-	.mpr-body { padding: 12px 16px 48px; }
-	.mpr-paper { background: var(--paper); padding: 28px 22px; border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow-sm); }
-	.mpr-kicker { display: block; font-size: 11px; color: var(--accent2); font-weight: 700; letter-spacing: 0.08em; text-align: center; }
-	.mpr-title { display: block; margin-top: 12px; font-size: 26px; color: var(--ink); font-weight: 700; font-family: var(--serif); text-align: center; }
-	.mpr-preview-content { display: block; margin-top: 18px; font-size: 16px; color: var(--ink); line-height: 1.9; white-space: pre-wrap; font-family: var(--serif); }
-	.mpr-tags { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }
-	.mpr-tag { padding: 5px 10px; border-radius: 999px; background: var(--accent-bg); color: var(--accent2); font-size: 12px; }
-	.mpr-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
-	.mpr-section-label { display: block; font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: 0.1em; }
-	.mpr-section-copy { display: block; margin-top: 8px; font-size: 15px; color: var(--ink); line-height: 1.9; }
-	.mpr-serif { font-family: var(--serif); }
-	.mpr-dimension, .mpr-history { margin-top: 12px; padding: 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
-	.mpr-dimension-title { display: block; font-size: 14px; color: var(--ink); font-weight: 700; }
-	.mpr-dimension-copy { display: block; font-size: 13px; color: var(--ink2); line-height: 1.7; margin-top: 4px; }
-	.mpr-weight { display: flex; flex-direction: row; align-items: center; gap: 8px; margin-top: 12px; }
-	.mpr-weight-label { width: 72px; font-size: 12px; color: var(--ink2); }
-	.mpr-weight-track { flex: 1; height: 7px; border-radius: 999px; background: var(--warm); overflow: hidden; }
-	.mpr-weight-fill { height: 100%; border-radius: 999px; background: var(--accent); }
-	.mpr-weight-value { width: 36px; text-align: right; font-size: 12px; color: var(--ink2); }
-	.mpr-change, .mpr-conclusion { padding: 18px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
-	.mpr-actions { margin-top: 24px; }
-	.mpr-btn { margin-top: 12px; min-height: 46px; padding: 12px 18px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; }
-	.mpr-btn-primary { background: var(--accent2); border-color: var(--accent2); }
-	.mpr-btn-disabled { opacity: 0.55; }
-	.mpr-btn-ghost { background: transparent; }
-	.mpr-btn-text { font-size: 14px; color: var(--ink2); font-weight: 600; }
-	.mpr-btn-primary-text { font-size: 14px; color: var(--text-invert); font-weight: 700; }
-	.mpr-hint { display: block; margin-top: 18px; font-size: 11px; color: var(--muted); line-height: 1.7; text-align: center; }
+	.mpr-page {
+		min-height: 100vh;
+		background: var(--canvas);
+		color: #23201E;
+		--canvas: #F3EFE8;
+		--primary: #9C5B42;
+		--primary-dark: #854B35;
+		--warm-gold: #C29F68;
+		--surface: #FFFFFF;
+		--surface-warm: #FAF7F2;
+		--line: #E8E2D8;
+		--border-card: #D8D2C7;
+		--ink: #23201E;
+		--ink2: #6C665F;
+		--muted: #9E978E;
+		--text-invert: #FFFFFF;
+	}
+
+	.mpr-nav {
+		position: sticky;
+		top: 0;
+		z-index: 100;
+		box-sizing: content-box;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding-left: 10px;
+		padding-bottom: 8px;
+		background: var(--canvas);
+		border-bottom: 1px solid rgba(232, 226, 216, 0.7);
+	}
+
+	.mpr-nav-side {
+		z-index: 1;
+		min-width: 44px;
+		height: 40px;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: flex-end;
+	}
+
+	.mpr-nav-back {
+		justify-content: flex-start;
+	}
+
+	.mpr-nav-back-text {
+		font-size: 28px;
+		color: #23201E;
+		padding: 0 8px;
+		line-height: 1;
+	}
+
+	.mpr-nav-title {
+		position: absolute;
+		left: 0;
+		right: 0;
+		height: 40px;
+		line-height: 40px;
+		text-align: center;
+		font-size: 17px;
+		font-weight: 700;
+		color: #23201E;
+		pointer-events: none;
+		z-index: 1;
+	}
+
+	.mpr-state {
+		padding: 80px 24px 48px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+
+	.mpr-loading-dot {
+		width: 14px;
+		height: 14px;
+		border-radius: 999px;
+		background: #9C5B42;
+		margin-bottom: 16px;
+		box-shadow: 0 2px 8px rgba(156, 91, 66, 0.3);
+	}
+
+	.mpr-state-title {
+		font-size: 18px;
+		color: #23201E;
+		font-weight: 700;
+		text-align: center;
+	}
+
+	.mpr-state-copy {
+		font-size: 13px;
+		color: #6C665F;
+		line-height: 1.65;
+		text-align: center;
+		margin-top: 10px;
+		max-width: 320px;
+	}
+
+	.mpr-fail {
+		color: #C04A2B;
+	}
+
+	.mpr-scroll {
+		height: calc(100vh - 48px);
+	}
+
+	.mpr-body {
+		padding: 16px 16px 48px;
+	}
+
+	.mpr-paper {
+		background: #FFFFFF;
+		padding: 24px 18px;
+		border: 1px solid #E8E2D8;
+		border-radius: 16px;
+		box-shadow: 0 4px 16px rgba(156, 91, 66, 0.05);
+	}
+
+	.mpr-kicker {
+		display: inline-block;
+		align-self: center;
+		font-size: 11px;
+		color: #9C5B42;
+		background-color: #F5EAE4;
+		padding: 3px 10px;
+		border-radius: 6px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-align: center;
+		margin: 0 auto;
+	}
+
+	.mpr-title {
+		display: block;
+		margin-top: 14px;
+		font-size: 22px;
+		color: #23201E;
+		font-weight: 700;
+		text-align: center;
+		line-height: 1.35;
+	}
+
+	.mpr-preview-content {
+		display: block;
+		margin-top: 16px;
+		font-size: 15px;
+		color: #23201E;
+		line-height: 1.75;
+		white-space: pre-wrap;
+	}
+
+	.mpr-tags {
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 8px;
+		margin-top: 14px;
+	}
+
+	.mpr-tag {
+		padding: 4px 12px;
+		border-radius: 20px;
+		background: #FAF7F2;
+		border: 1px solid #E8E2D8;
+		color: #6C665F;
+		font-size: 12px;
+		font-weight: 500;
+	}
+
+	.mpr-section {
+		margin-top: 22px;
+		padding-top: 18px;
+		border-top: 1px solid #E8E2D8;
+	}
+
+	.mpr-section-label {
+		display: block;
+		font-size: 12px;
+		color: #9E978E;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+	}
+
+	.mpr-section-copy {
+		display: block;
+		margin-top: 8px;
+		font-size: 14px;
+		color: #23201E;
+		line-height: 1.75;
+	}
+
+	.mpr-dimension, .mpr-history {
+		margin-top: 10px;
+		padding: 13px 14px;
+		border-radius: 12px;
+		background: #FAF7F2;
+		border: 1px solid #E8E2D8;
+	}
+
+	.mpr-dimension-title {
+		display: block;
+		font-size: 14px;
+		color: #23201E;
+		font-weight: 700;
+	}
+
+	.mpr-dimension-copy {
+		display: block;
+		font-size: 13px;
+		color: #6C665F;
+		line-height: 1.6;
+		margin-top: 4px;
+	}
+
+	.mpr-weight {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 10px;
+		margin-top: 12px;
+	}
+
+	.mpr-weight-label {
+		width: 76px;
+		font-size: 12px;
+		color: #6C665F;
+		font-weight: 500;
+	}
+
+	.mpr-weight-track {
+		flex: 1;
+		height: 8px;
+		border-radius: 4px;
+		background: #EFE9E0;
+		overflow: hidden;
+	}
+
+	.mpr-weight-fill {
+		height: 100%;
+		border-radius: 4px;
+		background: #9C5B42;
+	}
+
+	.mpr-weight-value {
+		width: 40px;
+		text-align: right;
+		font-size: 12px;
+		color: #9C5B42;
+		font-weight: 700;
+	}
+
+	.mpr-change, .mpr-conclusion {
+		padding: 16px 14px;
+		border: 1px solid #E8E2D8;
+		border-radius: 14px;
+		background: #FAF7F2;
+	}
+
+	.mpr-actions {
+		margin-top: 20px;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.mpr-btn {
+		min-height: 44px;
+		height: 44px;
+		padding: 0 20px;
+		border-radius: 22px;
+		background: #FFFFFF;
+		border: 1px solid #D8D2C7;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-sizing: border-box;
+	}
+
+	.mpr-btn-primary {
+		background: #9C5B42;
+		border-color: #9C5B42;
+		box-shadow: 0 4px 12px rgba(156, 91, 66, 0.22);
+	}
+
+	.mpr-btn-disabled {
+		opacity: 0.55;
+	}
+
+	.mpr-btn-ghost {
+		background: transparent;
+		border: none;
+	}
+
+	.mpr-btn-text {
+		font-size: 14px;
+		color: #23201E;
+		font-weight: 600;
+	}
+
+	.mpr-btn-primary-text {
+		font-size: 14px;
+		color: #FFFFFF;
+		font-weight: 700;
+	}
+
+	.mpr-btn-ghost .mpr-btn-text {
+		color: #6C665F;
+		font-weight: 500;
+	}
+
+	.mpr-hint {
+		display: block;
+		margin-top: 16px;
+		font-size: 12px;
+		color: #9E978E;
+		line-height: 1.6;
+		text-align: center;
+		padding: 0 12px;
+	}
+
+	.mpr-emotional-insight {
+		padding: 16px 14px;
+		border: 1px solid #E8E2D8;
+		border-radius: 14px;
+		background: #FCFAF7;
+	}
+
+	.mpr-insight-header {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 8px;
+	}
+
+	.mpr-attachment-badge {
+		padding: 3px 10px;
+		border-radius: 6px;
+		background: #F5EAE4;
+		border: 1px solid #E4D5CE;
+	}
+
+	.mpr-attachment-badge-text {
+		font-size: 11px;
+		color: #9C5B42;
+		font-weight: 700;
+	}
+
+	.mpr-attachment-summary {
+		font-size: 14px;
+		color: #23201E;
+		line-height: 1.6;
+		margin-bottom: 12px;
+	}
+
+	.mpr-sub-block {
+		margin-top: 10px;
+		padding-top: 8px;
+		border-top: 1px dashed #EAE5DE;
+	}
+
+	.mpr-sub-title {
+		font-size: 12px;
+		font-weight: 700;
+		color: #9C5B42;
+		margin-bottom: 6px;
+	}
+
+	.mpr-bullet-row {
+		display: flex;
+		flex-direction: row;
+		align-items: flex-start;
+		gap: 6px;
+		margin-bottom: 4px;
+	}
+
+	.mpr-bullet-dot {
+		font-size: 11px;
+		color: #9C5B42;
+		line-height: 1.5;
+	}
+
+	.mpr-bullet-copy {
+		flex: 1;
+		font-size: 13px;
+		color: #4A4540;
+		line-height: 1.5;
+	}
+
+	.mpr-master-quote {
+		margin-top: 12px;
+		padding: 10px 14px;
+		border-radius: 10px;
+		background: #F4EFEB;
+		display: flex;
+		flex-direction: row;
+		align-items: flex-start;
+		gap: 4px;
+	}
+
+	.mpr-master-quote-mark {
+		font-size: 18px;
+		color: #9C5B42;
+		line-height: 1;
+	}
+
+	.mpr-master-quote-text {
+		flex: 1;
+		font-size: 12px;
+		color: #5C554E;
+		line-height: 1.5;
+		font-style: italic;
+	}
+
+	.mpr-btn-poster {
+		background: #F5EAE4;
+		border-color: #D6BDB2;
+	}
+
+	.mpr-btn-poster-text {
+		font-size: 14px;
+		color: #9C5B42;
+		font-weight: 700;
+	}
+
 </style>

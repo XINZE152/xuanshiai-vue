@@ -15,11 +15,11 @@
 
 		<!-- 未授权:授权引导 -->
 		<view v-if="!state.consentGranted" class="mx-entry-card mx-entry-consent">
-			<text class="mx-entry-card-title">需要你的允许</text>
-			<text class="mx-entry-card-body">墨相师会自然地跟你聊聊，记得你说过的关键细节，然后把整理好的画像给你确认。在开始前，需要获得你「资料摘要抽取」的同意。</text>
+			<text class="mx-entry-card-title">知遇想先与你作个约定</text>
+			<text class="mx-entry-card-body">知遇会像一位懂你的老朋友那样，耐心倾听你的心声，并陪你梳理整理。为了能深入理解你的特质与心愿，需要获得你对「心相要点提炼」的信任与同意。</text>
 			<view class="mx-entry-card-actions">
 				<view class="mx-entry-btn mx-entry-btn-primary" @tap="onGrantConsent">
-					<text class="mx-entry-btn-text mx-entry-btn-text-primary">同意并开始</text>
+					<text class="mx-entry-btn-text mx-entry-btn-text-primary">同意并开启访谈</text>
 				</view>
 			</view>
 		</view>
@@ -27,7 +27,7 @@
 		<!-- 已授权且无历史:首次 -->
 		<view v-else-if="!hasSession" class="mx-entry-card mx-entry-first">
 			<text class="mx-entry-card-title">第一次见你</text>
-			<text class="mx-entry-card-body">墨相师是一位有耐心的引路人。和你慢慢聊、记住你说过的关键细节，在合适的时候邀请你一起整理一份属于你的画像。</text>
+			<text class="mx-entry-card-body">知遇会和你慢慢聊、梳理你说过的关键生活与婚恋态度，在合适的时候邀请你一起整理一份属于你的画像。</text>
 			<view class="mx-entry-card-actions">
 				<view class="mx-entry-btn mx-entry-btn-primary" @tap="onStartChat">
 					<text class="mx-entry-btn-text mx-entry-btn-text-primary">开始聊聊</text>
@@ -106,13 +106,13 @@ const lastTurnLabel = computed((): string => {
 })
 
 const heroTitle = computed((): string => {
-	return props.subject == 'personal' ? '你好，我是墨相师' : '我们聊聊你期待的关系'
+	return props.subject == 'personal' ? '你好，我是知遇' : '聊聊你期待的长期关系'
 })
 
 const heroSub = computed((): string => {
-	if (!props.state.consentGranted) return '先跟我说说授权的事'
-	if (hasSession.value) return '上次的对话还在这里'
-	return '我想慢慢认识你'
+	if (!props.state.consentGranted) return '无需拘谨，这里没有对错与标准答案'
+	if (hasSession.value) return '上次梳理的要点已妥善保存'
+	return '倾听你的真实生活节奏与想法'
 })
 
 function onGrantConsent() {
@@ -144,28 +144,28 @@ function onRetry() {
 .mx-entry-title {
 	font-size: 22px;
 	font-weight: 700;
-	color: #2E2418;
-	font-family: var(--serif, serif);
+	color: #23201E;
 }
 .mx-entry-sub {
 	font-size: 13px;
-	color: #9A8C77;
+	color: #807B75;
 	margin-top: 4px;
 }
 .mx-entry-card {
-	background: #FFFCF5;
-	border: 1px solid #E6DAC4;
+	background: #FFFFFF;
+	border: 1px solid #E5DFD5;
 	border-radius: 12px;
 	padding: 16px;
+	box-shadow: 0 4px 12px rgba(35, 32, 30, 0.04);
 }
 .mx-entry-card-title {
-	font-size: 16px;
+	font-size: 15px;
 	font-weight: 700;
-	color: #2E2418;
+	color: #23201E;
 }
 .mx-entry-card-body {
 	font-size: 13px;
-	color: #5C4F3D;
+	color: #524C46;
 	line-height: 1.6;
 	margin-top: 8px;
 }
@@ -177,43 +177,45 @@ function onRetry() {
 }
 .mx-entry-btn {
 	flex: 1;
-	height: 38px;
+	height: 44px;
 	border-radius: 8px;
-	background: #FFFCF5;
-	border: 1px solid #E6DAC4;
+	background: #FFFFFF;
+	border: 1px solid #D8D2C7;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 }
 .mx-entry-btn-primary {
-	background: #B4762B;
-	border-color: none;
+	background: #9C5B42;
+	border: none;
 }
 .mx-entry-btn-text {
 	font-size: 13px;
-	color: #B4762B;
-	font-weight: 700;
+	color: #4A4540;
+	font-weight: 600;
 }
 .mx-entry-btn-text-primary {
-	color: #FFFCF5;
+	color: #FFFFFF;
 }
 .mx-entry-meta {
 	margin-top: 10px;
 }
 .mx-entry-meta-label {
 	font-size: 11px;
-	color: #9A8C77;
+	color: #807B75;
 }
 .mx-entry-meta-value {
 	font-size: 13px;
-	color: #2E2418;
+	color: #23201E;
+	font-weight: 600;
 	margin-top: 2px;
 }
 .mx-entry-error {
 	margin-top: 14px;
 	padding: 10px 12px;
 	border-radius: 8px;
-	background: rgba(201, 123, 87, 0.12);
+	background: #FAF2EE;
+	border: 1px solid #E8DCCF;
 	display: flex;
 	flex-direction: row;
 	align-items: center;
@@ -222,16 +224,16 @@ function onRetry() {
 .mx-entry-error-text {
 	flex: 1;
 	font-size: 12px;
-	color: #A05A3E;
+	color: #9C5B42;
 }
 .mx-entry-error-btn {
-	padding: 4px 10px;
+	padding: 6px 12px;
 	border-radius: 6px;
-	background: #A05A3E;
+	background: #9C5B42;
 }
 .mx-entry-error-btn-text {
 	font-size: 11px;
-	color: #FFFCF5;
+	color: #FFFFFF;
 	font-weight: 700;
 }
 </style>
