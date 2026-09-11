@@ -139,9 +139,6 @@ const handleOverlayClick = () => {
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-}
-
-.close-btn text {
 	font-size: 20px;
 	color: var(--muted);
 }
@@ -166,5 +163,5 @@ const handleOverlayClick = () => {
 .xsa-sheet-atelier .handle { background: var(--at-line, #E6DAC4); }
 .xsa-sheet-atelier .sheet-header { border-bottom: 1px solid var(--at-line, #E6DAC4); }
 .xsa-sheet-atelier .sheet-title { color: var(--at-ink, #2E2418); }
-.xsa-sheet-atelier .close-btn text { color: var(--at-ink2, #5C4F3D); }
+	.xsa-sheet-atelier .close-btn { color: var(--at-ink2, #5C4F3D); }
 </style>

@@ -700,8 +700,8 @@
 </template>
 
 <script setup lang="uts">
-	const systemInfo = uni.getSystemInfoSync()
-	const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
+	const windowInfo = uni.getWindowInfo()
+	const statusBarHeight = windowInfo.statusBarHeight != null ? windowInfo.statusBarHeight : 20
 
 	import XsaSheet from '@/components/XsaSheet.uvue'
 	import XsaModal from '@/components/XsaModal.uvue'
@@ -1219,8 +1219,8 @@
 			}
 		}
 		resetDailyIfNeeded()
-		loadHomeDiscovery()
-		loadMembershipPlans()
+		if (getAccessToken() != '') loadHomeDiscovery()
+		if (getAccessToken() != '') loadMembershipPlans()
 	})
 
 	onShow(() => {
@@ -1234,7 +1234,7 @@
 			uni.removeStorageSync('xsa_skip_welcome_once')
 			welcomeVisible.value = false
 		}
-		if (!welcomeVisible.value) loadHomeDiscovery()
+		if (!welcomeVisible.value && getAccessToken() != '') loadHomeDiscovery()
 	})
 </script>
 
