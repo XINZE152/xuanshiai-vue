@@ -62,17 +62,6 @@
 					<text class="completion-reminder-copy">{{ discoveryError }}</text>
 					<view class="completion-gate-button" @tap="loadHomeDiscovery"><text>重新加载</text></view>
 				</view>
-				<view v-else-if="profileCompletionError != ''" class="completion-reminder completion-reminder-error">
-					<text class="completion-reminder-title">资料状态暂时无法读取</text>
-					<text class="completion-reminder-copy">{{ profileCompletionError }}，仍可浏览公开推荐。</text>
-					<view class="completion-gate-button" @tap="loadHomeDiscovery"><text>重新加载</text></view>
-				</view>
-				<view v-else-if="profileCompletionLoaded && profileCompletion < 100" class="completion-reminder">
-					<text class="completion-reminder-title">资料完善度 {{ profileCompletion }}%</text>
-					<text class="completion-reminder-copy">完善资料后能获得更有参考价值的推荐；现在也可继续浏览。</text>
-					<view class="completion-gate-progress"><view class="completion-gate-fill" :style="{ width: profileCompletion + '%' }"></view></view>
-					<navigator class="completion-gate-button" url="/pagesSub/userExtra/user/edit" hover-class="none"><text>去完善资料</text></navigator>
-				</view>
 				<view v-if="recommendUsers.length === 0 && discoveryError == ''" class="completion-gate">
 					<text class="completion-gate-title">暂时没有新的推荐</text>
 					<text class="completion-gate-copy">我们正在更新公开推荐资料，请稍后再来看看。</text>
@@ -723,7 +712,7 @@
 	import { getEmotionLabSummary } from '@/api/emotionLab.uts'
 	import { guardRealName } from '@/utils/realNameGate.uts'
 	import { likeUser, blockUser, unblockUser, saveAiAvatarProfileSnapshot } from '@/api'
-	import { getDiscoveryRecommendations, getDiscoveryPlaza, getDynamicList, getDynamicDetail, getUserDetail, getOwnProfile, getProfileCompletion } from '@/api'
+	import { getDiscoveryRecommendations, getDiscoveryPlaza, getDynamicList, getDynamicDetail, getUserDetail, getOwnProfile } from '@/api'
 	import { getMembershipPackages } from '@/api/discovery.uts'
 	import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
 	import {
@@ -849,9 +838,6 @@
 
 	// ========== 推荐页过滤 + 配额 ==========
 	const recommendUsers = ref<any[]>([])
-	const profileCompletion = ref(0)
-	const profileCompletionLoaded = ref(false)
-	const profileCompletionError = ref('')
 	const discoveryError = ref('')
 	const squareUsers = ref<any[]>([])
 	const squareTotal = ref(0)
@@ -920,33 +906,7 @@
 		if (currentIndex >= 0) recommendUsers.value.splice(currentIndex, 1, enriched)
 		recommendBackground.value = resolveMediaUrl(profile.background_wall)
 	}
-	const loadProfileCompletion = async (): Promise<boolean> => {
-		profileCompletionLoaded.value = false
-		profileCompletionError.value = ''
-		const response = await getProfileCompletion()
-		if (response.success && response.data != null) {
-			const data = response.data as any
-			const score = Number(data.score != null ? data.score : data.completion_score)
-			if (!isNaN(score)) {
-				profileCompletion.value = Math.max(0, Math.min(100, score))
-				profileCompletionLoaded.value = true
-				return true
-			}
-		}
-		const profileRes = await getOwnProfile()
-		if (profileRes.success && profileRes.data != null) {
-			const score = Number((profileRes.data as any).completion_score)
-			if (!isNaN(score)) {
-				profileCompletion.value = Math.max(0, Math.min(100, score))
-				profileCompletionLoaded.value = true
-				return true
-			}
-		}
-		profileCompletionError.value = '请检查登录状态和网络后重试'
-		return false
-	}
 	const loadHomeDiscovery = async () => {
-		await loadProfileCompletion()
 		discoveryError.value = ''
 		const recommendRes = await getDiscoveryRecommendations({ page: 1, page_size: 20 })
 		if (recommendRes != null && recommendRes.success && recommendRes.data != null) {
@@ -1629,8 +1589,6 @@
 .completion-gate-mark { width: 128rpx; height: 128rpx; display: flex; align-items: center; justify-content: center; border: 10rpx solid var(--accent); border-radius: 50%; color: var(--accent-dark); font-size: 30rpx; font-weight: 800; box-sizing: border-box; }
 .completion-gate-title { margin-top: 32rpx; color: var(--text-primary); font-size: 32rpx; font-weight: 700; }
 .completion-gate-copy { margin-top: 18rpx; color: var(--text-secondary); font-size: 25rpx; line-height: 1.7; }
-.completion-gate-progress { width: 100%; height: 12rpx; margin-top: 36rpx; overflow: hidden; border-radius: 6rpx; background-color: var(--bg-card-soft); }
-.completion-gate-fill { height: 100%; border-radius: 6rpx; background-color: var(--accent); }
 .completion-gate-button { width: 100%; height: 88rpx; margin-top: 36rpx; display: flex; align-items: center; justify-content: center; border-radius: 44rpx; background-color: var(--accent); color: var(--text-inverse); font-size: 28rpx; font-weight: 700; }
 /* 屏蔽/举报行 */
 .block-row { display: flex; flex-direction: row; justify-content: center; align-items: center; width: 100%; padding: 16rpx 0 8rpx 0; }

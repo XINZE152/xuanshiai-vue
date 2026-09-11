@@ -5,6 +5,7 @@
  */
 
 import { request } from './request.uts'
+import { mockProfileTagOptions } from '@/mock/profile-tags.uts'
 import { USE_MOCK, getAccessToken, clearAuthTokens, buildApiUrl } from './config.uts'
 import {
   mockRecommendUsers,
@@ -419,6 +420,18 @@ export async function getUserDetail(userId: number, internalMockScope: string = 
 
 export async function getOwnProfile() {
   if (USE_MOCK) {
+    if (!Array.isArray(mockMeProfile.personal_tags)) {
+      const raw: string[] = ([] as string[]).concat(Array.isArray(mockMeProfile.interest_tags) ? mockMeProfile.interest_tags : [], Array.isArray(mockMeProfile.personality_tags) ? mockMeProfile.personality_tags : [])
+      const selected: string[] = []
+      const legacy: string[] = []
+      for (const tag of raw) {
+        const valid = mockProfileTagOptions.categories.some((category: any) => category.options.indexOf(tag) >= 0)
+        if (valid && selected.indexOf(tag) < 0) selected.push(tag)
+        else if (!valid && legacy.indexOf(tag) < 0) legacy.push(tag)
+      }
+      mockMeProfile.personal_tags = selected
+      mockMeProfile.legacy_tags = legacy
+    }
     return request({
       url: '/user/me',
       cloudFunctionName: 'user',
@@ -432,11 +445,63 @@ export async function getOwnProfile() {
 
 /** 固定标签目录为公开只读数据，不需要携带登录态。 */
 export async function getProfileTagOptions() {
-  return request({ url: '/profile/tag-options', method: 'GET', skipAuth: true })
+  return request({ url: '/profile/tag-options', method: 'GET', skipAuth: true, mockData: mockProfileTagOptions })
 }
 
 export async function updateOwnProfile(data: any) {
   if (USE_MOCK) {
+    if (data != null && Object.keys(data).indexOf('personal_tags') >= 0) {
+      const tags = data.personal_tags
+      if (!Array.isArray(tags) || tags.length > mockProfileTagOptions.max_tags) return failRes('兴趣标签最多选择10个', 422)
+      const interests: string[] = []
+      const personalities: string[] = []
+      const customTags: string[] = []
+      const seen: string[] = []
+      const selections: any = {}
+      const normalizedTags: string[] = []
+      for (const rawTag of tags as string[]) {
+        let tag = '' + rawTag
+        let categoryKey = ''
+        for (const category of mockProfileTagOptions.categories) {
+          if (category.options.indexOf(tag) >= 0) categoryKey = category.key
+        }
+        if (categoryKey == '') {
+          const normalized = tag.trim().replace(/\s+/g, ' ')
+          let canonical = ''
+          for (const category of mockProfileTagOptions.categories) {
+            for (const option of category.options) if (option.toLowerCase() == normalized.toLowerCase()) canonical = option
+          }
+          if (canonical != '') {
+            tag = canonical
+            for (const category of mockProfileTagOptions.categories) if (category.options.indexOf(tag) >= 0) categoryKey = category.key
+          }
+          if (categoryKey == '') {
+          const policy = mockProfileTagOptions.custom
+          const forbidden = ['找对象', '找伴侣', '寻找伴侣', '长期伴侣', '另一半', '恋爱', '结婚', '婚姻', '生育', '身高', '体重', '年龄', '学历', '本科', '硕士', '博士', '收入', '职业', '房产', '资产', '微信', '电话', '手机', 'qq', 'vx', 'v信', 'wx', 'wechat', '加我', '约炮', '包养', '未成年', '政治', '宗教', '疾病']
+          const lowered = normalized.toLowerCase()
+          if (!policy.enabled || normalized.length < policy.min_length || normalized.length > policy.max_length || !/^[\u4e00-\u9fffA-Za-z0-9·+&\- ]+$/.test(normalized) || /^\d+$/.test(normalized) || normalized.replace(/\D/g, '').length >= 6 || forbidden.some((word: string) => lowered.indexOf(word) >= 0)) return failRes('自定义标签格式或内容不符合要求', 422)
+          tag = normalized
+          customTags.push(normalized)
+          categoryKey = 'custom'
+          }
+        }
+        if (seen.some((item: string) => item.toLowerCase() == tag.toLowerCase())) return failRes('标签不能重复', 422)
+        if (customTags.length > mockProfileTagOptions.custom.max_tags) return failRes('自定义标签最多添加3个', 422)
+        seen.push(tag)
+        if (categoryKey == 'personality') personalities.push(tag)
+        else interests.push(tag)
+        if (selections[categoryKey] == null) selections[categoryKey] = []
+        selections[categoryKey].push(tag)
+        normalizedTags.push(tag)
+      }
+      if (Object.keys(data).some((key: string) => key == 'interest_tags' || key == 'personality_tags' || key == 'tag_selections')) return failRes('不能混传旧标签字段', 422)
+      mockMeProfile.interest_tags = interests
+      mockMeProfile.personality_tags = personalities
+      mockMeProfile.custom_tags = customTags
+      data.personal_tags = normalizedTags
+      mockMeProfile.tag_selections = selections
+      mockMeProfile.legacy_tags = []
+    }
     const keys = Object.keys(data != null ? data : {})
     for (let i = 0; i < keys.length; i++) {
       mockMeProfile[keys[i]] = data[keys[i]]

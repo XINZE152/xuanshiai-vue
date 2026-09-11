@@ -7,6 +7,7 @@
 		</view>
 
 		<view v-if="loading" class="state"><text>正在加载择偶标准...</text></view>
+		<view v-else-if="!loaded" class="state" @tap="load"><text>择偶标准加载失败，点击重试</text></view>
 		<scroll-view v-else class="content" scroll-y enhanced show-scrollbar="false">
 			<view class="sync-row">
 				<view class="led" :class="{ 'led-on': !ledDirty }"></view>
@@ -147,16 +148,13 @@
 			</view>
 
 			<view class="mod">
-				<view class="mod-head"><text class="mod-name">未来规划</text><text class="mod-tip">对 TA 的期待 · 暂不参与保存</text></view>
-				<view v-for="(group, gi) in planGroups" :key="group.key" class="plan-row">
-					<text class="plan-label">{{ group.label }}</text>
-					<view class="segs segs-small">
-						<view class="seg-ind" :style="segIndStyle(group.opts.length, planValue(gi))"></view>
-						<view v-for="(option, oi) in group.opts" :key="option" class="seg" @tap="setPlan(gi, oi)">
-							<text class="seg-name" :class="{ 'seg-name-on': planValue(gi) == oi }">{{ option }}</text>
-						</view>
-					</view>
-				</view>
+				<view class="mod-head"><text class="mod-name">关系期待</text><text class="mod-tip">可留空，再次点击可取消</text></view>
+                <view v-for="(group, gi) in planGroups" :key="group.key" class="plan-row">
+                    <text class="plan-label">{{ group.label }}</text>
+                    <view class="keys plan-keys">
+                        <view v-for="(option, oi) in group.opts" :key="option" class="key plan-key" :class="{ 'key-on': planValue(gi) == oi }" @tap="setPlan(gi, oi)"><text>{{ option }}</text></view>
+                    </view>
+                </view>
 			</view>
 
 			<view class="mod">
@@ -173,7 +171,7 @@
 
 		<view class="footer">
 			<view class="cancel-button" hover-class="hv-press" @tap="goBack"><text>取消</text></view>
-			<view class="save-button" :class="{ disabled: saving }" hover-class="hv-press" @tap="save"><text>{{ saving ? '保存中...' : '保存' }}</text></view>
+			<view class="save-button" :class="{ disabled: saving || loading || !loaded || saved }" hover-class="hv-press" @tap="save"><text>{{ saving ? '保存中...' : '保存' }}</text></view>
 		</view>
 	</view>
 </template>
@@ -205,12 +203,14 @@ const provinceList: any[] = Array.isArray(locationJson) ? locationJson as any[] 
 const provinceOptions: string[] = ['不限']
 for (let i = 0; i < provinceList.length; i++) provinceOptions.push('' + provinceList[i].name)
 const planGroups = [
-	{ key: 'goal', label: '交友目标', opts: ['倾向恋爱', '倾向结婚'] },
-	{ key: 'pace', label: '见面节奏', opts: ['尽快见面', '先了解再见面', '都行看对方'] },
-	{ key: 'kids', label: '是否想要小孩', opts: ['想要', '看情况决定', '不需要'] }
+	{ key: 'dating_goal', label: '我的关系目标', opts: ['倾向恋爱', '倾向结婚'] },
+	{ key: 'meeting_pace', label: '我期待的见面节奏', opts: ['倾向尽快见面', '真诚高效', '了解清楚再见面', '都行看对方的见面意愿'] },
+	{ key: 'children_intention', label: '我的生育意愿', opts: ['想要孩子', '看情况决定是否要孩子', '不想要孩子'] }
 ] as any[]
 
 const loading = ref(true)
+const loaded = ref(false)
+const saved = ref(false)
 const saving = ref(false)
 const ledDirty = ref(false)
 const ageMin = ref(null as any)
@@ -219,9 +219,9 @@ const heightMin = ref(null as any)
 const heightMax = ref(null as any)
 const eduMin = ref(null as any)
 const dist = ref(2)
-const planGoal = ref(1)
-const planPace = ref(2)
-const planKids = ref(1)
+const planGoal = ref(-1)
+const planPace = ref(-1)
+const planKids = ref(-1)
 const extras = ref([] as string[])
 const smokeReq = ref(0)
 const drinkReq = ref(0)
@@ -314,7 +314,8 @@ const setDist = (value: number) => {
 	markDirty()
 }
 const setPlan = (gi: number, oi: number) => {
-	if (planValue(gi) == oi) return
+	if (saving.value || saved.value) return
+	if (planValue(gi) == oi) oi = -1
 	if (gi == 0) planGoal.value = oi
 	else if (gi == 1) planPace.value = oi
 	else planKids.value = oi
@@ -493,6 +494,7 @@ const onIncomeTrackTouchStart = (e: any) => { detentTap('income-track', e, incom
 
 const load = async () => {
 	loading.value = true
+	loaded.value = false
 	try {
 		const response = await getOwnPreferences()
 		if (!response.success || response.data == null) {
@@ -500,6 +502,9 @@ const load = async () => {
 			return
 		}
 		const data = response.data as any
+		planGoal.value = planGroups[0].opts.indexOf(data.dating_goal)
+		planPace.value = planGroups[1].opts.indexOf(data.meeting_pace)
+		planKids.value = planGroups[2].opts.indexOf(data.children_intention)
 		ageMin.value = data.age_min
 		ageMax.value = data.age_max
 		heightMin.value = data.height_min
@@ -538,13 +543,16 @@ const load = async () => {
 		}
 		extras.value = parsed
 		ledDirty.value = false
+		loaded.value = true
+	} catch (error) {
+		uni.showToast({ title: '网络异常，请重试', icon: 'none' })
 	} finally {
 		loading.value = false
 	}
 }
 
 const save = async () => {
-	if (saving.value) return
+	if (saving.value || loading.value || !loaded.value || saved.value) return
 	if (ageMin.value != null && ageMax.value != null && Number(ageMin.value) > Number(ageMax.value)) {
 		uni.showToast({ title: '年龄下限不能大于上限', icon: 'none' })
 		return
@@ -570,15 +578,21 @@ const save = async () => {
 			housing_requirement: houseReq.value,
 			smoking_requirement: smokeReq.value,
 			drinking_requirement: drinkReq.value,
+			dating_goal: planGoal.value >= 0 ? planGroups[0].opts[planGoal.value] : null,
+			meeting_pace: planPace.value >= 0 ? planGroups[1].opts[planPace.value] : null,
+			children_intention: planKids.value >= 0 ? planGroups[2].opts[planKids.value] : null,
 			extra_requirement: extras.value.length > 0 ? extras.value.join(',') : null
 		})
 		if (!response.success) {
 			uni.showToast({ title: response.message != null ? '' + response.message : '择偶标准保存失败', icon: 'none' })
 			return
 		}
+		saved.value = true
 		ledDirty.value = false
 		uni.showToast({ title: '择偶标准已保存', icon: 'success' })
 		setTimeout(() => goBack(), 500)
+	} catch (error) {
+		uni.showToast({ title: '保存失败，已保留选择，请重试', icon: 'none' })
 	} finally {
 		saving.value = false
 	}
@@ -637,6 +651,9 @@ onMounted(() => { load() })
 .seg-name-on { color: var(--accent2); }
 .seg-sub { color: var(--muted); font-size: 20rpx; }
 
+.plan-keys { margin-top: 14rpx; }
+.plan-key { width: calc((100% - 16rpx) / 2); height: auto; min-height: 88rpx; padding: 18rpx 12rpx; text-align: center; }
+.plan-key > text { font-size: 24rpx; }
 .plan-row { margin-top: 22rpx; }
 .plan-label { display: block; color: var(--ink2); font-size: 25rpx; font-weight: 700; margin-bottom: 4rpx; }
 
