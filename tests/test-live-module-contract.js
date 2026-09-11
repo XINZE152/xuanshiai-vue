@@ -1,0 +1,22 @@
+const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
+
+const root = path.resolve(__dirname, '..')
+const api = fs.readFileSync(path.join(root, 'api', 'live.uts'), 'utf8')
+const index = fs.readFileSync(path.join(root, 'api', 'index.uts'), 'utf8')
+const panel = fs.readFileSync(path.join(root, 'components', 'LiveMatchmakingPanel.uvue'), 'utf8')
+
+assert.match(api, /reservation\/me/)
+assert.match(index, /getMyLiveReservation/)
+assert.match(panel, /getMyLiveReservation\(sessionId\)/)
+assert.match(panel, /incomingVersion > lastVersion\.value/)
+assert.match(panel, /syncSelectedState\(sequence, false\)/)
+assert.match(panel, /reconnectAttempts >= 3/)
+assert.match(panel, /setTimeout\(\(\) => \{ reconnectTimer = null; connectSocket\(\) \}, delay\)/)
+assert.match(panel, /content: '请确认摄像头、麦克风和当前网络可正常使用/)
+assert.doesNotMatch(panel, /const deviceCheck = \(\) => runAction\(\(\) => submitLiveDeviceCheck\(selectedId\.value, true\)\)/)
+assert.match(panel, /selectionSequence/)
+assert.match(panel, /selected\.value\.status == 'CHECK_IN'/)
+
+console.log('PASS live module contract')
