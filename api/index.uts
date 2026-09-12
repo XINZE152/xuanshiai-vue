@@ -103,6 +103,13 @@ export {
 
 export { generateIdealPartner } from './ai-search.uts'
 
+export {
+  LIVE_STATUSES, liveStatusLabel, liveErrorMessage, getLiveSessions, getLiveSession, getMyLiveReservation,
+  reserveLiveSession, cancelLiveReservation, submitLiveDeviceCheck, checkInLiveSession,
+  respondLiveInvitation, leaveLiveStage, createLiveIdempotencyKey, createLiveInteraction,
+  reportLiveUser, getLiveRtcTicket, connectLiveEvents
+} from './live.uts'
+
 export type {
   MessageSubject
 } from './message.uts'

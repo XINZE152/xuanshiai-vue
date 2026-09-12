@@ -32,6 +32,7 @@
 					</view>
 
 					<view v-if="currentTabValue === 'service'" class="tab-panel">
+						<LiveMatchmakingPanel />
 						<view class="service-showcase">
 							<view class="section-header service-showcase-header">
 								<view>
@@ -193,6 +194,7 @@
 
 <script setup lang="uts">
 import XsaTabBar from '@/components/XsaTabBar.uvue'
+import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	import XsaEmpty from '@/components/XsaEmpty.uvue'
 	import MatchmakerCard from '@/components/MatchmakerCard.uvue'
 	import MatchmakerRank from '@/components/MatchmakerRank.uvue'
