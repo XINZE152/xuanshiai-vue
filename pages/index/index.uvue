@@ -678,6 +678,26 @@
 			</view>
 		</view>
 
+		<!-- 当前推荐用户的资料分享：布局与“我的-推荐给好友”保持一致 -->
+		<view v-if="profileShareVisible" class="invite-share-mask" @tap="closeProfileShare">
+			<view class="invite-share-sheet" @tap.stop>
+				<view class="invite-share-handle"></view>
+				<text class="invite-share-title">分享 Ta 的资料</text>
+				<view class="invite-share-options">
+					<view class="invite-share-option" @tap="shareProfileToFriend">
+						<view class="invite-share-option-icon invite-share-option-icon-green"><text class="invite-share-symbol">↗</text></view>
+						<text class="invite-share-option-label">发送给朋友</text>
+					</view>
+					<view class="invite-share-option" @tap="goProfilePoster">
+						<view class="invite-share-option-icon invite-share-option-icon-gold"><text class="invite-share-symbol">▧</text></view>
+						<text class="invite-share-option-label">生成海报</text>
+					</view>
+				</view>
+				<text class="invite-share-note">仅展示 Ta 已授权公开的资料与认证状态。</text>
+				<view class="invite-share-cancel" @tap="closeProfileShare"><text>取消</text></view>
+			</view>
+		</view>
+
 <!-- 自定义底部导航栏 -->
 
 <XsaTabBar />
@@ -1180,7 +1200,25 @@
 		return photos != null && photos.length > 0 ? '' + photos[0] : ''
 	})
 	const viewAllMoments = () => { goUserDetailAnchored(recommendUserId.value, 'anchor-moments') }
-	const shareProfile = () => { showToast('已生成分享入口') }
+	const profileShareVisible = ref(false)
+	const shareProfile = () => { profileShareVisible.value = true }
+	const closeProfileShare = () => { profileShareVisible.value = false }
+	const shareProfileToFriend = () => {
+		profileShareVisible.value = false
+		showToast('已准备好分享内容')
+	}
+	const goProfilePoster = () => {
+		const userId = recommendUserId.value
+		profileShareVisible.value = false
+		if (userId <= 0) {
+			showToast('当前用户资料不可用')
+			return
+		}
+		uni.navigateTo({
+			url: '/pagesSub/profileExtra/my-posters?userId=' + userId,
+			fail: () => { showToast('海报页面打开失败，请重试') }
+		})
+	}
 	const likedUserIds = ref([] as number[])
 	const isLiked = (userId: number): boolean => likedUserIds.value.indexOf(Number(userId)) >= 0
 	const onLike = async (userId: number = 0) => {
@@ -1607,6 +1645,90 @@
 .blocked-user-info text:last-child { font-size: 12px; color: var(--muted); }
 .unblock-button { padding: 10px 8px; border: 2px solid var(--accent2); border-radius: 6px; color: var(--accent2); font-size: 12px; white-space: nowrap; }
 .block-back-button { height: 48px; margin-top: 22px; border-radius: 24px; display: flex; align-items: center; justify-content: center; background: linear-gradient(90deg, var(--accent), var(--accent2)); color: var(--text-invert); font-size: 18px; font-weight: 800; }
+
+/* 资料分享弹窗：复用个人中心的双选项底部面板布局 */
+.invite-share-mask {
+	position: fixed;
+	z-index: 80;
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: calc(72px + env(safe-area-inset-bottom));
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-end;
+	background-color: rgba(12, 19, 19, 0.68);
+}
+.invite-share-sheet {
+	width: 100%;
+	padding: 24rpx 32rpx 26rpx;
+	border-radius: 28rpx 28rpx 0 0;
+	background-color: var(--warm);
+	box-sizing: border-box;
+}
+.invite-share-handle {
+	width: 64rpx;
+	height: 6rpx;
+	margin: 0 auto 32rpx;
+	border-radius: var(--radius-full);
+	background-color: var(--line);
+}
+.invite-share-title {
+	display: block;
+	margin-bottom: 28rpx;
+	color: var(--text-primary);
+	font-size: 30rpx;
+	font-weight: 600;
+}
+.invite-share-options { display: flex; flex-direction: row; gap: 24rpx; }
+.invite-share-option {
+	flex: 1;
+	height: 220rpx;
+	padding: 20rpx 8rpx;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid var(--accent);
+	border-radius: 24rpx;
+	background-color: var(--surface);
+	box-sizing: border-box;
+}
+.invite-share-option + .invite-share-option { border-color: var(--gold); background-color: var(--match-paper); }
+.invite-share-option:active { transform: scale(0.98); }
+.invite-share-option-icon {
+	width: 72rpx;
+	height: 72rpx;
+	margin-bottom: 20rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: var(--radius-full);
+	font-size: 34rpx;
+}
+.invite-share-option-icon-green { color: var(--accent2); background-color: var(--accent-bg); }
+.invite-share-option-icon-gold { color: var(--gold); background-color: var(--paper); }
+.invite-share-symbol { line-height: 1; }
+.invite-share-option-label { color: var(--text-primary); font-size: 26rpx; font-weight: 600; }
+.invite-share-note {
+	display: block;
+	margin: 28rpx 4rpx 24rpx;
+	color: var(--text-muted);
+	font-size: 20rpx;
+	line-height: 1.5;
+	text-align: center;
+}
+.invite-share-cancel {
+	height: 72rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: var(--radius-full);
+	background-color: var(--paper);
+	color: var(--accent2);
+	font-size: 24rpx;
+}
+.invite-share-cancel:active { transform: scale(0.99); }
 /* 底部操作栏 */
 
 .ai-float-btn { z-index: 55; bottom: 360rpx; }

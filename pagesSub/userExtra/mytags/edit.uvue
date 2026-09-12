@@ -26,24 +26,10 @@
 			</view>
 
 		<text class="empty-hint">兴趣和性格一起选，选满 3 个可完善资料</text>
-            <view v-if="legacyLabels.length > 0" class="legacy-notice">
-                <text>以下旧标签不再用于介绍兴趣和性格：{{ legacyLabels.join('、') }}。保存后将从标签中移除，请按需要在基本资料或择偶标准中填写。</text>
-            </view>
             <view v-if="loading || loadError != ''" class="load-state">
-                <text>{{ loading ? '正在加载标签和已选资料…' : loadError }}</text>
+                <text>{{ loading ? '正在加载已选标签…' : loadError }}</text>
                 <view v-if="!loading" class="retry-action" @tap="load"><text>重新加载</text></view>
             </view>
-        <view v-if="loaded && customEnabled" class="custom-editor">
-            <view class="custom-editor-head">
-                <text class="custom-title">自定义标签</text>
-                <text class="custom-count">{{ customLabels.length }}/{{ maxCustomTags }}</text>
-            </view>
-            <view class="custom-editor-row">
-                <view class="custom-input"><XsaInput v-model="customDraft" :placeholder="'输入' + customMinLength + '-' + customMaxLength + '个字符'" :maxlength="customMaxLength" :clearable="true" /></view>
-                <view class="custom-add" :class="{ disabled: customDraft.trim() == '' || saving || saved }" @tap="addCustomTag"><text>添加</text></view>
-            </view>
-            <text class="custom-hint">最多添加 {{ maxCustomTags }} 个，与系统标签共用 {{ maxTags }} 个名额</text>
-        </view>
         <view v-if="loaded" class="tag-search">
             <XsaInput v-model="searchQuery" placeholder="搜索兴趣标签" :maxlength="40" :clearable="true" />
         </view>
@@ -59,14 +45,20 @@
 			<scroll-view :key="activeCategoryId + ':' + searchQuery" scroll-y class="tag-panel" enhanced show-scrollbar="false">
 				<view class="category-heading">
 					<text class="category-title">{{ searchActive ? '搜索结果' : activeCategory.name }}</text>
-					<text class="category-count">{{ displayTags.length }} 项 · 可多选</text>
+					<text class="category-count">{{ displayTags.length }} 个标签 · 可多选</text>
 				</view>
 				<view class="tag-grid">
-					<view v-for="tag in displayTags" :key="tag.id" class="tag-item" :class="{ selected: isTagSelected(activeCategory.id, tag.label) }" @tap="toggleTag(activeCategory.id, tag.label)">
+					<view v-for="tag in displayTags" :key="tag.id" class="tag-item" :class="{ selected: isTagSelected(activeCategory.id, tag.label), custom: isCustomLabel(tag.label) }" @tap="onTagTap(activeCategory.id, tag.label)">
 						<text v-if="tag.emoji != ''" class="tag-emoji">{{ tag.emoji }}</text>
 						<text class="tag-text">{{ tag.label }}</text>
+                        <text v-if="isCustomLabel(tag.label) && !searchActive" class="custom-tag-hint">自定义 · 点按编辑</text>
                         <text v-if="searchActive" class="tag-category">{{ categoryNameForTag(tag.label) }}</text>
 						<view v-if="isTagSelected(activeCategory.id, tag.label)" class="tag-check"><text>✓</text></view>
+					</view>
+					<view v-if="!searchActive && customEnabled" class="tag-item custom-entry" @tap="openCustomEditor('')">
+						<text class="custom-entry-plus">＋</text>
+						<text class="tag-text">自定义</text>
+						<text class="custom-entry-count">{{ customLabels.length }}/{{ maxCustomTags }}</text>
 					</view>
 				</view>
 				<text v-if="searchActive && displayTags.length === 0" class="empty-hint">没有找到相关标签，试试其他关键词</text>
@@ -74,12 +66,33 @@
 			</scroll-view>
 		</view>
 		</view>
+
+		<XsaModal
+			:visible="customModalVisible"
+			:title="customEditingLabel == '' ? '添加自定义标签' : '编辑自定义标签'"
+			:confirm-text="customEditingLabel == '' ? '添加' : '完成'"
+			@close="closeCustomModal"
+			@confirm="saveCustomTag"
+		>
+			<view class="custom-modal-body">
+				<XsaInput v-model="customDraft" :placeholder="'输入' + customMinLength + '-' + customMaxLength + '个字符'" :maxlength="customMaxLength" :clearable="true" />
+				<view class="custom-category-field">
+					<text class="custom-category-label">所属分区</text>
+					<picker class="custom-category-picker" mode="selector" :range="categoryNames" :value="customCategoryIndex" @change="onCustomCategoryChange">
+						<view class="custom-category-value"><text>{{ customCategoryName }}</text><text>›</text></view>
+					</picker>
+				</view>
+				<text class="custom-modal-hint">最多 {{ maxCustomTags }} 个自定义标签，与系统标签共用 {{ maxTags }} 个名额</text>
+				<view v-if="customEditingLabel != ''" class="custom-delete" @tap="deleteEditingCustomTag"><text>删除这个标签</text></view>
+			</view>
+		</XsaModal>
 	</view>
 </template>
 
 <script setup lang="uts">
 import { getOwnProfile, getProfileTagOptions, updateOwnProfile } from '@/api'
 import XsaInput from '@/components/XsaInput.uvue'
+import XsaModal from '@/components/XsaModal.uvue'
 
 type TagItem = { id: string, label: string, emoji: string }
 type TagCategory = { id: string, name: string, tags: TagItem[] }
@@ -93,50 +106,77 @@ const customMinLength = ref(2)
 const customMaxLength = ref(10)
 const customDraft = ref('')
 const customLabels = ref<string[]>([])
+const customCategoryByLabel = ref<any>({})
+const customModalVisible = ref(false)
+const customEditingLabel = ref('')
+const customCategoryId = ref('')
 const activeCategoryId = ref('')
 const searchQuery = ref('')
 const searchActive = computed((): boolean => searchQuery.value.trim().length > 0)
 const selectedLabels = ref<string[]>([])
-const legacyLabels = ref<string[]>([])
 const initialLabels = ref<string[]>([])
+const initialCustomCategoryByLabel = ref<any>({})
 const saving = ref(false)
 const saved = ref(false)
 const loading = ref(false)
 const loaded = ref(false)
+const profileReady = ref(false)
 const loadError = ref('')
 const visibleCategories = computed((): TagCategory[] => categories.value)
 const activeCategory = computed((): TagCategory => {
     for (const category of categories.value) if (category.id === activeCategoryId.value) return category
     return { id: '', name: '', tags: [] }
 })
+const categoryNames = computed((): string[] => categories.value.map((category: TagCategory): string => category.name))
+const customCategoryIndex = computed((): number => {
+    const index = categories.value.findIndex((category: TagCategory): boolean => category.id === customCategoryId.value)
+    return index >= 0 ? index : 0
+})
+const customCategoryName = computed((): string => {
+    const index = customCategoryIndex.value
+    return categories.value.length > index ? categories.value[index].name : '请选择'
+})
 const selectedItems = computed((): TagItem[] => selectedLabels.value.map((label: string): TagItem => ({ id: label, label: label, emoji: '' })))
+const tagsForCategory = (category: TagCategory): TagItem[] => {
+    const result = category.tags.slice()
+    for (const label of customLabels.value) {
+        if (customCategoryByLabel.value[label] === category.id) result.push({ id: 'custom:' + label, label: label, emoji: '' })
+    }
+    return result
+}
 const displayTags = computed((): TagItem[] => {
-    if (!searchActive.value) return activeCategory.value.tags
+    if (!searchActive.value) return tagsForCategory(activeCategory.value)
     const query = searchQuery.value.trim().toLowerCase()
     const matches: TagItem[] = []
     for (const category of categories.value) {
-        for (const tag of category.tags) if (tag.label.toLowerCase().indexOf(query) >= 0) matches.push(tag)
+        for (const tag of tagsForCategory(category)) if (tag.label.toLowerCase().indexOf(query) >= 0) matches.push(tag)
     }
     return matches
 })
 const categoryNameForTag = (label: string): string => {
+    if (customLabels.value.indexOf(label) >= 0) {
+        const categoryId = customCategoryByLabel.value[label]
+        for (const category of categories.value) if (category.id === categoryId) return category.name
+    }
     for (const category of categories.value) {
         for (const tag of category.tags) if (tag.label === label) return category.name
     }
-    return customLabels.value.indexOf(label) >= 0 ? '自定义' : ''
+    return ''
 }
-const canSave = computed(() => loaded.value && !loading.value && !saved.value && selectedLabels.value.length <= maxTags.value)
-const hasChanges = computed(() => selectedLabels.value.join('|') !== initialLabels.value.join('|'))
+const canSave = computed(() => loaded.value && profileReady.value && !loading.value && !saved.value && selectedLabels.value.length <= maxTags.value)
+const categoryMapSnapshot = (mapping: any): string => Object.keys(mapping).sort().map((key: string): string => key + ':' + mapping[key]).join('|')
+const hasChanges = computed(() => selectedLabels.value.join('|') !== initialLabels.value.join('|') || categoryMapSnapshot(customCategoryByLabel.value) !== categoryMapSnapshot(initialCustomCategoryByLabel.value))
 const selectCategory = (categoryId: string) => { activeCategoryId.value = categoryId; searchQuery.value = '' }
 const isTagSelected = (_categoryId: string, label: string): boolean => selectedLabels.value.indexOf(label) >= 0
+const isCustomLabel = (label: string): boolean => customLabels.value.indexOf(label) >= 0
 const categorySelectedCount = (categoryId: string): number => {
     for (const category of categories.value) {
-        if (category.id === categoryId) return category.tags.filter((tag: TagItem) => selectedLabels.value.indexOf(tag.label) >= 0).length
+        if (category.id === categoryId) return tagsForCategory(category).filter((tag: TagItem) => selectedLabels.value.indexOf(tag.label) >= 0).length
     }
     return 0
 }
 const toggleTag = (_categoryId: string, label: string) => {
-    if (!loaded.value || saving.value || saved.value) return
+    if (!loaded.value || !profileReady.value || loading.value || saving.value || saved.value) return
     const next = selectedLabels.value.slice()
     const index = next.indexOf(label)
     if (index >= 0) next.splice(index, 1)
@@ -144,19 +184,91 @@ const toggleTag = (_categoryId: string, label: string) => {
     else { uni.showToast({ title: '最多选择' + maxTags.value + '个，可先移除一个', icon: 'none' }); return }
     selectedLabels.value = next
 }
+const onTagTap = (categoryId: string, label: string) => {
+    if (isCustomLabel(label)) openCustomEditor(label)
+    else toggleTag(categoryId, label)
+}
+const copyCategoryMap = (source: any): any => {
+    const next: any = {}
+    for (const key of Object.keys(source)) next[key] = source[key]
+    return next
+}
 const removeTag = (label: string) => {
     if (saving.value || saved.value) return
     selectedLabels.value = selectedLabels.value.filter((item: string) => item !== label)
     customLabels.value = customLabels.value.filter((item: string) => item !== label)
+    const next = copyCategoryMap(customCategoryByLabel.value)
+    delete next[label]
+    customCategoryByLabel.value = next
 }
 const clearTags = () => {
-    if (!loaded.value || saving.value || saved.value) return
+    if (!loaded.value || !profileReady.value || loading.value || saving.value || saved.value) return
     selectedLabels.value = []
     customLabels.value = []
+    customCategoryByLabel.value = {}
 }
-const addCustomTag = () => {
-    if (!loaded.value || !customEnabled.value || saving.value || saved.value) return
+const findSystemTag = (label: string): any => {
+    const lowered = label.toLowerCase()
+    for (const category of categories.value) {
+        for (const tag of category.tags) {
+            if (tag.label.toLowerCase() === lowered) return { categoryId: category.id, categoryName: category.name, label: tag.label }
+        }
+    }
+    return null
+}
+const openCustomEditor = (label: string) => {
+    if (!loaded.value || !profileReady.value || loading.value || saving.value || saved.value) return
+    if (label == '') {
+        if (customLabels.value.length >= maxCustomTags.value) {
+            uni.showToast({ title: '自定义标签最多添加' + maxCustomTags.value + '个', icon: 'none' })
+            return
+        }
+        if (selectedLabels.value.length >= maxTags.value) {
+            uni.showToast({ title: '最多选择' + maxTags.value + '个，可先移除一个', icon: 'none' })
+            return
+        }
+    }
+    customEditingLabel.value = label
+    customDraft.value = label
+    customCategoryId.value = label != '' && customCategoryByLabel.value[label] != null ? customCategoryByLabel.value[label] : activeCategoryId.value
+    customModalVisible.value = true
+}
+const closeCustomModal = () => {
+    customModalVisible.value = false
+    customEditingLabel.value = ''
+    customDraft.value = ''
+    customCategoryId.value = ''
+}
+const onCustomCategoryChange = (event: any) => {
+    const index = Number(event.detail.value)
+    if (index >= 0 && index < categories.value.length) customCategoryId.value = categories.value[index].id
+}
+const saveCustomTag = () => {
+    if (!customModalVisible.value || saving.value || saved.value) return
     const normalized = customDraft.value.trim().replace(/\s+/g, ' ')
+    const lowered = normalized.toLowerCase()
+    const existingOther = selectedLabels.value.find((label: string): boolean => label !== customEditingLabel.value && label.toLowerCase() === lowered)
+    if (existingOther != null) {
+        uni.showToast({ title: '这个标签已经添加过了', icon: 'none' })
+        return
+    }
+    const systemTag = findSystemTag(normalized)
+    if (systemTag != null) {
+        const next = selectedLabels.value.slice()
+        if (customEditingLabel.value != '') {
+            const oldIndex = next.indexOf(customEditingLabel.value)
+            if (oldIndex >= 0) next.splice(oldIndex, 1)
+            customLabels.value = customLabels.value.filter((label: string): boolean => label !== customEditingLabel.value)
+            const nextMap = copyCategoryMap(customCategoryByLabel.value)
+            delete nextMap[customEditingLabel.value]
+            customCategoryByLabel.value = nextMap
+        }
+        if (next.indexOf(systemTag.label) < 0) next.push(systemTag.label)
+        selectedLabels.value = next
+        closeCustomModal()
+        uni.showToast({ title: '已选择“' + systemTag.label + '”，位于' + systemTag.categoryName, icon: 'none' })
+        return
+    }
     if (normalized.length < customMinLength.value || normalized.length > customMaxLength.value) {
         uni.showToast({ title: '请输入' + customMinLength.value + '-' + customMaxLength.value + '个字符', icon: 'none' })
         return
@@ -165,42 +277,53 @@ const addCustomTag = () => {
         uni.showToast({ title: '仅支持中英文、数字和常用连接符，且不能为纯数字', icon: 'none' })
         return
     }
-    const lowered = normalized.toLowerCase()
     const forbidden = ['找对象', '找伴侣', '寻找伴侣', '长期伴侣', '另一半', '恋爱', '结婚', '婚姻', '生育', '身高', '体重', '年龄', '学历', '本科', '硕士', '博士', '收入', '职业', '房产', '资产', '微信', '电话', '手机', 'qq', 'vx', 'v信', 'wx', 'wechat', '加我', '约炮', '包养', '未成年', '政治', '宗教', '疾病']
     if (normalized.replace(/\D/g, '').length >= 6 || forbidden.some((word: string): boolean => lowered.indexOf(word) >= 0)) {
         uni.showToast({ title: '请填写本人的兴趣、生活偏好或性格', icon: 'none' })
         return
     }
-    if (selectedLabels.value.some((label: string): boolean => label.toLowerCase() === lowered)) {
-        uni.showToast({ title: '这个标签已经添加过了', icon: 'none' })
-        return
-    }
-    for (const category of categories.value) {
-        for (const tag of category.tags) {
-            if (tag.label.toLowerCase() === lowered) {
-                toggleTag(category.id, tag.label)
-                customDraft.value = ''
-                uni.showToast({ title: '已选择同名系统标签', icon: 'none' })
-                return
-            }
-        }
-    }
-    if (customLabels.value.length >= maxCustomTags.value) {
+    if (customEditingLabel.value == '' && customLabels.value.length >= maxCustomTags.value) {
         uni.showToast({ title: '自定义标签最多添加' + maxCustomTags.value + '个', icon: 'none' })
         return
     }
-    if (selectedLabels.value.length >= maxTags.value) {
+    if (customEditingLabel.value == '' && selectedLabels.value.length >= maxTags.value) {
         uni.showToast({ title: '最多选择' + maxTags.value + '个，可先移除一个', icon: 'none' })
         return
     }
-    customLabels.value = customLabels.value.concat([normalized])
-    selectedLabels.value = selectedLabels.value.concat([normalized])
-    customDraft.value = ''
+    if (customCategoryId.value == '' || categories.value.findIndex((category: TagCategory): boolean => category.id === customCategoryId.value) < 0) {
+        uni.showToast({ title: '请选择所属分区', icon: 'none' })
+        return
+    }
+    const nextSelected = selectedLabels.value.slice()
+    const nextCustom = customLabels.value.slice()
+    const nextMap = copyCategoryMap(customCategoryByLabel.value)
+    if (customEditingLabel.value == '') {
+        nextSelected.push(normalized)
+        nextCustom.push(normalized)
+    } else {
+        const selectedIndex = nextSelected.indexOf(customEditingLabel.value)
+        const customIndex = nextCustom.indexOf(customEditingLabel.value)
+        if (selectedIndex >= 0) nextSelected[selectedIndex] = normalized
+        if (customIndex >= 0) nextCustom[customIndex] = normalized
+        delete nextMap[customEditingLabel.value]
+    }
+    nextMap[normalized] = customCategoryId.value
+    selectedLabels.value = nextSelected
+    customLabels.value = nextCustom
+    customCategoryByLabel.value = nextMap
+    closeCustomModal()
+}
+const deleteEditingCustomTag = () => {
+    if (customEditingLabel.value == '') return
+    const label = customEditingLabel.value
+    closeCustomModal()
+    removeTag(label)
 }
 const load = async () => {
     if (loading.value || saving.value) return
     loading.value = true
     loaded.value = false
+    profileReady.value = false
     loadError.value = ''
     try {
         const optionsResponse = await getProfileTagOptions()
@@ -210,7 +333,7 @@ const load = async () => {
         }
         const data = optionsResponse.data
         if (data.version !== 'personal-v2' || data.max_tags !== 10 || !Array.isArray(data.categories) || data.categories.length === 0) {
-            loadError.value = '标签服务正在更新，请稍后重试'
+            loadError.value = '本地标签目录异常，请重新打开页面'
             return
         }
         const customPolicy = data.custom
@@ -235,28 +358,46 @@ const load = async () => {
             }
             mapped.push({ id: raw.key, name: raw.label, tags: tags })
         }
-        const profileResponse = await getOwnProfile()
-        if (!profileResponse.success || profileResponse.data == null || !Array.isArray(profileResponse.data.personal_tags)) {
-            loadError.value = '已选资料加载失败，请重试后再编辑'
-            return
-        }
-        const profile = profileResponse.data
-        const selected: string[] = []
-        const legacy: string[] = Array.isArray(profile.legacy_tags) ? (profile.legacy_tags as string[]).slice() : []
-        const storedCustom: string[] = customEnabled.value && Array.isArray(profile.custom_tags) ? (profile.custom_tags as string[]).slice(0, maxCustomTags.value) : []
-        for (const label of profile.personal_tags as string[]) {
-            if (allowed.indexOf(label) >= 0 || storedCustom.indexOf(label) >= 0) {
-                if (selected.indexOf(label) < 0) selected.push(label)
-            } else if (legacy.indexOf(label) < 0) legacy.push(label)
-        }
         categories.value = mapped
         activeCategoryId.value = mapped[0].id
         maxTags.value = data.max_tags
-        selectedLabels.value = selected
-        customLabels.value = storedCustom.filter((label: string): boolean => selected.indexOf(label) >= 0)
-        initialLabels.value = selected.slice()
-        legacyLabels.value = legacy
+        selectedLabels.value = []
+        customLabels.value = []
+        customCategoryByLabel.value = {}
+        initialLabels.value = []
+        initialCustomCategoryByLabel.value = {}
         loaded.value = true
+
+        const profileResponse = await getOwnProfile()
+        if (!profileResponse.success || profileResponse.data == null) {
+            loadError.value = '已选标签加载失败，可先浏览，重新加载后再编辑'
+            return
+        }
+        const profile = profileResponse.data
+        const profileTags: string[] = Array.isArray(profile.personal_tags) ? (profile.personal_tags as string[]).slice() : []
+        const selected: string[] = []
+        const storedCustom: string[] = customEnabled.value && Array.isArray(profile.custom_tags) ? (profile.custom_tags as string[]).slice(0, maxCustomTags.value) : []
+        const storedCategories: any = profile.custom_tag_categories != null && typeof profile.custom_tag_categories === 'object' ? profile.custom_tag_categories : {}
+        const validCustom: string[] = []
+        const validCustomCategories: any = {}
+        for (const label of storedCustom) {
+            const categoryId = storedCategories[label]
+            if (categories.value.findIndex((category: TagCategory): boolean => category.id === categoryId) >= 0) {
+                validCustom.push(label)
+                validCustomCategories[label] = categoryId
+            }
+        }
+        for (const label of profileTags) {
+            if (allowed.indexOf(label) >= 0 || validCustom.indexOf(label) >= 0) {
+                if (selected.indexOf(label) < 0) selected.push(label)
+            }
+        }
+        selectedLabels.value = selected
+        customLabels.value = validCustom.filter((label: string): boolean => selected.indexOf(label) >= 0)
+        customCategoryByLabel.value = validCustomCategories
+        initialLabels.value = selected.slice()
+        initialCustomCategoryByLabel.value = copyCategoryMap(validCustomCategories)
+        profileReady.value = true
         if (selected.length > maxTags.value) uni.showToast({ title: '原有标签较多，请整理至10个以内', icon: 'none' })
     } catch (error) {
         loadError.value = '网络异常，请重试'
@@ -268,15 +409,21 @@ const saveAndBack = async () => {
     if (saving.value || !canSave.value) return
     saving.value = true
     const submitted = selectedLabels.value.slice()
+    const submittedCategories: any = {}
+    for (const label of customLabels.value) {
+        if (submitted.indexOf(label) >= 0) submittedCategories[label] = customCategoryByLabel.value[label]
+    }
     try {
-        const response = await updateOwnProfile({ personal_tags: submitted })
+        const response = await updateOwnProfile({ personal_tags: submitted, custom_tag_categories: submittedCategories })
         if (!response.success) {
             uni.showToast({ title: response.message != null ? '' + response.message : '标签保存失败', icon: 'none' })
             return
         }
         const profile = response.data != null && response.data.profile != null ? response.data.profile : response.data
         const values = profile != null ? profile.personal_tags : null
-        if (!Array.isArray(values) || values.length !== submitted.length || submitted.some((label: string) => (values as string[]).indexOf(label) < 0)) {
+        const returnedCategories: any = profile != null && profile.custom_tag_categories != null ? profile.custom_tag_categories : {}
+        const mappingMismatch = Object.keys(submittedCategories).some((label: string): boolean => returnedCategories[label] !== submittedCategories[label])
+        if (!Array.isArray(values) || values.length !== submitted.length || submitted.some((label: string) => (values as string[]).indexOf(label) < 0) || mappingMismatch) {
             uni.showToast({ title: '标签保存结果不一致，请重试', icon: 'none' })
             return
         }
@@ -320,19 +467,9 @@ onLoad(() => { load() })
 .selected-text { font-size: 22rpx; font-weight: 600; }
 .selected-remove { margin-left: 2rpx; color: var(--accent2); font-size: 26rpx; line-height: 1; }
 .empty-hint { color: var(--muted); font-size: 24rpx; }
-.legacy-notice { flex-shrink: 0; max-height: 140rpx; overflow-y: auto; padding: 12rpx; color: var(--ink2); background: var(--warm); font-size: 22rpx; border-radius: 12rpx; }
 .load-state { padding: 40rpx 20rpx; color: var(--muted); font-size: 26rpx; }
 .retry-action { padding: 20rpx; color: var(--accent2); }
-.custom-editor { flex-shrink: 0; display: flex; flex-direction: column; gap: 10rpx; padding: 16rpx; border: 1px solid var(--line); border-radius: 14rpx; background: var(--surface); }
-.custom-editor-head, .custom-editor-row { display: flex; flex-direction: row; align-items: center; }
-.custom-editor-head { justify-content: space-between; }
-.custom-title { color: var(--ink); font-size: 25rpx; font-weight: 700; }
-.custom-count, .custom-hint { color: var(--muted); font-size: 21rpx; }
-.custom-editor-row { gap: 12rpx; }
-.custom-input { flex: 1; min-width: 0; }
-.custom-add { width: 112rpx; height: 76rpx; display: flex; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 14rpx; color: var(--text-invert); background: var(--accent); font-size: 24rpx; font-weight: 700; }
-.custom-add.disabled { opacity: 0.45; pointer-events: none; }
-.tag-item:active, .selected-save:active, .custom-add:active { opacity: 0.75; }
+.tag-item:active, .selected-save:active, .custom-delete:active { opacity: 0.75; }
 .tag-search { flex-shrink: 0; }
 .tag-workspace { flex: 1; min-height: 0; display: flex; flex-direction: row; gap: 14rpx; }
 .category-sidebar { width: 160rpx; height: 100%; flex: 0 0 160rpx; padding: 14rpx 0; box-sizing: border-box; border: 1px solid var(--line); border-radius: 14rpx; background: var(--surface); }
@@ -350,10 +487,22 @@ onLoad(() => { load() })
 .tag-item { position: relative; width: calc((100% - 10rpx) / 2); min-height: 112rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10rpx; padding: 24rpx 8rpx 16rpx; box-sizing: border-box; border: 2rpx solid var(--line); border-radius: 14rpx; background: var(--surface); }
 .tag-category { color: var(--muted); font-size: 20rpx; }
 .tag-item.selected { border-color: var(--accent); background: var(--accent-bg); }
+.tag-item.custom { border-style: dashed; }
+.tag-item.custom-entry { border-style: dashed; color: var(--accent2); }
+.custom-entry-plus { color: var(--accent); font-size: 32rpx; font-weight: 700; line-height: 1; }
+.custom-entry-count { color: var(--muted); font-size: 20rpx; }
+.custom-tag-hint { color: var(--muted); font-size: 19rpx; }
 .tag-emoji { font-size: 34rpx; line-height: 1; }
 .tag-text { max-width: 100%; color: var(--ink2); font-size: 22rpx; line-height: 1.3; text-align: center; }
 .tag-item.selected .tag-text { color: var(--accent2); font-weight: 700; }
 .tag-check { position: absolute; top: 8rpx; right: 8rpx; width: 30rpx; height: 30rpx; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--accent); color: var(--text-invert); font-size: 20rpx; font-weight: 700; }
+.custom-modal-body { width: 100%; display: flex; flex-direction: column; gap: 20rpx; }
+.custom-category-field { display: flex; flex-direction: row; align-items: center; justify-content: space-between; min-height: 76rpx; border-bottom: 1px solid var(--line); }
+.custom-category-label { color: var(--ink2); font-size: 25rpx; font-weight: 700; }
+.custom-category-picker { min-width: 220rpx; }
+.custom-category-value { display: flex; flex-direction: row; justify-content: flex-end; gap: 12rpx; color: var(--accent2); font-size: 24rpx; }
+.custom-modal-hint { color: var(--muted); font-size: 21rpx; line-height: 1.5; }
+.custom-delete { align-self: center; padding: 14rpx 24rpx; color: var(--accent2); font-size: 23rpx; }
 .tag-bottom-spacer { height: 60rpx; }
 @media (min-width: 600px) {
 	.category-sidebar { width: 176rpx; flex-basis: 176rpx; }

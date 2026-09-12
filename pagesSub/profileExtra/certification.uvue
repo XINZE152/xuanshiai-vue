@@ -1,112 +1,113 @@
 <template>
-	<view class="page">
+	<view class="page" :class="{ 'has-bottom-action': needsBottomAction }">
 		<view v-if="loadError != ''" class="notice-card error-card">
-			<view class="notice-copy">
-				<text class="notice-title">认证状态加载失败</text>
-				<text class="notice-text">{{ loadError }}</text>
-			</view>
+			<view class="notice-copy"><text class="notice-title">认证状态加载失败</text><text class="notice-text">{{ loadError }}</text></view>
 			<view class="text-action" @tap="refreshStatus"><text>重试</text></view>
 		</view>
 
-		<view class="section-card">
-			<view class="card-header">
-				<view>
-					<text class="section-title">认证中心</text>
-					<text class="section-note">各项可独立完成，学历和头像无需先绑定手机号或实名认证</text>
+		<template v-if="activeStep == ''">
+			<view class="section-card overview-card">
+				<view class="card-header">
+					<view><text class="section-title">认证中心</text><text class="section-note">四项认证可独立查看；单身承诺须先完成实名认证</text></view>
+					<text class="progress-text">已完成 {{ completed }}/4</text>
 				</view>
-				<text class="progress-text">已完成 {{ completed }}/4</text>
-			</view>
-
-			<view class="cert-item">
-				<view class="cert-icon-wrap" :class="{ 'cert-done': phoneVerified }"><text class="cert-icon-text">手机</text></view>
-				<view class="cert-text-wrap">
-					<text class="cert-label">手机号绑定</text>
-					<text class="cert-desc">{{ phoneVerified ? phoneMasked : '用于接收审核和服务通知' }}</text>
+				<view class="account-label"><text>账号安全</text></view>
+				<view class="cert-item">
+					<view class="cert-icon-wrap" :class="{ 'cert-done': phoneVerified }"><text class="cert-icon-text">手机</text></view>
+					<view class="cert-text-wrap"><text class="cert-label">手机号绑定</text><text class="cert-desc">{{ phoneVerified ? phoneMasked : '用于接收审核和服务通知，不计入认证进度' }}</text></view>
+					<text v-if="phoneVerified" class="status passed">已绑定</text><view v-else class="action-pill" @tap="openStep('phone')"><text>去绑定</text></view>
 				</view>
-				<text v-if="phoneVerified" class="status passed">已绑定</text>
-				<view v-else class="action-pill" @tap="openStep('phone')"><text>去绑定</text></view>
-			</view>
-
-			<view class="cert-item">
-				<view class="cert-icon-wrap" :class="{ 'cert-done': realnameStatus == 2 }"><text class="cert-icon-text">实名</text></view>
-				<view class="cert-text-wrap">
-					<text class="cert-label">实名认证</text>
-					<text class="cert-desc">{{ realnameDescription }}</text>
+				<view class="account-label certification-label"><text>四重认证</text></view>
+				<view class="cert-item">
+					<view class="cert-icon-wrap" :class="{ 'cert-done': realnameStatus == 2 }"><text class="cert-icon-text">实名</text></view>
+					<view class="cert-text-wrap"><text class="cert-label">实名认证</text><text class="cert-desc">{{ realnameDescription }}</text></view>
+					<text v-if="realnameStatus == 2" class="status passed">已通过</text><text v-else-if="realnameStatus == 1 || realnameStatus == 4" class="status reviewing">审核中</text><view v-else class="action-pill" @tap="openStep('realname')"><text>{{ realnameStatus == 3 || realnameStatus == 5 ? '重新提交' : '去认证' }}</text></view>
 				</view>
-				<text v-if="realnameStatus == 2" class="status passed">已通过</text>
-				<text v-else-if="realnameStatus == 1 || realnameStatus == 4" class="status reviewing">审核中</text>
-				<text v-else-if="realnameStatus == 3 || realnameStatus == 5" class="status rejected">未通过</text>
-				<view v-else class="action-pill" @tap="openStep('realname')"><text>去认证</text></view>
-			</view>
-
-			<view class="cert-item">
-				<view class="cert-icon-wrap" :class="{ 'cert-done': educationStatus == 2 }"><text class="cert-icon-text">学历</text></view>
-				<view class="cert-text-wrap">
-					<text class="cert-label">学历认证</text>
-					<text class="cert-desc">{{ educationDescription }}</text>
+				<view class="cert-item" @tap="openStep('education')">
+					<view class="cert-icon-wrap" :class="{ 'cert-done': educationStatus == 2 }"><text class="cert-icon-text">学历</text></view>
+					<view class="cert-text-wrap"><text class="cert-label">学历认证</text><text class="cert-desc">{{ educationDescription }}</text></view>
+					<text v-if="educationStatus == 2" class="status passed">已认证</text><text v-else-if="educationStatus == 1" class="status reviewing">审核中</text><view v-else class="action-pill"><text>{{ educationStatus == 3 ? '重新提交' : '去认证' }}</text></view>
 				</view>
-				<text v-if="educationStatus == 2" class="status passed">已认证</text>
-				<text v-else-if="educationStatus == 1" class="status reviewing">审核中</text>
-				<view v-else class="action-pill" @tap="openStep('education')"><text>{{ educationStatus == 3 ? '重新提交' : '去认证' }}</text></view>
-			</view>
-
-			<view class="cert-item">
-				<view class="cert-icon-wrap" :class="{ 'cert-done': avatarUploaded }"><text class="cert-icon-text">头像</text></view>
-				<view class="cert-text-wrap">
-					<text class="cert-label">头像认证</text>
-					<text class="cert-desc">{{ avatarUploaded ? '本人照片已上传，认证结果以平台审核为准' : '上传真实本人照片，无需前置认证' }}</text>
+				<view class="cert-item">
+					<view class="cert-icon-wrap" :class="{ 'cert-done': avatarUploaded }"><text class="cert-icon-text">头像</text></view>
+					<view class="cert-text-wrap"><text class="cert-label">头像认证</text><text class="cert-desc">{{ avatarUploaded ? '本人真实照片已上传' : '上传本人真实照片' }}</text></view>
+					<text v-if="avatarUploaded" class="status uploaded">已上传</text><view v-else class="action-pill" :class="{ disabled: avatarUploading }" @tap="openStep('avatar')"><text>{{ avatarUploading ? '上传中…' : '上传图片' }}</text></view>
 				</view>
-				<text v-if="avatarUploaded" class="status uploaded">已上传</text>
-				<view v-else class="action-pill" :class="{ disabled: avatarUploading }" @tap="openStep('avatar')"><text>{{ avatarUploading ? '上传中…' : '上传图片' }}</text></view>
+				<view class="cert-item" @tap="openStep('single_pledge')">
+					<view class="cert-icon-wrap" :class="{ 'cert-done': pledgeStatus == 2 }"><text class="cert-icon-text">承诺</text></view>
+					<view class="cert-text-wrap"><text class="cert-label">单身承诺</text><text class="cert-desc">{{ pledgeDescription }}</text></view>
+					<text v-if="pledgeStatus == 2" class="status passed">已通过</text><text v-else-if="pledgeStatus == 1" class="status reviewing">审核中</text><view v-else class="action-pill"><text>{{ pledgeStatus == 3 ? '重新签署' : '去签署' }}</text></view>
+				</view>
 			</view>
-		</view>
+			<text class="footer-tip">认证材料仅用于平台审核；未经允许不会对外公开。</text>
+		</template>
 
-		<view v-if="activeStep == 'phone' && !phoneVerified" class="section-card form-card">
-			<text class="section-title">绑定手机号</text>
-			<text class="section-note">验证码仅用于绑定当前微信账号</text>
-			<input class="field-input" type="number" maxlength="11" placeholder="请输入11位手机号" :value="phone" @input="onPhoneInput" />
-			<view class="code-row">
-				<input class="field-input code-input" type="number" maxlength="6" placeholder="请输入验证码" :value="smsCode" @input="onCodeInput" />
-				<view class="code-button" :class="{ disabled: codeSending || countdown > 0 }" @tap="sendBindCode"><text>{{ codeButtonText }}</text></view>
+		<template v-else-if="activeStep == 'phone'">
+			<view class="section-card form-card"><text class="section-note">验证码仅用于绑定当前微信账号</text><input class="field-input" type="number" maxlength="11" placeholder="请输入11位手机号" :value="phone" @input="onPhoneInput" /><view class="code-row"><input class="field-input code-input" type="number" maxlength="6" placeholder="请输入验证码" :value="smsCode" @input="onCodeInput" /><view class="code-button" :class="{ disabled: codeSending || countdown > 0 }" @tap="sendBindCode"><text>{{ codeButtonText }}</text></view></view><view class="primary-button" :class="{ disabled: binding }" @tap="confirmBindPhone"><text>{{ binding ? '绑定中…' : '确认绑定' }}</text></view></view>
+		</template>
+
+		<template v-else-if="activeStep == 'realname'">
+			<view class="section-card form-card"><text v-if="realnameStatus == 1 || realnameStatus == 4" class="review-tip">资料已提交，正在审核。</text><template v-else><text class="section-note">请填写本人真实姓名和有效身份证号</text><input class="field-input" maxlength="64" placeholder="真实姓名" :value="realName" @input="onRealNameInput" /><input class="field-input" maxlength="18" placeholder="18位身份证号" :value="idCard" @input="onIdCardInput" /><view class="primary-button" :class="{ disabled: realnameSubmitting }" @tap="confirmRealname"><text>{{ realnameSubmitting ? '提交中…' : '提交实名认证' }}</text></view></template></view>
+		</template>
+
+		<template v-else-if="activeStep == 'education'">
+			<view class="detail-hero"><text class="hero-title">学历认证</text><view class="hero-underline"></view><text class="hero-subtitle">认证多一点，了解更安心</text></view>
+			<view v-if="educationStatus == 1 || educationStatus == 2" class="status-panel">
+				<view class="status-band"><text class="status-band-title">{{ educationStatus == 1 ? '审核中' : '审核已通过' }}</text><text class="status-band-copy">{{ educationStatus == 1 ? '平台正在核验您提交的学历材料' : '您的学历材料已通过平台审核' }}</text></view>
+				<view class="document-card"><image v-if="educationExistingImage != ''" class="document-preview" :src="mediaUrl(educationExistingImage)" mode="aspectFill" @tap="previewImage(educationExistingImage)"></image><view v-else class="document-placeholder"><text>学历材料</text></view><text class="document-meta">{{ selectedEducationText }} · {{ school || '毕业学校' }}</text><text class="privacy-copy">材料仅用于平台审核，未经允许不会对外公开。</text></view>
 			</view>
-			<view class="primary-button" :class="{ disabled: binding }" @tap="confirmBindPhone"><text>{{ binding ? '绑定中…' : '确认绑定' }}</text></view>
-		</view>
+			<view v-else class="education-form">
+				<view v-if="educationStatus == 3" class="reject-tip"><text class="reject-title">审核未通过</text><text>{{ educationFailReason || '请核对信息后重新提交' }}</text></view>
+				<picker class="education-picker" mode="selector" :range="educationOptions" :value="educationIndex" @change="onEducationChange"><view class="line-field"><text class="line-label">您的最高学历</text><view class="line-value"><text :class="{ 'placeholder-text': !educationSelected }">{{ educationSelected ? educationOptions[educationIndex] : '请选择' }}</text><text class="picker-arrow">›</text></view></view></picker>
+				<view class="line-field"><text class="line-label">您的毕业学校</text><input class="line-input" maxlength="128" placeholder="请填写" :value="school" @input="onSchoolInput" /></view>
+				<view class="upload-section"><text class="upload-title">上传证书照片</text><view v-if="educationImage == ''" class="upload-tile" @tap="chooseEducationImage"><text class="upload-plus">＋</text><text>上传图片</text></view><view v-else class="upload-preview-wrap"><image class="upload-preview" :src="educationImage" mode="aspectFill" @tap="previewImage(educationImage)"></image><view class="remove-image" @tap="removeEducationImage"><text>删除重选</text></view></view></view>
+				<view class="privacy-note"><text class="privacy-title">温馨提示</text><text>仅供平台审核，未经您允许不会对外公开；证书姓名需清晰可见，并与实名认证一致。</text></view>
+			</view>
+			<view v-if="educationStatus != 1 && educationStatus != 2" class="bottom-action"><view class="primary-button" :class="{ disabled: educationSubmitting }" @tap="confirmEducation"><text>{{ educationSubmitting ? '提交中…' : '提交审核' }}</text></view></view>
+		</template>
 
-		<view v-if="activeStep == 'realname' && realnameStatus != 2" class="section-card form-card">
-			<text class="section-title">实名认证</text>
-			<text v-if="realnameStatus == 1 || realnameStatus == 4" class="review-tip">资料已提交，正在审核。</text>
-			<template v-else>
-				<text class="section-note">请填写本人真实姓名和有效身份证号</text>
-				<input class="field-input" maxlength="64" placeholder="真实姓名" :value="realName" @input="onRealNameInput" />
-				<input class="field-input" maxlength="18" placeholder="18位身份证号" :value="idCard" @input="onIdCardInput" />
-				<view class="primary-button" :class="{ disabled: realnameSubmitting }" @tap="confirmRealname"><text>{{ realnameSubmitting ? '提交中…' : '提交实名认证' }}</text></view>
-			</template>
-		</view>
+		<template v-else-if="activeStep == 'single_pledge'">
+			<view v-if="pledgeViewing" class="pledge-view"><view class="pledge-copy-card"><text>{{ storedPledgeContent || pledgeContent }}</text></view><view class="signature-readonly"><image v-if="pledgeMaterial != ''" :src="mediaUrl(pledgeMaterial)" mode="aspectFit" @tap="previewImage(pledgeMaterial)"></image><text v-else>签名材料暂不可用</text></view><view class="secondary-button" @tap="pledgeViewing = false"><text>返回审核状态</text></view></view>
+			<view v-else-if="pledgeStatus == 1 || pledgeStatus == 2" class="status-page">
+				<view class="status-band pledge-status-band"><text class="status-band-title">{{ pledgeStatus == 1 ? '审核中' : '审核已通过' }}</text><text class="status-band-copy">{{ pledgeStatus == 1 ? '您已于 ' + submittedDate + ' 签署了单身承诺书' : '您的单身承诺书已通过平台审核' }}</text></view>
+				<view class="document-card pledge-document-card"><view class="document-symbol"><text>承诺</text></view><view class="primary-button" @tap="pledgeViewing = true"><text>查看我的承诺书 ›</text></view><view class="privacy-note compact"><text class="privacy-title">温馨提示</text><text>承诺书仅作为平台留存，不会对外开放显示。</text></view></view>
+			</view>
+			<view v-else class="pledge-form">
+				<view class="detail-hero"><text class="hero-title">单身承诺</text><view class="hero-underline"></view><text class="hero-subtitle">认证多一点，了解更安心</text></view>
+				<view v-if="pledgeStatus == 3" class="reject-tip"><text class="reject-title">审核未通过</text><text>{{ pledgeFailReason || '请重新签署后提交' }}</text></view>
+				<view class="pledge-copy-card"><text>{{ pledgeContent }}</text></view>
+				<view class="signature-heading"><text class="signature-title">签名区</text><text class="signature-note">请手写与实名认证一致的姓名</text></view>
+				<canvas canvas-id="pledgeSignature" id="pledgeSignature" class="signature-canvas" @touchstart="onSignatureStart" @touchmove.stop.prevent="onSignatureMove" @touchend="onSignatureEnd"></canvas>
+				<view class="clear-signature" :class="{ disabled: !signatureDrawn }" @tap="clearSignature"><text>清空重签</text></view>
+				<view class="privacy-note"><text class="privacy-title">提交说明</text><text>承诺书与签名仅用于平台审核和留存；审核通过后计入认证进度。</text></view>
+				<view class="bottom-action"><view class="primary-button" :class="{ disabled: pledgeSubmitting || !signatureDrawn }" @tap="confirmSinglePledge"><text>{{ pledgeSubmitting ? '提交中…' : '提交审核' }}</text></view></view>
+			</view>
+		</template>
 
-		<view v-if="activeStep == 'education' && educationStatus != 2 && educationStatus != 1" class="section-card form-card">
-			<text class="section-title">学历认证</text>
-			<text class="section-note">选择本人最高学历后提交，由平台人工审核</text>
-			<picker mode="selector" :range="educationOptions" :value="educationIndex" @change="onEducationChange">
-				<view class="picker-field"><text :class="{ 'placeholder-text': !educationSelected }">{{ educationSelected ? educationOptions[educationIndex] : '请选择最高学历' }}</text><text class="picker-arrow">›</text></view>
-			</picker>
-			<text v-if="educationStatus == 3 && educationFailReason != ''" class="field-error">未通过原因：{{ educationFailReason }}</text>
-			<view class="primary-button" :class="{ disabled: educationSubmitting }" @tap="confirmEducation"><text>{{ educationSubmitting ? '提交中…' : '提交学历认证' }}</text></view>
-		</view>
-
-		<view v-if="returnTo != ''" class="return-link" @tap="backToApplication"><text>返回申请页面</text></view>
-		<text class="footer-tip">各项认证状态以平台审核结果为准；上传资料不等于认证通过。</text>
+		<view v-if="returnTo != '' && activeStep == ''" class="return-link" @tap="backToApplication"><text>返回申请页面</text></view>
 	</view>
 </template>
 
 <script setup lang="uts">
-import { bindPhone, getMeProfile, getUserCertifications, sendSms, submitEducationCertification, submitRealname, uploadUserProfileMedia } from '@/api'
+import { getCurrentInstance, nextTick } from 'vue'
+import { bindPhone, getAgreementVersions, getMeProfile, getUserCertifications, sendSms, submitEducationCertification, submitRealname, submitSinglePledgeCertification, uploadUserProfileMedia } from '@/api'
+import { resolveMediaUrl } from '@/api/config.uts'
+
+const pageInstance = getCurrentInstance()
 
 const phoneVerified = ref(false)
 const phoneMasked = ref('')
 const realnameStatus = ref(0)
 const educationStatus = ref(0)
 const educationFailReason = ref('')
+const educationExistingImage = ref('')
 const avatarUploaded = ref(false)
+const pledgeStatus = ref(0)
+const pledgeFailReason = ref('')
+const pledgeMaterial = ref('')
+const storedPledgeContent = ref('')
+const pledgeSubmittedAt = ref('')
+const pledgeViewing = ref(false)
 const activeStep = ref('')
 const returnTo = ref('')
 const loadError = ref('')
@@ -114,33 +115,54 @@ const phone = ref('')
 const smsCode = ref('')
 const realName = ref('')
 const idCard = ref('')
+const meNickname = ref('用户')
+const meId = ref(0)
 const educationOptions: string[] = ['小学', '初中', '高中', '中专', '大专', '本科', '硕士', '博士']
 const educationIndex = ref(0)
 const educationSelected = ref(false)
+const school = ref('')
+const educationImage = ref('')
 const binding = ref(false)
 const realnameSubmitting = ref(false)
 const educationSubmitting = ref(false)
+const pledgeSubmitting = ref(false)
 const avatarUploading = ref(false)
 const codeSending = ref(false)
 const countdown = ref(0)
+const signatureDrawn = ref(false)
+let signatureContext: any = null
+let signatureCanvas: any = null
+let signatureContextPromise: Promise<any> | null = null
+let signatureCanvasWidth = 0
+let signatureCanvasHeight = 0
+let signatureLastX = 0
+let signatureLastY = 0
 
-const completed = computed(() => (phoneVerified.value ? 1 : 0) + (realnameStatus.value == 2 ? 1 : 0) + (educationStatus.value == 2 ? 1 : 0) + (avatarUploaded.value ? 1 : 0))
+const completed = computed(() => (realnameStatus.value == 2 ? 1 : 0) + (educationStatus.value == 2 ? 1 : 0) + (avatarUploaded.value ? 1 : 0) + (pledgeStatus.value == 2 ? 1 : 0))
+const needsBottomAction = computed(() => (activeStep.value == 'education' && educationStatus.value != 1 && educationStatus.value != 2) || (activeStep.value == 'single_pledge' && pledgeStatus.value != 1 && pledgeStatus.value != 2 && !pledgeViewing.value))
 const codeButtonText = computed(() => countdown.value > 0 ? countdown.value + '秒后重试' : (codeSending.value ? '发送中…' : '获取验证码'))
+const selectedEducationText = computed(() => educationSelected.value ? educationOptions[educationIndex.value] : '未选择')
+const memberCode = computed(() => 'G' + ('000000' + meId.value).slice(-6))
+const pledgeContent = computed(() => '本人使用网名' + meNickname.value + '，编号：' + memberCode.value + '，在宣誓爱登记婚恋资料。本人承诺所登记资料真实、准确，当前婚姻状态为单身；如状态发生变化，将及时更新资料，并自行承担信息不实造成的相应责任。')
+const submittedDate = computed(() => formatDate(pledgeSubmittedAt.value))
 const realnameDescription = computed(() => {
 	if (realnameStatus.value == 2) return '已通过平台实名认证'
 	if (realnameStatus.value == 1 || realnameStatus.value == 4) return '资料正在审核，请耐心等待'
-	if (realnameStatus.value == 3) return '认证未通过，请重新提交'
-	if (realnameStatus.value == 5) return '实名认证已撤销，请重新提交'
+	if (realnameStatus.value == 3 || realnameStatus.value == 5) return '实名认证未通过，请重新提交'
 	return '填写本人真实身份信息后提交审核'
 })
-const educationDescription = computed(() => {
-	if (educationStatus.value == 2) return '学历信息已通过平台人工审核'
-	if (educationStatus.value == 1) return '学历信息正在等待平台审核'
-	if (educationStatus.value == 3) return educationFailReason.value != '' ? educationFailReason.value : '审核未通过，可重新提交'
-	return '选择学历并提交平台人工审核'
-})
-
+const educationDescription = computed(() => educationStatus.value == 2 ? '学历信息已通过平台人工审核' : (educationStatus.value == 1 ? '学历材料正在等待平台审核' : (educationStatus.value == 3 ? (educationFailReason.value != '' ? educationFailReason.value : '审核未通过，可重新提交') : '提交学历、学校和证明图片')))
+const pledgeDescription = computed(() => pledgeStatus.value == 2 ? '手写承诺已通过平台审核' : (pledgeStatus.value == 1 ? '单身承诺正在等待平台审核' : (pledgeStatus.value == 3 ? (pledgeFailReason.value != '' ? pledgeFailReason.value : '审核未通过，可重新签署') : (realnameStatus.value == 2 ? '手写签署当前单身状态承诺' : '完成实名认证后可签署'))))
 const messageOf = (res: any, fallback: string): string => res != null && res.message != null && String(res.message) != '' ? String(res.message) : fallback
+const mediaUrl = (value: string): string => resolveMediaUrl(value)
+const formatDate = (value: string): string => {
+	if (value == '') return '今天'
+	const date = new Date(value)
+	if (isNaN(date.getTime())) return value.length >= 10 ? value.substring(0, 10) : value
+	const month = date.getMonth() + 1
+	const day = date.getDate()
+	return date.getFullYear() + '-' + (month < 10 ? '0' : '') + month + '-' + (day < 10 ? '0' : '') + day
+}
 
 const refreshStatus = async () => {
 	loadError.value = ''
@@ -148,154 +170,234 @@ const refreshStatus = async () => {
 	const profileRes = await getMeProfile()
 	if (profileRes.success && profileRes.data != null) {
 		loaded = true
-		phoneVerified.value = profileRes.data.phone_verified == true
-		phoneMasked.value = profileRes.data.phone_masked != null ? String(profileRes.data.phone_masked) : ''
-		realnameStatus.value = profileRes.data.realname_status != null ? Number(profileRes.data.realname_status) : (profileRes.data.realNameStatus == 'passed' ? 2 : (profileRes.data.realNameStatus == 'reviewing' ? 1 : 0))
-		avatarUploaded.value = profileRes.data.avatar != null && String(profileRes.data.avatar).trim() != ''
+		const profile = profileRes.data
+		phoneVerified.value = profile.phone_verified == true
+		phoneMasked.value = profile.phone_masked != null ? String(profile.phone_masked) : ''
+		realnameStatus.value = profile.realname_status != null ? Number(profile.realname_status) : (profile.realNameStatus == 'passed' ? 2 : (profile.realNameStatus == 'reviewing' ? 1 : 0))
+		avatarUploaded.value = profile.avatar != null && String(profile.avatar).trim() != ''
+		meNickname.value = profile.nickname != null && String(profile.nickname).trim() != '' ? String(profile.nickname) : '用户'
+		meId.value = profile.id != null ? Number(profile.id) : (profile.user_id != null ? Number(profile.user_id) : 0)
 	}
 	const certRes = await getUserCertifications()
-	if (certRes.success && certRes.data != null && certRes.data.education != null) {
+	if (certRes.success && certRes.data != null) {
 		loaded = true
-		educationStatus.value = certRes.data.education.status != null ? Number(certRes.data.education.status) : 0
-		educationFailReason.value = certRes.data.education.fail_reason != null ? String(certRes.data.education.fail_reason) : ''
+		const certs = certRes.data
+		if (certs.education != null) {
+			const item = certs.education
+			educationStatus.value = item.status != null ? Number(item.status) : 0
+			educationFailReason.value = item.fail_reason != null ? String(item.fail_reason) : ''
+			educationExistingImage.value = item.material != null ? String(item.material) : ''
+			if (item.education != null && educationOptions.indexOf(String(item.education)) >= 0) { educationIndex.value = educationOptions.indexOf(String(item.education)); educationSelected.value = true }
+			if (item.school != null) school.value = String(item.school)
+		}
+		if (certs.single_pledge != null) {
+			const item = certs.single_pledge
+			pledgeStatus.value = item.status != null ? Number(item.status) : 0
+			pledgeFailReason.value = item.fail_reason != null ? String(item.fail_reason) : ''
+			pledgeMaterial.value = item.material != null ? String(item.material) : ''
+			storedPledgeContent.value = item.content != null ? String(item.content) : ''
+			pledgeSubmittedAt.value = item.submitted_at != null ? String(item.submitted_at) : ''
+		}
 	}
 	if (!loaded) loadError.value = messageOf(profileRes, messageOf(certRes, '请检查网络后重试'))
+	if (activeStep.value == 'single_pledge' && realnameStatus.value != 2 && pledgeStatus.value != 1 && pledgeStatus.value != 2) {
+		activeStep.value = 'realname'
+		uni.showToast({ title: '请先完成实名认证', icon: 'none' })
+	}
 }
 
 const chooseAvatarForCertification = () => {
 	if (avatarUploading.value) return
-	uni.chooseImage({
-		count: 1,
-		sizeType: ['compressed'],
-		sourceType: ['album', 'camera'],
-		success: async (res: any) => {
-			const filePath = res != null && res.tempFilePaths != null && res.tempFilePaths.length > 0 ? String(res.tempFilePaths[0]) : ''
-			if (filePath == '') return
-			avatarUploading.value = true
-			try {
-				const uploadRes = await uploadUserProfileMedia(filePath, 'avatar')
-				if (!uploadRes.success) {
-					uni.showToast({ title: messageOf(uploadRes, '头像上传失败'), icon: 'none' })
-					return
-				}
-				avatarUploaded.value = true
-				uni.showToast({ title: '头像已上传', icon: 'success' })
-			} finally { avatarUploading.value = false }
-		}
-	})
+	uni.chooseImage({ count: 1, sizeType: ['compressed'], sourceType: ['album', 'camera'], success: async (res: any) => {
+		const filePath = res != null && res.tempFilePaths != null && res.tempFilePaths.length > 0 ? String(res.tempFilePaths[0]) : ''
+		if (filePath == '') return
+		avatarUploading.value = true
+		try { const uploadRes = await uploadUserProfileMedia(filePath, 'avatar'); if (!uploadRes.success) { uni.showToast({ title: messageOf(uploadRes, '头像上传失败'), icon: 'none' }); return }; avatarUploaded.value = true; uni.showToast({ title: '头像已上传', icon: 'success' }) } finally { avatarUploading.value = false }
+	} })
 }
-
 const openStep = (step: string) => {
-	if (step == 'avatar') {
-		chooseAvatarForCertification()
-		return
-	}
-	activeStep.value = step
+	if (step == 'avatar') { chooseAvatarForCertification(); return }
+	if (step == 'single_pledge' && realnameStatus.value != 2 && pledgeStatus.value != 1 && pledgeStatus.value != 2) { uni.showModal({ title: '请先完成实名认证', content: '手写签名需与实名认证姓名一致，实名通过后才可签署。', confirmText: '去实名', success: (res: any) => { if (res.confirm) openStep('realname') } }); return }
+	uni.navigateTo({ url: '/pagesSub/profileExtra/certification?type=' + step })
 }
+const backToCenter = () => { uni.navigateBack({ fail: () => { activeStep.value = ''; pledgeViewing.value = false; refreshStatus() } }) }
 const onPhoneInput = (e: any) => { phone.value = e.detail.value }
 const onCodeInput = (e: any) => { smsCode.value = e.detail.value }
 const onRealNameInput = (e: any) => { realName.value = e.detail.value }
 const onIdCardInput = (e: any) => { idCard.value = e.detail.value }
-const onEducationChange = (e: any) => {
-	educationIndex.value = Number(e.detail.value)
-	educationSelected.value = true
-}
-
-const startCountdown = () => {
-	countdown.value = 60
-	const timer = setInterval(() => {
-		countdown.value -= 1
-		if (countdown.value <= 0) clearInterval(timer)
-	}, 1000)
-}
-
+const onSchoolInput = (e: any) => { school.value = e.detail.value }
+const onEducationChange = (e: any) => { educationIndex.value = Number(e.detail.value); educationSelected.value = true }
+const startCountdown = () => { countdown.value = 60; const timer = setInterval(() => { countdown.value -= 1; if (countdown.value <= 0) clearInterval(timer) }, 1000) }
 const sendBindCode = async () => {
 	if (codeSending.value || countdown.value > 0) return
-	if (!/^1[3-9]\d{9}$/.test(phone.value.trim())) {
-		uni.showToast({ title: '请输入正确的11位手机号', icon: 'none' })
-		return
-	}
+	if (!/^1[3-9]\d{9}$/.test(phone.value.trim())) { uni.showToast({ title: '请输入正确的11位手机号', icon: 'none' }); return }
 	codeSending.value = true
-	try {
-		const res = await sendSms(phone.value.trim(), 'bind_phone')
-		if (!res.success) {
-			uni.showToast({ title: messageOf(res, '验证码发送失败'), icon: 'none' })
-			return
-		}
-		startCountdown()
-		uni.showToast({ title: '验证码已发送', icon: 'success' })
-	} finally { codeSending.value = false }
+	try { const res = await sendSms(phone.value.trim(), 'bind_phone'); if (!res.success) { uni.showToast({ title: messageOf(res, '验证码发送失败'), icon: 'none' }); return }; startCountdown(); uni.showToast({ title: '验证码已发送', icon: 'success' }) } finally { codeSending.value = false }
 }
-
 const confirmBindPhone = async () => {
 	if (binding.value) return
-	if (!/^1[3-9]\d{9}$/.test(phone.value.trim()) || !/^\d{6}$/.test(smsCode.value.trim())) {
-		uni.showToast({ title: '请填写手机号和6位验证码', icon: 'none' })
-		return
-	}
+	if (!/^1[3-9]\d{9}$/.test(phone.value.trim()) || !/^\d{6}$/.test(smsCode.value.trim())) { uni.showToast({ title: '请填写手机号和6位验证码', icon: 'none' }); return }
 	binding.value = true
-	try {
-		const res = await bindPhone(phone.value.trim(), smsCode.value.trim())
-		if (!res.success) {
-			uni.showToast({ title: messageOf(res, '绑定失败'), icon: 'none' })
-			return
-		}
-		uni.showToast({ title: '手机号已绑定', icon: 'success' })
-		await refreshStatus()
-	} finally { binding.value = false }
+	try { const res = await bindPhone(phone.value.trim(), smsCode.value.trim()); if (!res.success) { uni.showToast({ title: messageOf(res, '绑定失败'), icon: 'none' }); return }; uni.showToast({ title: '手机号已绑定', icon: 'success' }); await refreshStatus(); backToCenter() } finally { binding.value = false }
 }
-
 const confirmRealname = async () => {
 	if (realnameSubmitting.value) return
-	if (realName.value.trim().length < 2 || !/^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[0-9Xx]$/.test(idCard.value.trim())) {
-		uni.showToast({ title: '请填写真实姓名和有效身份证号', icon: 'none' })
-		return
-	}
+	if (realName.value.trim().length < 2 || !/^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[0-9Xx]$/.test(idCard.value.trim())) { uni.showToast({ title: '请填写真实姓名和有效身份证号', icon: 'none' }); return }
 	realnameSubmitting.value = true
-	try {
-		const res = await submitRealname(realName.value.trim(), idCard.value.trim())
-		if (!res.success) {
-			uni.showToast({ title: messageOf(res, '提交失败'), icon: 'none' })
-			return
-		}
-		realnameStatus.value = 1
-		uni.showToast({ title: '已提交审核', icon: 'success' })
-	} finally { realnameSubmitting.value = false }
+	try { const res = await submitRealname(realName.value.trim(), idCard.value.trim()); if (!res.success) { uni.showToast({ title: messageOf(res, '提交失败'), icon: 'none' }); return }; realnameStatus.value = 1; uni.showToast({ title: '已提交审核', icon: 'success' }) } finally { realnameSubmitting.value = false }
 }
 
+const chooseEducationImage = () => { uni.chooseImage({ count: 1, sizeType: ['compressed'], sourceType: ['album', 'camera'], success: (res: any) => { const files = res != null ? res.tempFiles : null; if (files != null && files.length > 0 && files[0].size != null && Number(files[0].size) > 5 * 1024 * 1024) { uni.showToast({ title: '图片不能超过5 MiB', icon: 'none' }); return }; educationImage.value = res.tempFilePaths != null && res.tempFilePaths.length > 0 ? String(res.tempFilePaths[0]) : '' } }) }
+const removeEducationImage = () => { educationImage.value = '' }
+const previewImage = (value: string) => { const url = mediaUrl(value); if (url != '') uni.previewImage({ current: url, urls: [url] }) }
 const confirmEducation = async () => {
 	if (educationSubmitting.value) return
-	if (!educationSelected.value) {
-		uni.showToast({ title: '请选择最高学历', icon: 'none' })
-		return
-	}
+	if (!educationSelected.value) { uni.showToast({ title: '请选择最高学历', icon: 'none' }); return }
+	if (school.value.trim().length < 2) { uni.showToast({ title: '请填写毕业学校', icon: 'none' }); return }
+	if (educationImage.value == '') { uni.showToast({ title: '请上传证书照片', icon: 'none' }); return }
 	educationSubmitting.value = true
+	try { const res = await submitEducationCertification(educationOptions[educationIndex.value], school.value.trim(), educationImage.value); if (!res.success) { uni.showToast({ title: messageOf(res, '学历认证提交失败'), icon: 'none' }); return }; educationStatus.value = 1; educationExistingImage.value = educationImage.value; uni.showToast({ title: '已提交审核', icon: 'success' }) } finally { educationSubmitting.value = false }
+}
+
+const touchPoint = (e: any): any => e != null && e.touches != null && e.touches.length > 0 ? e.touches[0] : null
+const pointCoordinate = (point: any, axis: string): number => {
+	if (axis == 'x') return Number(point.x != null ? point.x : (point.clientX != null ? point.clientX : point.pageX))
+	return Number(point.y != null ? point.y : (point.clientY != null ? point.clientY : point.pageY))
+}
+const ensureSignatureContext = async (): Promise<any> => {
+	if (signatureContext != null) return signatureContext
+	if (signatureContextPromise != null) return signatureContextPromise
+	await nextTick()
+	if (signatureContext != null) return signatureContext
+	if (signatureContextPromise != null) return signatureContextPromise
+	const component = pageInstance != null && pageInstance.proxy != null ? pageInstance.proxy : null
+	signatureContextPromise = new Promise<any>((resolve, reject) => {
+		uni.createCanvasContextAsync({
+			id: 'pledgeSignature',
+			component: component,
+			success: (context: any) => {
+				const ctx = context.getContext('2d')
+				if (ctx == null) { reject(new Error('无法创建签名 Canvas 上下文')); return }
+				const systemInfo = uni.getSystemInfoSync()
+				const viewportWidth = Math.max(1, Number(systemInfo.windowWidth))
+				const pixelRatio = Math.max(1, Number(systemInfo.pixelRatio != null ? systemInfo.pixelRatio : 1))
+				signatureCanvasWidth = viewportWidth * 686 / 750
+				signatureCanvasHeight = viewportWidth * 280 / 750
+				signatureCanvas = ctx.canvas
+				signatureCanvas.width = Math.round(signatureCanvasWidth * pixelRatio)
+				signatureCanvas.height = Math.round(signatureCanvasHeight * pixelRatio)
+				ctx.scale(pixelRatio, pixelRatio)
+				ctx.lineWidth = 4
+				ctx.lineCap = 'round'
+				ctx.lineJoin = 'round'
+				// Canvas 像素 API 无法解析 CSS 变量；此值与全局 --ink token 保持一致。
+				ctx.strokeStyle = '#1F2A2A'
+				signatureContext = ctx
+				resolve(ctx)
+			},
+			fail: (err: any) => reject(err)
+		})
+	})
+	try { return await signatureContextPromise } finally { signatureContextPromise = null }
+}
+const onSignatureStart = async (e: any) => {
+	const point = touchPoint(e)
+	if (point == null) return
+	signatureLastX = pointCoordinate(point, 'x')
+	signatureLastY = pointCoordinate(point, 'y')
+	try { await ensureSignatureContext() } catch (err) {}
+}
+const onSignatureMove = async (e: any) => {
+	const point = touchPoint(e)
+	if (point == null) return
+	const x = pointCoordinate(point, 'x')
+	const y = pointCoordinate(point, 'y')
+	const fromX = signatureLastX
+	const fromY = signatureLastY
 	try {
-		const res = await submitEducationCertification(educationOptions[educationIndex.value])
-		if (!res.success) {
-			uni.showToast({ title: messageOf(res, '学历认证提交失败'), icon: 'none' })
-			return
+		const context = await ensureSignatureContext()
+		context.beginPath()
+		context.moveTo(fromX, fromY)
+		context.lineTo(x, y)
+		context.stroke()
+		signatureLastX = x
+		signatureLastY = y
+		signatureDrawn.value = true
+	} catch (err) {}
+}
+const onSignatureEnd = () => {}
+const clearSignature = async () => {
+	if (!signatureDrawn.value) return
+	try {
+		const context = await ensureSignatureContext()
+		context.clearRect(0, 0, signatureCanvasWidth, signatureCanvasHeight)
+		signatureDrawn.value = false
+	} catch (err) {}
+}
+const exportSignature = async (): Promise<string> => {
+	await ensureSignatureContext()
+	return new Promise<string>((resolve, reject) => {
+		const component = pageInstance != null && pageInstance.proxy != null ? pageInstance.proxy : null
+		const exportParams: any = {
+			canvas: signatureCanvas,
+			x: 0,
+			y: 0,
+			width: signatureCanvas.width,
+			height: signatureCanvas.height,
+			destWidth: signatureCanvas.width,
+			destHeight: signatureCanvas.height,
+			fileType: 'png',
+			quality: 1,
+			success: (res: any) => resolve(String(res.tempFilePath)),
+			fail: (err: any) => reject(err)
 		}
-		educationStatus.value = res.data != null && res.data.education != null && res.data.education.status != null ? Number(res.data.education.status) : 1
-		uni.showToast({ title: '已提交审核', icon: 'success' })
-	} finally { educationSubmitting.value = false }
+		// #ifdef MP-WEIXIN
+		const query = uni.createSelectorQuery()
+		const scopedQuery = component != null ? query.in(component) : query
+		scopedQuery.select('#pledgeSignature').fields({ node: true, size: true }).exec((res: any) => {
+			if (res == null || res.length == 0 || res[0] == null || res[0].node == null) { reject(new Error('无法获取签名 Canvas 节点')); return }
+			exportParams.canvas = res[0].node
+			uni.canvasToTempFilePath(exportParams)
+		})
+		// #endif
+		// #ifndef MP-WEIXIN
+		uni.canvasToTempFilePath(exportParams, component)
+		// #endif
+	})
+}
+const confirmSinglePledge = async () => {
+	if (pledgeSubmitting.value || !signatureDrawn.value) return
+	pledgeSubmitting.value = true
+	try {
+		const versionsRes = await getAgreementVersions()
+		if (!versionsRes.success || versionsRes.data == null || versionsRes.data.safety_pledge == null) { uni.showToast({ title: messageOf(versionsRes, '承诺版本加载失败'), icon: 'none' }); return }
+		const version = versionsRes.data.safety_pledge.version != null ? String(versionsRes.data.safety_pledge.version) : ''
+		if (version == '') { uni.showToast({ title: '承诺版本不可用', icon: 'none' }); return }
+		const signaturePath = await exportSignature()
+		const res = await submitSinglePledgeCertification(signaturePath, version)
+		if (!res.success) { uni.showToast({ title: messageOf(res, '承诺书提交失败'), icon: 'none' }); return }
+		pledgeStatus.value = 1; pledgeMaterial.value = signaturePath; storedPledgeContent.value = pledgeContent.value; pledgeSubmittedAt.value = new Date().toISOString(); uni.showToast({ title: '已提交审核', icon: 'success' })
+	} catch (e) { uni.showToast({ title: '签名生成失败，请重试', icon: 'none' }) } finally { pledgeSubmitting.value = false }
 }
 
 const backToApplication = () => { uni.navigateBack() }
-
 onLoad((options: any) => {
 	let requested = ''
 	if (options != null && options.type != null) requested = String(options.type)
 	else if (options != null && options.focus != null) requested = String(options.focus)
-	if (requested == 'phone' || requested == 'realname' || requested == 'education') activeStep.value = requested
+	if (requested == 'phone' || requested == 'realname' || requested == 'education' || requested == 'single_pledge') activeStep.value = requested
 	if (options != null && options.returnTo != null) returnTo.value = String(options.returnTo)
 	refreshStatus()
+})
+onReady(() => {
+	if (activeStep.value == 'single_pledge' && pledgeStatus.value != 1 && pledgeStatus.value != 2) ensureSignatureContext().catch(() => {})
 })
 onShow(() => { refreshStatus() })
 </script>
 
 <style scoped>
 .page { min-height: 100vh; background-color: var(--canvas); padding: 32rpx; box-sizing: border-box; }
+.has-bottom-action { padding-bottom: calc(150rpx + env(safe-area-inset-bottom)); }
 .section-card, .notice-card { display: flex; flex-direction: column; gap: 28rpx; padding: 32rpx; background-color: var(--surface); border-radius: 24rpx; box-shadow: var(--shadow-sm); margin-bottom: 28rpx; }
 .card-header, .notice-card { flex-direction: row; justify-content: space-between; align-items: center; gap: 20rpx; }
 .notice-copy { flex: 1; display: flex; flex-direction: column; gap: 6rpx; }
@@ -305,30 +407,73 @@ onShow(() => { refreshStatus() })
 .section-title { display: block; font-size: 32rpx; font-weight: 700; color: var(--ink); }
 .section-note, .footer-tip { display: block; margin-top: 8rpx; font-size: 23rpx; color: var(--muted); line-height: 1.5; }
 .progress-text { font-size: 25rpx; font-weight: 600; color: var(--accent2); white-space: nowrap; }
+.account-label { padding-top: 6rpx; font-size: 22rpx; font-weight: 700; color: var(--muted); }
+.certification-label { padding-top: 22rpx; border-top: 1px solid var(--line); }
 .cert-item { display: flex; flex-direction: row; align-items: center; gap: 20rpx; padding: 10rpx 0; }
 .cert-icon-wrap { width: 76rpx; height: 76rpx; border-radius: 38rpx; background-color: var(--warm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .cert-icon-wrap.cert-done { background-color: var(--sage-soft); }
-.cert-icon-text { font-size: 22rpx; font-weight: 700; color: var(--ink2); }
+.cert-icon-text { font-size: 21rpx; font-weight: 700; color: var(--ink2); }
 .cert-text-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4rpx; }
 .cert-label { font-size: 28rpx; font-weight: 600; color: var(--ink); }
 .cert-desc { font-size: 22rpx; color: var(--muted); line-height: 1.45; }
 .status { font-size: 24rpx; font-weight: 600; white-space: nowrap; }
 .passed, .uploaded { color: var(--sage); }
 .reviewing { color: var(--accent2); }
-.rejected, .field-error { color: var(--review-danger); }
 .action-pill, .code-button, .text-action { padding: 12rpx 22rpx; border-radius: 16rpx; background-color: var(--warm); color: var(--accent2); font-size: 24rpx; flex-shrink: 0; }
+.detail-hero { text-align: center; padding: 20rpx 0 68rpx; }
+.hero-title { display: block; font-family: var(--serif); font-size: 48rpx; font-weight: 700; color: var(--ink); }
+.hero-underline { width: 76rpx; height: 12rpx; margin: -14rpx auto 0; background-color: var(--accent-bg); }
+.hero-subtitle { display: block; margin-top: 12rpx; font-size: 27rpx; color: var(--muted); }
 .form-card { gap: 22rpx; }
-.field-input, .picker-field { height: 88rpx; padding: 0 24rpx; border-radius: 18rpx; background-color: var(--surface); border: 1px solid var(--line); color: var(--ink); font-size: 27rpx; box-sizing: border-box; }
-.picker-field { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
-.picker-arrow { color: var(--muted); font-size: 34rpx; }
-.placeholder-text { color: var(--muted); }
-.field-error { font-size: 23rpx; line-height: 1.5; }
+.field-input { height: 88rpx; padding: 0 24rpx; border-radius: 18rpx; background-color: var(--surface); border: 1px solid var(--line); color: var(--ink); font-size: 27rpx; box-sizing: border-box; }
 .code-row { display: flex; flex-direction: row; gap: 16rpx; align-items: center; }
 .code-input { flex: 1; }
 .code-button { min-width: 168rpx; text-align: center; }
 .disabled { opacity: 0.5; }
-.primary-button { height: 92rpx; border-radius: 18rpx; background-color: var(--accent); color: var(--text-invert); display: flex; align-items: center; justify-content: center; font-size: 29rpx; font-weight: 600; }
-.review-tip { padding: 22rpx; border-radius: 16rpx; background-color: var(--warm); color: var(--accent2); font-size: 25rpx; line-height: 1.5; }
+.primary-button, .secondary-button { min-height: 92rpx; border-radius: 46rpx; background-color: var(--accent); color: var(--text-invert); display: flex; align-items: center; justify-content: center; font-size: 29rpx; font-weight: 700; }
+.secondary-button { margin-top: 24rpx; background-color: var(--surface); color: var(--accent2); border: 1px solid var(--line); }
+.review-tip, .reject-tip { padding: 22rpx; border-radius: 16rpx; background-color: var(--warm); color: var(--accent2); font-size: 25rpx; line-height: 1.5; }
+.reject-tip { display: flex; flex-direction: column; gap: 4rpx; margin-bottom: 18rpx; color: var(--review-danger); }
+.reject-title { font-size: 27rpx; font-weight: 700; }
+.education-form { background-color: var(--surface); border-radius: 24rpx; padding: 8rpx 30rpx 32rpx; box-shadow: var(--shadow-sm); }
+/* UniApp view flex defaults to a column; certification fields must be explicit rows. */
+.education-picker { display: block; width: 100%; }
+.line-field { width: 100%; min-height: 104rpx; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 24rpx; border-bottom: 1px solid var(--line); box-sizing: border-box; }
+.line-label { flex-shrink: 0; font-size: 28rpx; font-weight: 700; color: var(--ink); }
+.line-value { display: flex; flex-direction: row; align-items: center; gap: 12rpx; color: var(--ink2); font-size: 27rpx; }
+.line-input { flex: 1; min-width: 0; height: 104rpx; text-align: right; font-size: 27rpx; color: var(--ink2); }
+.picker-arrow { color: var(--muted); font-size: 36rpx; }
+.placeholder-text { color: var(--muted); }
+.upload-section { padding: 30rpx 0; border-bottom: 1px solid var(--line); }
+.upload-title { display: block; margin-bottom: 22rpx; font-size: 28rpx; font-weight: 700; color: var(--ink); }
+.upload-tile, .upload-preview { width: 164rpx; height: 164rpx; border-radius: 16rpx; background-color: var(--paper); }
+.upload-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4rpx; color: var(--muted); font-size: 25rpx; }
+.upload-plus { font-size: 58rpx; line-height: 1; color: var(--muted); }
+.upload-preview-wrap { display: flex; align-items: flex-end; gap: 20rpx; }
+.remove-image, .clear-signature { color: var(--accent2); font-size: 24rpx; padding: 12rpx 0; }
+.privacy-note { display: flex; flex-direction: column; gap: 6rpx; padding-top: 28rpx; color: var(--muted); font-size: 23rpx; line-height: 1.65; }
+.privacy-note.compact { margin-top: 30rpx; border-top: 1px solid var(--line); }
+.privacy-title { font-size: 25rpx; font-weight: 700; color: var(--ink2); }
+.bottom-action { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding: 20rpx 32rpx calc(20rpx + env(safe-area-inset-bottom)); background-color: var(--paper); border-top: 1px solid var(--line); }
+.status-panel, .status-page { margin: 0 -32rpx; }
+.status-band { display: flex; flex-direction: column; gap: 4rpx; padding: 34rpx 32rpx 48rpx; background-color: var(--accent-bg); }
+.status-band-title { font-size: 36rpx; font-weight: 700; color: var(--ink); }
+.status-band-copy { font-size: 26rpx; color: var(--ink2); }
+.document-card { margin: -20rpx 32rpx 0; padding: 36rpx; border-radius: 28rpx; background-color: var(--surface); box-shadow: var(--shadow-md); }
+.document-preview { width: 100%; height: 320rpx; border-radius: 18rpx; background-color: var(--warm); }
+.document-placeholder, .document-symbol { height: 260rpx; display: flex; align-items: center; justify-content: center; border-radius: 18rpx; background-color: var(--paper); color: var(--accent2); font-size: 30rpx; font-weight: 700; }
+.document-meta { display: block; margin-top: 20rpx; text-align: center; color: var(--ink2); font-size: 25rpx; }
+.privacy-copy { display: block; margin-top: 22rpx; padding-top: 22rpx; border-top: 1px solid var(--line); color: var(--muted); font-size: 23rpx; line-height: 1.5; }
+.pledge-document-card .document-symbol { margin-bottom: 30rpx; }
+.pledge-form, .pledge-view { padding-bottom: 20rpx; }
+.pledge-copy-card { padding: 30rpx; border-radius: 22rpx; background-color: var(--warm); color: var(--ink2); font-size: 27rpx; line-height: 1.8; }
+.signature-heading { margin-top: 30rpx; display: flex; flex-direction: column; gap: 4rpx; }
+.signature-title { font-family: var(--serif); font-size: 31rpx; font-weight: 700; color: var(--ink); }
+.signature-note { font-size: 23rpx; color: var(--muted); }
+.signature-canvas { width: 100%; height: 280rpx; margin-top: 18rpx; border-radius: 22rpx; background-color: var(--surface); border: 1px solid var(--line); }
+.clear-signature { text-align: right; }
+.signature-readonly { height: 300rpx; margin-top: 24rpx; border-radius: 22rpx; background-color: var(--surface); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.signature-readonly image { width: 100%; height: 100%; }
 .return-link { padding: 18rpx; text-align: center; color: var(--accent2); font-size: 27rpx; }
 .footer-tip { text-align: center; padding: 0 12rpx 48rpx; }
 </style>

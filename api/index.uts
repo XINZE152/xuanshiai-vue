@@ -16,6 +16,7 @@ export {
   submitRealname,
   getUserCertifications,
   submitEducationCertification,
+  submitSinglePledgeCertification,
   logout
 } from './auth.uts'
 

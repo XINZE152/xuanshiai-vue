@@ -5,12 +5,13 @@
 
 import { request } from './request.uts'
 import { mockMeProfile } from '@/mock'
-import { CURRENT_USER_ID_KEY, setAuthTokens, clearAuthTokens } from './config.uts'
+import { CURRENT_USER_ID_KEY, USE_MOCK, buildApiUrl, getAccessToken, setAuthTokens, clearAuthTokens } from './config.uts'
 
 const mockCertifications: any = {
   education: { kind: 'education', status: 0, material_submitted: false, submitted_at: null, reviewed_at: null, fail_reason: null, next_action: '提交认证材料' },
   house: { kind: 'house', status: 0, material_submitted: false, submitted_at: null, reviewed_at: null, fail_reason: null, next_action: '提交认证材料' },
-  marriage: { kind: 'marriage', status: 0, material_submitted: false, submitted_at: null, reviewed_at: null, fail_reason: null, next_action: '提交认证材料' }
+  marriage: { kind: 'marriage', status: 0, material_submitted: false, submitted_at: null, reviewed_at: null, fail_reason: null, next_action: '提交认证材料' },
+  single_pledge: { kind: 'single_pledge', status: 0, material_submitted: false, material: null, submitted_at: null, reviewed_at: null, fail_reason: null, next_action: '提交单身承诺', title: '单身承诺', content: null }
 }
 
 export async function getProfileCompletion() {
@@ -61,7 +62,17 @@ export async function loginByPhone(phone: string, code: string) {
 }
 
 export async function getAgreementVersions() {
-  return request({ url: '/auth/agreements', method: 'GET', skipAuth: true })
+  return request({
+    url: '/auth/agreements',
+    method: 'GET',
+    skipAuth: true,
+    mockData: {
+      user_service: { type: 'user_service', version: 'v1' },
+      privacy_policy: { type: 'privacy_policy', version: 'v1' },
+      safety_pledge: { type: 'safety_pledge', version: 'v1' },
+      community_rules: { type: 'community_rules', version: 'v1' }
+    }
+  })
 }
 
 export async function acceptAgreement(agreementType: string, version: string, scene: string = 'profile') {
@@ -144,23 +155,71 @@ export async function getUserCertifications() {
   })
 }
 
-/** Submit the selected education level for manual platform review. */
-export async function submitEducationCertification(education: string) {
+function uploadCertificationFile(path: string, filePath: string, formData: any) {
+  return new Promise<any>((resolve) => {
+    uni.uploadFile({
+      url: buildApiUrl(path),
+      filePath,
+      name: 'file',
+      formData,
+      header: getAccessToken() != '' ? { Authorization: 'Bearer ' + getAccessToken() } : {},
+      success: (res: any) => {
+        if (res.statusCode == 401) clearAuthTokens()
+        let data: any = null
+        try {
+          data = JSON.parse('' + res.data)
+        } catch (e) {
+          resolve({ success: false, data: null, code: res.statusCode, message: '上传响应解析失败' })
+          return
+        }
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve({ success: true, data, code: res.statusCode, message: 'success' })
+        } else {
+          const detail = data != null && data.detail != null ? data.detail : '上传失败'
+          resolve({ success: false, data, code: res.statusCode, message: '' + detail })
+        }
+      },
+      fail: (err: any) => {
+        resolve({ success: false, data: null, code: -1, message: err != null && err.errMsg != null ? '' + err.errMsg : '上传失败，请检查网络' })
+      }
+    })
+  })
+}
+
+/** Submit education, school and one certificate image for manual platform review. */
+export async function submitEducationCertification(education: string, school: string, filePath: string) {
   mockCertifications.education = {
     kind: 'education',
     status: 1,
     material_submitted: true,
+    material: filePath,
     submitted_at: '',
     reviewed_at: null,
     fail_reason: null,
-    next_action: '等待平台审核'
+    next_action: '等待平台审核',
+    education,
+    school
   }
-  return request({
-    url: '/users/me/certifications/education',
-    method: 'PUT',
-    data: { education },
-    mockData: mockCertifications
-  })
+  if (USE_MOCK) return request({ url: '/users/me/certifications/education/material', method: 'PUT', mockData: mockCertifications })
+  return uploadCertificationFile('/users/me/certifications/education/material', filePath, { education, school })
+}
+
+/** Submit a handwritten single-pledge signature. Real-name approval is required server-side. */
+export async function submitSinglePledgeCertification(signaturePath: string, agreementVersion: string) {
+  mockCertifications.single_pledge = {
+    kind: 'single_pledge',
+    status: 1,
+    material_submitted: true,
+    material: signaturePath,
+    submitted_at: new Date().toISOString(),
+    reviewed_at: null,
+    fail_reason: null,
+    next_action: '等待平台审核',
+    title: '单身承诺',
+    content: null
+  }
+  if (USE_MOCK) return request({ url: '/users/me/certifications/single-pledge', method: 'PUT', mockData: mockCertifications })
+  return uploadCertificationFile('/users/me/certifications/single-pledge', signaturePath, { agreement_version: agreementVersion })
 }
 
 export async function logout() {

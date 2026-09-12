@@ -64,27 +64,6 @@
 			</view>
 		</scroll-view>
 
-		<!-- 申请列表 Sheet -->
-		<XsaSheet :visible="appVisible" title="认识申请" @close="appVisible = false">
-			<view class="app-list">
-				<view class="app-item" v-for="item in applications" :key="item.id">
-					<image class="app-avatar" :src="item.avatar" mode="aspectFill"></image>
-					<view class="app-meta">
-						<text class="app-name">{{ item.name }}</text>
-						<text class="app-msg text-muted">{{ item.message }}</text>
-					</view>
-					<view class="app-actions" v-if="item.direction === 'in'">
-						<XsaButton variant="secondary" size="small" @click="rejectApp(item)">拒绝</XsaButton>
-						<XsaButton variant="primary" size="small" @click="acceptApp(item)">同意</XsaButton>
-					</view>
-					<text v-else class="app-status text-muted">{{ item.statusText }}</text>
-				</view>
-				<view v-if="applications.length === 0" class="empty-apps">
-					<text class="text-muted">暂无申请</text>
-				</view>
-			</view>
-		</XsaSheet>
-
 		<XsaSheet :visible="pinVisible" :show-handle="false" @close="closePinSheet">
 			<view class="pin-actions">
 				<XsaButton
@@ -115,7 +94,7 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 	import XsaSheet from '@/components/XsaSheet.uvue'
 	import XsaButton from '@/components/XsaButton.uvue'
 	import XsaToast from '@/components/XsaToast.uvue'
-	import { getMessageList, getApplications, handleApplication } from '@/api'
+	import { getMessageList, getApplications } from '@/api'
 	import {
 		createMatchedConversation,
 		getMatchedConversations,
@@ -135,7 +114,6 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 	const hasMore = ref(true)
 	const messageList = ref([])
 	const applications = ref([])
-	const appVisible = ref(false)
 	const pinVisible = ref(false)
 	const selectedMessage = ref<any>(null)
 	const pinnedMessageIds = ref([] as any[])
@@ -338,7 +316,10 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 
 	const openApplications = () => {
 		markShortcutNoticeRead(applicationNoticeKey.value)
-		appVisible.value = true
+		uni.navigateTo({
+			url: '/pagesSub/profileExtra/applications?tab=received',
+			fail: () => { showToast('申请列表打开失败，请重试') }
+		})
 	}
 
 const openPaperPlane = () => {
@@ -348,7 +329,18 @@ const openPaperPlane = () => {
 
 	const openDynamicNotice = () => {
 		markShortcutNoticeRead(DYNAMIC_NOTICE_KEY)
-		openHint('Ta 的动态 · 入口已触发')
+		try {
+			uni.setStorageSync('xsa-community-entry-target', 'follow-all')
+		} catch (e) {
+			console.error(e)
+		}
+		uni.switchTab({
+			url: '/pages/community/community',
+			fail: () => {
+				try { uni.removeStorageSync('xsa-community-entry-target') } catch (e) { console.error(e) }
+				showToast('社区关注页打开失败，请重试')
+			}
+		})
 	}
 
 	const markShortcutNoticeRead = (key: string) => {
@@ -478,28 +470,6 @@ const openPaperPlane = () => {
 		})
 	}
 
-	const acceptApp = async (item: any) => {
-		try {
-			const res = await handleApplication(item.id, 'accept')
-			if (res.success) {
-				completeMatchedApplication(item)
-			}
-		} catch (e) {
-			completeMatchedApplication(item)
-		}
-	}
-
-	const completeMatchedApplication = (item: any) => {
-		const result = createConversationForApplication(item)
-		const created = result.created === true || result.conversation != null
-		applications.value = (applications.value as any[]).filter((application: any) => application.id != item.id)
-		showToast(created ? '匹配成功，已创建聊天' : '已同意，聊天已开放')
-		appVisible.value = false
-		uni.navigateTo({
-			url: `/pagesSub/chat/detail?userId=${item.userId}&userName=${encodeURIComponent(item.name)}&newConversation=${created ? '1' : '0'}`
-		})
-	}
-
 	const createConversationForApplication = (item: any): any => {
 		const greetingIsMine = item.direction === 'in'
 		const result = createMatchedConversation(
@@ -525,14 +495,6 @@ const openPaperPlane = () => {
 		if (accepted.length > 0) {
 			applications.value = list.filter((item: any) => accepted.indexOf(item) < 0)
 		}
-	}
-
-	const rejectApp = async (item: any) => {
-		try {
-			await handleApplication(item.id, 'reject')
-		} catch (e) {}
-		applications.value = applications.value.filter((x: any) => x.id != item.id)
-		showToast('已拒绝，不扣除对方次数')
 	}
 
 	const handleLoadMore = async () => {
@@ -846,58 +808,6 @@ const openPaperPlane = () => {
 	.load-text {
 		font-size: 13px;
 		font-weight: 500;
-	}
-
-	.app-list {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-	}
-
-	.app-item {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding-bottom: 12px;
-		border-bottom: 1px solid #EFEFEF;
-	}
-
-	.app-avatar {
-		width: 48px;
-		height: 48px;
-		border-radius: 50%;
-	}
-
-	.app-meta {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		min-width: 0;
-	}
-
-	.app-name {
-		font-size: 26rpx;
-		font-weight: 600;
-		color: #2A2A2A;
-	}
-
-	.app-msg {
-		font-size: 11px;
-	}
-
-	.app-actions {
-		display: flex;
-		gap: 6px;
-	}
-
-	.app-status {
-		font-size: 11px;
-	}
-
-	.empty-apps {
-		padding: 24px 0;
-		text-align: center;
 	}
 
 	.pin-actions {

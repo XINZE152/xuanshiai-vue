@@ -10,7 +10,7 @@ const catalog = JSON.parse(fs.readFileSync(path.join(root, 'mock/profile-tags.ut
 
 function editor(options = {}) {
   const messages = [], writes = [], events = []
-  let profile = { personal_tags: ['阅读', '有幽默感'], custom_tags: [], legacy_tags: ['寻找长期伴侣'] }
+  let profile = options.profile || { personal_tags: ['科幻小说', '有幽默感'], custom_tags: [], custom_tag_categories: {} }
   const context = {
     ref: value => ({ value }),
     computed: fn => ({ get value() { return fn() } }),
@@ -24,12 +24,16 @@ function editor(options = {}) {
       writes.push(data)
       if (options.saveFailure) throw Error('offline')
       if (options.pending) await options.pending
-      profile = { personal_tags: options.mismatch ? ['阅读'] : [...data.personal_tags].reverse() }
+      profile = {
+        personal_tags: options.mismatch ? ['科幻小说'] : [...data.personal_tags].reverse(),
+        custom_tags: Object.keys(data.custom_tag_categories || {}),
+        custom_tag_categories: data.custom_tag_categories || {}
+      }
       return { success: true, data: profile }
     }
   }
   const script = source.split('<script setup lang="uts">')[1].split('</script>')[0].replace(/^import .*$/gm, '')
-  const code = babel.transformSync(script + '\nglobalThis.editor = { load, clearTags, toggleTag, addCustomTag, saveAndBack, selectedItems, selectedLabels, customLabels, customDraft, customEnabled, maxCustomTags, canSave, loaded, loadError, legacyLabels, searchQuery, searchActive, displayTags, selectCategory, activeCategoryId, categoryNameForTag };', {
+  const code = babel.transformSync(script + '\nglobalThis.editor = { load, clearTags, toggleTag, openCustomEditor, closeCustomModal, saveCustomTag, deleteEditingCustomTag, onCustomCategoryChange, saveAndBack, selectedItems, selectedLabels, customLabels, customDraft, customEnabled, maxCustomTags, customCategoryByLabel, customCategoryId, customModalVisible, customEditingLabel, canSave, loaded, profileReady, loadError, searchQuery, searchActive, displayTags, selectCategory, activeCategoryId, categoryNameForTag, categorySelectedCount, isCustomLabel };', {
     filename: 'tags.ts', configFile: false, babelrc: false,
     plugins: ['@babel/plugin-transform-typescript']
   }).code
@@ -78,12 +82,26 @@ async function main() {
   assert.doesNotMatch(source, /个人标签/, 'tag editor must use the user-facing name 兴趣标签')
   assert.match(source, /编辑兴趣标签/)
   assert.match(source, /搜索兴趣标签/)
+  const userApi = fs.readFileSync(path.join(root, 'api/user.uts'), 'utf8')
+  const tagOptionsApi = userApi.split('export async function getProfileTagOptions()')[1].split('export async function updateOwnProfile')[0]
+  assert.match(tagOptionsApi, /okRes\(mockProfileTagOptions\)/, 'the editor catalog must be bundled with the frontend')
+  assert.doesNotMatch(tagOptionsApi, /request\(/, 'opening the editor must not fetch its catalog from the backend')
   const backendRoot = process.env.XSA_BACKEND_ROOT || path.resolve(root, '../xuanshiai/xuanshiai')
   require('node:child_process').execFileSync('python', [path.join(root, 'scripts/sync-profile-tags.py'), '--check', '--backend-root', backendRoot], { stdio: 'inherit' })
   assert.equal(catalog.categories.length, 17)
   assert.deepEqual(catalog.categories.map(category => category.label), ['性格特质', '运动', '阅读', '影视综', '音乐', '文艺创作', '二次元', '旅行户外', '美食', '咖啡茶酒', '游戏', '休闲娱乐', '宠物', '植物园艺', '汽车文化', '生活习惯', '知识成长'])
-  assert.equal(catalog.categories.reduce((count, category) => count + category.options.length, 0), 268)
-  assert.deepEqual(catalog.custom, { enabled: true, max_tags: 3, min_length: 2, max_length: 10 })
+  assert.equal(catalog.categories.reduce((count, category) => count + category.options.length, 0), 323)
+  assert.deepEqual(catalog.custom, { enabled: true, max_tags: 3, min_length: 2, max_length: 10, category_required: true })
+  for (const category of catalog.categories) {
+    assert.ok(category.options.length >= 12 && category.options.length <= 30)
+    assert.equal(category.options.includes(category.label), false, category.label + ' must not repeat as its own child option')
+  }
+  for (const broad of ['旅行', '音乐', '阅读', '电影', '游戏', '汽车文化', '健身', '喜欢宠物', '园艺', '自我提升', '看现场演出']) {
+    assert.equal(catalog.categories.some(category => category.options.includes(broad)), false, broad)
+  }
+  assert.match(source, /class="tag-item custom-entry"/, 'every active category ends with the custom entry')
+  assert.match(source, /<XsaModal/, 'custom tag editing uses the shared modal')
+  assert.match(source, /mode="selector"[^>]*:range="categoryNames"/, 'custom modal allows category selection')
 
   for (const file of ['pagesSub/userExtra/mytags/edit.uvue', 'pagesSub/userExtra/user/edit.uvue', 'pagesSub/userExtra/user/detail.uvue', 'pagesSub/userExtra/user/preference.uvue']) {
     const result = parse(fs.readFileSync(path.join(root, file), 'utf8'))
@@ -97,11 +115,11 @@ async function main() {
   e.selectCategory('sports')
   e.searchQuery.value = '  liveHOUSE  '
   assert.equal(e.searchActive.value, true)
-  assert.deepEqual(Array.from(e.displayTags.value, tag => tag.label), ['Livehouse'])
-  assert.equal(e.categoryNameForTag('Livehouse'), '音乐')
-  e.toggleTag('music', 'Livehouse')
+  assert.deepEqual(Array.from(e.displayTags.value, tag => tag.label), ['去看Livehouse'])
+  assert.equal(e.categoryNameForTag('去看Livehouse'), '音乐')
+  e.toggleTag('music', '去看Livehouse')
   e.searchQuery.value = '猫'
-  assert.deepEqual(Array.from(e.displayTags.value, tag => tag.label), ['养猫', '云吸猫'])
+  assert.deepEqual(Array.from(e.displayTags.value, tag => tag.label), ['养猫', '云吸猫', '研究猫咪行为'])
   e.toggleTag('pets', '云吸猫')
   e.searchQuery.value = '不存在的标签'
   assert.equal(e.displayTags.value.length, 0)
@@ -109,41 +127,67 @@ async function main() {
   e.searchQuery.value = '  '
   assert.equal(e.searchActive.value, false)
   assert.equal(e.activeCategoryId.value, 'sports')
-  assert.equal(e.displayTags.value.length, 30)
+  assert.equal(e.displayTags.value.length, 28)
   e.searchQuery.value = '猫'
   e.selectCategory('personality')
   assert.equal(e.searchQuery.value, '')
   await e.saveAndBack()
-  assert.deepEqual(Array.from(e.writes[0].personal_tags), ['阅读', '有幽默感', 'Livehouse', '云吸猫'])
+  assert.deepEqual(Array.from(e.writes[0].personal_tags), ['科幻小说', '有幽默感', '去看Livehouse', '云吸猫'])
+  assert.equal(JSON.stringify(e.writes[0].custom_tag_categories), '{}')
 
   e = editor()
   await e.load()
   assert.equal(e.customEnabled.value, true)
+  e.selectCategory('music')
+  e.openCustomEditor('')
+  assert.equal(e.customModalVisible.value, true)
+  assert.equal(e.customCategoryId.value, 'music')
   e.customDraft.value = '  手碟  '
-  e.addCustomTag()
+  e.saveCustomTag()
   assert.deepEqual(Array.from(e.customLabels.value), ['手碟'])
+  assert.equal(e.customCategoryByLabel.value['手碟'], 'music')
+  e.selectCategory('sports')
+  e.openCustomEditor('')
   e.customDraft.value = '城市骑行'
-  e.addCustomTag()
+  e.saveCustomTag()
+  e.openCustomEditor('')
   e.customDraft.value = '木刻'
-  e.addCustomTag()
+  e.onCustomCategoryChange({ detail: { value: 5 } })
+  e.saveCustomTag()
+  e.openCustomEditor('')
   e.customDraft.value = '皮划艇'
-  e.addCustomTag()
+  e.saveCustomTag()
   assert.equal(e.customLabels.value.length, 3)
   assert.match(e.messages.at(-1), /最多添加3个/)
-  e.customDraft.value = '阅读'
-  e.addCustomTag()
-  assert.match(e.messages.at(-1), /已经添加过/)
-  e.customDraft.value = 'livehouse'
-  e.addCustomTag()
-  assert.equal(e.selectedLabels.value.includes('Livehouse'), true)
-  assert.match(e.messages.at(-1), /同名系统标签/)
+  e.openCustomEditor('手碟')
+  e.customDraft.value = '手鼓'
+  e.onCustomCategoryChange({ detail: { value: 11 } })
+  e.saveCustomTag()
+  assert.equal(e.customLabels.value.includes('手鼓'), true)
+  assert.equal(e.customCategoryByLabel.value['手鼓'], 'leisure')
+  e.openCustomEditor('手鼓')
+  e.customDraft.value = '去看livehouse'
+  e.saveCustomTag()
+  assert.equal(e.selectedLabels.value.includes('去看Livehouse'), true)
+  assert.match(e.messages.at(-1), /位于音乐/)
   await e.saveAndBack()
-  assert.deepEqual(Array.from(e.writes[0].personal_tags), ['阅读', '有幽默感', '手碟', '城市骑行', '木刻', 'Livehouse'])
+  assert.deepEqual(Array.from(e.writes[0].personal_tags), ['科幻小说', '有幽默感', '城市骑行', '木刻', '去看Livehouse'])
+  assert.equal(JSON.stringify(e.writes[0].custom_tag_categories), JSON.stringify({ 城市骑行: 'sports', 木刻: 'arts' }))
+
+  e = editor({ profile: { personal_tags: ['手碟'], custom_tags: ['手碟'], custom_tag_categories: { 手碟: 'music' } } })
+  await e.load()
+  assert.equal(e.categorySelectedCount('music'), 1)
+  assert.equal(e.categoryNameForTag('手碟'), '音乐')
+  e.openCustomEditor('手碟')
+  e.deleteEditingCustomTag()
+  assert.deepEqual(Array.from(e.customLabels.value), [])
+  assert.equal(e.selectedLabels.value.includes('手碟'), false)
+  assert.equal(e.customCategoryByLabel.value['手碟'], undefined)
+  assert.equal(e.customModalVisible.value, false)
 
   e = editor()
   await e.load()
   assert.equal(e.selectedItems.value.length, 2)
-  assert.equal(e.legacyLabels.value[0], '寻找长期伴侣')
   assert.equal(e.canSave.value, true)
   e.clearTags()
   await e.saveAndBack()
@@ -154,13 +198,18 @@ async function main() {
   e = editor({ loadFailure: true })
   await e.load()
   await e.saveAndBack()
-  assert.equal(e.loaded.value, false)
+  assert.equal(e.loaded.value, true, 'the bundled catalog remains visible when the profile request fails')
+  assert.equal(e.profileReady.value, false)
   assert.equal(e.canSave.value, false)
   assert.equal(e.writes.length, 0, 'failed load must never overwrite a profile')
 
+  e = editor({ profile: { interest_tags: ['科幻小说'], personality_tags: ['有幽默感'] } })
+  await e.load()
+  assert.deepEqual(Array.from(e.selectedLabels.value), [], 'legacy profile fields are dropped during development')
+
   e = editor({ saveFailure: true })
   await e.load()
-  e.toggleTag('sports', '健身')
+  e.toggleTag('sports', '力量训练')
   await e.saveAndBack()
   assert.equal(e.selectedItems.value.length, 3)
   assert.equal(e.events.length, 0)

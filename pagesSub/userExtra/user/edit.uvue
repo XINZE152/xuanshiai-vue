@@ -22,7 +22,7 @@
 			</view>
 		</view>
 
-		<scroll-view v-else class="scroll-content" scroll-y enhanced show-scrollbar="false" :scroll-into-view="aiJumpAnchor" :scroll-with-animation="true" refresher-enabled="true" :refresher-triggered="refreshing" @refresherrefresh="onPullRefresh" @refresherrestore="refreshing = false">
+		<scroll-view v-else class="scroll-content" scroll-y enhanced show-scrollbar="false" refresher-enabled="true" :refresher-triggered="refreshing" @refresherrefresh="onPullRefresh" @refresherrestore="refreshing = false">
 			<view class="progress-section">
 				<view class="progress-header"><text class="progress-label">资料完整度</text><text class="progress-value">{{ completeness }}%</text></view>
 				<view class="progress-track"><view class="progress-fill" :style="{ width: completeness + '%' }"></view></view>
@@ -33,7 +33,7 @@
 			<XsaProfileAiFirstAnalysis v-if="aiFirstAnalysisVisible" :analyzing="aiAnalyzing" :error-message="aiError" @close="closeAiFirstAnalysis" @start="startAiFirstAnalysis" />
 			<XsaProfileAiCard v-else :score="aiScore" :summary="aiSummary" :todos="aiTodos" :has-data="aiHasData" :analyzing="aiAnalyzing" :error-message="aiError" :stale="aiStale" @retry="onAiRetry" @start="openAiFirstAnalysis" @jump="onAiJump" />
 
-			<view class="section-card avatar-section">
+			<view id="sec-avatar" class="section-card avatar-section ai-anchor-avatar">
 				<view class="section-heading">
 					<text class="section-title">头像{{ completionSuffix('avatar', 15) }}</text>
 					<view class="heading-actions"><view class="preview-action" @tap="onPreview"><text>主页预览</text><text class="preview-action-arrow">›</text></view><view class="pill-action" @tap="changeBackground"><text class="pill-action-text">更换背景</text><text class="pill-action-arrow">›</text></view></view>
@@ -48,7 +48,7 @@
 				<text class="avatar-rule">⚠ 他人照片、看不清脸、P图过度、非人物照将无法通过审核</text>
 			</view>
 
-			<view class="section-card album-card">
+			<view id="sec-photos" class="section-card album-card ai-anchor-photos">
 				<view class="section-heading"><text class="section-title">我的相册{{ completionSuffix('album', 8) }}</text><text class="section-caption">{{ formData.photos.length }}/9</text></view>
 				<view class="album-grid">
 					<view class="album-cell" v-for="(photo, index) in formData.photos" :key="photo.id != null ? photo.id : index">
@@ -70,7 +70,7 @@
 				</view>
 			</view>
 
-			<view class="section-card preview-card">
+			<view id="sec-basic_info" class="section-card preview-card ai-anchor-basic-info">
 				<view class="section-heading">
 					<text class="section-title">基础信息</text>
 					<view class="pill-action" @tap="openBasicEditor"><text class="pill-action-text">编辑</text><text class="pill-action-arrow">›</text></view>
@@ -105,14 +105,14 @@
 				</view>
 			</view>
 
-			<view id="sec-self_intro" class="section-card intro-card">
+			<view id="sec-self_intro" class="section-card intro-card ai-anchor-self-intro">
 				<view class="section-heading"><text class="section-title">自我介绍{{ completionSuffix('intro', 10) }}</text><view class="pill-action" @tap="saveIntroduction"><text class="pill-action-text">保存</text></view></view>
 				<textarea class="intro-main-input" :class="{ 'has-content': introHasContent }" :value="formData.introduction" maxlength="500" placeholder="分享一下你的性格、爱好、生活态度...让TA更快了解你" @input="onInput('introduction', $event)"></textarea>
 				<text class="section-caption">超有趣的自我介绍会被更多人看见哦！完成后建议搭配照片验证</text>
 				<text v-if="!completionPassed('intro')" class="completion-warning">自我介绍：少于后台要求的 20 字</text>
 			</view>
 
-			<view id="sec-personal_tags" class="section-card tags-card" @tap="goTagsEdit()">
+			<view id="sec-personal_tags" class="section-card tags-card ai-anchor-personal-tags" @tap="goTagsEdit()">
                 <view class="section-heading"><text class="section-title">兴趣标签{{ completionSuffix('personal_tags', 8) }}</text><view class="pill-action"><text class="pill-action-text">编辑</text><text class="pill-action-arrow">›</text></view></view>
                 <text class="section-caption">用兴趣爱好和性格特点介绍自己，最多 10 个</text>
                 <view class="tag-list">
@@ -129,7 +129,7 @@
 				<text v-if="!completionPassed('preference')" class="completion-warning">择偶要求：未看到有效年龄范围</text>
 			</navigator>
 
-			<view id="sec-qa_answers" class="section-card qa-card">
+			<view id="sec-qa_answers" class="section-card qa-card ai-anchor-qa-answers">
 				<text class="section-title">关于我</text>
 				<text class="section-caption">你的回答将展示在个人主页，帮助对方更深入了解你</text>
 				<view class="qa-item" v-for="(qa, index) in qaItems" :key="qa.id" @tap="openQaEditor(index)">
@@ -144,17 +144,6 @@
 
 			<view class="scroll-bottom-spacer"></view>
 		</scroll-view>
-
-		<view v-if="singlePledgeVisible" class="pledge-overlay" @tap="closeSinglePledge">
-			<view class="pledge-dialog" @tap.stop>
-				<text class="pledge-title">单身承诺</text>
-				<text class="pledge-copy">我确认当前为单身状态，并承诺填写的信息真实有效。如状态发生变化，我会及时更新资料。</text>
-				<view class="pledge-actions">
-					<view class="pledge-cancel" @tap="closeSinglePledge"><text>暂不承诺</text></view>
-					<view class="pledge-confirm" :class="{ disabled: singlePledgeSubmitting }" @tap="confirmSinglePledge"><text>{{ singlePledgeSubmitting ? '提交中...' : '同意并承诺' }}</text></view>
-				</view>
-			</view>
-		</view>
 
 		<view class="sheet-overlay" v-if="detailSheetVisible" @click="detailSheetVisible = false">
 			<view class="sheet-panel" @click.stop>
@@ -284,7 +273,7 @@
 </template>
 
 <script setup lang="uts">
-	import { getOwnProfile, updateOwnProfile, updateOwnNickname, getOwnPreferences, uploadUserProfileMedia, deleteUserProfilePhoto, getMeProfile, getUserCertifications, getProfileCompletion, getAgreementVersions, acceptAgreement } from '@/api'
+	import { getOwnProfile, updateOwnProfile, updateOwnNickname, getOwnPreferences, uploadUserProfileMedia, deleteUserProfilePhoto, getMeProfile, getUserCertifications, getProfileCompletion } from '@/api'
 	import { getLatestThoughtfulness, analyzeProfileThoughtfulness, normalizeThoughtfulness, ThoughtfulnessResult } from '@/api/ai-profile.uts'
 	import XsaProfileAiCard from '@/components/XsaProfileAiCard.uvue'
 	import XsaProfileAiFirstAnalysis from '@/components/XsaProfileAiFirstAnalysis.uvue'
@@ -311,9 +300,8 @@
 	const cropDragging = ref(false)
 	const detailSheetVisible = ref(false)
 	const editSheetMode = ref('basic')
-	const singlePledgeVisible = ref(false)
-	const singlePledgeSubmitting = ref(false)
 	const singlePledgePassed = ref(false)
+	const singlePledgeStatus = ref('missing')
 	const realNameStatus = ref('missing')
 	const educationStatus = ref('missing')
 	const avatarCertificationPassed = ref(false)
@@ -527,7 +515,6 @@
 	// AI 用心度默认先展示初次使用说明；分析成功后自动回到结果卡。
 	const aiFirstAnalysisVisible = ref(true)
 	const aiStale = ref(false)
-	const aiJumpAnchor = ref('')
 	const pendingAiEditedKeys = ref([] as string[])
 	const lastSavedPayloadJson = ref('')
 	const aiHasData = computed(() => aiResult.value != null)
@@ -635,20 +622,23 @@
 
 	const onAiJump = (key: string) => {
 		const anchors: any = {
-			avatar: 'sec-avatar',
-			photos: 'sec-photos',
-			basic_info: 'sec-basic_info',
-			mbti: 'sec-basic_info',
-			self_intro: 'sec-self_intro',
-			personal_tags: 'sec-personal_tags',
-			interest_tags: 'sec-personal_tags',
-			personality_tags: 'sec-personal_tags',
-			qa_answers: 'sec-qa_answers'
+			avatar: '.ai-anchor-avatar',
+			photos: '.ai-anchor-photos',
+			basic_info: '.ai-anchor-basic-info',
+			mbti: '.ai-anchor-basic-info',
+			self_intro: '.ai-anchor-self-intro',
+			personal_tags: '.ai-anchor-personal-tags',
+			interest_tags: '.ai-anchor-personal-tags',
+			personality_tags: '.ai-anchor-personal-tags',
+			qa_answers: '.ai-anchor-qa-answers'
 		}
 		const target = anchors[key] != null ? '' + anchors[key] : ''
 		if (target == '') return
-		aiJumpAnchor.value = ''
-		setTimeout(() => { aiJumpAnchor.value = target }, 80)
+		uni.pageScrollTo({
+			selector: target,
+			offsetTop: -12,
+			duration: 260
+		})
 	}
 
 	/** 对比保存前后 payload,把变更字段映射为用心度评审的 key 集合 */
@@ -712,9 +702,16 @@
 			}
 			try {
 				const certificationsRes = await getUserCertifications()
-				if (certificationsRes.success && certificationsRes.data != null && certificationsRes.data.education != null) {
-					const status = Number(certificationsRes.data.education.status)
-					educationStatus.value = status == 2 ? 'passed' : (status == 1 ? 'reviewing' : (status == 3 ? 'rejected' : 'missing'))
+				if (certificationsRes.success && certificationsRes.data != null) {
+					if (certificationsRes.data.education != null) {
+						const status = Number(certificationsRes.data.education.status)
+						educationStatus.value = status == 2 ? 'passed' : (status == 1 ? 'reviewing' : (status == 3 ? 'rejected' : 'missing'))
+					}
+					if (certificationsRes.data.single_pledge != null) {
+						const status = Number(certificationsRes.data.single_pledge.status)
+						singlePledgeStatus.value = status == 2 ? 'passed' : (status == 1 ? 'reviewing' : (status == 3 ? 'rejected' : 'missing'))
+						singlePledgePassed.value = status == 2
+					}
 				}
 			} catch (certificationsError) {
 				console.error('[EditProfile] certification status unavailable', certificationsError)
@@ -844,7 +841,7 @@
 		{ key: 'realname', label: '实名认证', icon: '盾', passed: realNameStatus.value == 'passed', desc: realNameDescription.value },
 		{ key: 'education', label: '学历认证', icon: '学', passed: educationStatus.value == 'passed', desc: educationStatus.value == 'passed' ? '学历信息已核验' : '需核验学历信息' },
 		{ key: 'avatar', label: '头像认证', icon: '像', passed: avatarCertificationPassed.value, desc: avatarCertificationPassed.value ? '头像为本人真实照片' : '上传真实本人照片' },
-		{ key: 'single_pledge', label: '单身承诺', icon: '誓', passed: singlePledgePassed.value, desc: singlePledgePassed.value ? '已签署单身承诺' : '确认当前为单身状态' }
+		{ key: 'single_pledge', label: '单身承诺', icon: '誓', passed: singlePledgeStatus.value == 'passed', desc: singlePledgeStatus.value == 'passed' ? '手写承诺已审核通过' : (singlePledgeStatus.value == 'reviewing' ? '手写承诺审核中' : (singlePledgeStatus.value == 'rejected' ? '审核未通过，可重新签署' : '手写签署当前单身状态承诺')) }
 	])
 
 	onMounted(() => load())
@@ -1096,37 +1093,11 @@
 	}
 
 	const goCertification = (key: string) => {
-		if (key == 'single_pledge') {
-			singlePledgeVisible.value = true
-			return
-		}
 		if (key == 'avatar') {
 			chooseAvatar()
 			return
 		}
 		uni.navigateTo({ url: '/pagesSub/profileExtra/certification?type=' + key })
-	}
-	const closeSinglePledge = () => { if (!singlePledgeSubmitting.value) singlePledgeVisible.value = false }
-	const confirmSinglePledge = async () => {
-		if (singlePledgeSubmitting.value) return
-		singlePledgeSubmitting.value = true
-		try {
-			const versionsRes = await getAgreementVersions()
-			const versions = versionsRes.success && versionsRes.data != null ? versionsRes.data as any : {}
-			const safetyPledge = versions.safety_pledge != null ? versions.safety_pledge : {}
-			const version = safetyPledge.version != null ? '' + safetyPledge.version : 'v1'
-			const res = await acceptAgreement('safety_pledge', version, 'profile')
-			if (!res.success) {
-				uni.showToast({ title: res.message != null ? '' + res.message : '提交失败，请重试', icon: 'none' })
-				return
-			}
-			singlePledgePassed.value = true
-			singlePledgeVisible.value = false
-			await refreshCompletion()
-			uni.showToast({ title: '单身承诺已完成', icon: 'success' })
-		} finally {
-			singlePledgeSubmitting.value = false
-		}
 	}
 	const saveIntroduction = async () => {
 		if (saving.value || uploadingMedia.value) return
@@ -1471,19 +1442,10 @@
 .cancel-button { flex: 1; height: 48px; border-radius: 24px; display: flex; align-items: center; justify-content: center; background: var(--warm); color: var(--ink2); font-size: 15px; font-weight: 600; }
 .save-button { flex: 1; height: 48px; border-radius: 24px; display: flex; align-items: center; justify-content: center; background: var(--sage); color: var(--text-invert); font-size: 15px; font-weight: 700; box-shadow: 0 4px 12px rgba(51,141,107,0.25); }
 .save-button.disabled { opacity: 0.55; }
-.scroll-bottom-spacer { height: 60px; }
+.scroll-bottom-spacer { height: calc(100vh - 312px); min-height: 120px; }
 
 /* Sheet overlay */
 .sheet-overlay { position: fixed; left: 0; right: 0; top: 0; bottom: 0; width: 100%; height: 100vh; background: rgba(12,19,19,0.36); z-index: 100; display: flex; align-items: flex-end; }
-.pledge-overlay { position: fixed; z-index: 120; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; background: rgba(12,19,19,0.38); }
-.pledge-dialog { width: 100%; padding: 24px 20px 20px; box-sizing: border-box; border-radius: 20px; background: var(--surface); box-shadow: var(--shadow-md); }
-.pledge-title { display: block; color: var(--ink); font-size: 18px; font-weight: 700; text-align: center; }
-.pledge-copy { display: block; margin-top: 14px; color: var(--ink2); font-size: 14px; line-height: 1.7; }
-.pledge-actions { display: flex; flex-direction: row; gap: 12px; margin-top: 22px; }
-.pledge-cancel, .pledge-confirm { flex: 1; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 22px; font-size: 14px; font-weight: 700; }
-.pledge-cancel { border: 1px solid var(--line); color: var(--ink2); background: var(--paper); }
-.pledge-confirm { color: var(--text-invert); background: var(--sage); }
-.pledge-confirm.disabled { opacity: .55; }
 .sheet-panel { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 80vh; max-height: 80vh; min-height: 0; background: var(--surface); border-radius: 24px 24px 0 0; display: flex; flex-direction: column; overflow: hidden; }
 .sheet-handle { width: 36px; height: 4px; border-radius: 2px; background: var(--line); margin: 10px auto 0; flex-shrink: 0; }
 .sheet-nav { display: flex; flex-direction: row; align-items: center; justify-content: center; padding: 12px 18px 10px; position: relative; }

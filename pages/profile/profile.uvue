@@ -6,9 +6,6 @@
 				<view class="nav-icon-btn role-switch-btn" @tap="onSwitchToParent" aria-label="切换到父母端" title="切换到父母端">
 					<text class="ic ic-sys ic-shuaxin nav-icon role-switch-icon"></text>
 				</view>
-				<view class="nav-icon-btn" @tap="onMessages">
-					<text class="ic ic-social ic-tongzhi nav-icon"></text>
-				</view>
 				<view class="nav-icon-btn" @tap="onSettings">
 					<text class="ic ic-me ic-shezhi nav-icon"></text>
 				</view>
@@ -298,10 +295,6 @@ const loadOverview = async () => {
 	stats.value[1].value = data.visitor_count != null ? '' + data.visitor_count : '0'
 	stats.value[2].value = data.favorite_count != null ? '' + data.favorite_count : '0'
 	stats.value[3].value = data.superlike_sent_count != null ? '' + data.superlike_sent_count : '0'
-}
-
-const onMessages = () => {
-	uni.showToast({ title: '消息中心', icon: 'none' })
 }
 
 const onSettings = () => {

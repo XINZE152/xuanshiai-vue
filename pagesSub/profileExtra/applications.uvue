@@ -53,6 +53,11 @@ const loadQuota = async () => {
 }
 const rejectApplication = async (applicationId: number) => { const res = await rejectDiscoveryApplication(Number(applicationId)); if (res.success) { const item = receivedApplications.value.find((row: any) => Number(row.applicationId) == Number(applicationId)); if (item != null) { item.status = '已拒绝'; item.statusClass = 'rejected' } } else uni.showToast({ title: res.message || '拒绝失败', icon: 'none' }) }
 const agreeApplication = async (applicationId: number) => { const res = await acceptDiscoveryApplication(Number(applicationId)); if (res.success) { const item = receivedApplications.value.find((row: any) => Number(row.applicationId) == Number(applicationId)); const name = item != null ? item.name : '该用户'; if (item != null) { item.status = '已同意'; item.statusClass = 'approved' }; uni.showToast({ title: '已同意' + name + '的申请', icon: 'success' }) } else uni.showToast({ title: res.message || '同意失败', icon: 'none' }) }
+onLoad((options: any) => {
+	if (options == null || options.tab == null) return
+	const targetTab = '' + options.tab
+	if (targetTab == 'received' || targetTab == '1') activeTab.value = 1
+})
 onMounted(() => { loadApplications(); loadQuota() })
 </script>
 
