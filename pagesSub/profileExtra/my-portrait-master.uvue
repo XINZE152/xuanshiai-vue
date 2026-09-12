@@ -1,11 +1,11 @@
 <template>
 	<view class="mm-page">
 		<!-- 导航栏 -->
-		<view class="mm-nav">
-			<view class="mm-nav-back" @tap="navBack">
-				<text class="mm-nav-back-text">✕</text>
+		<view class="mm-nav" :style="{ paddingTop: navPadTop + 'px', paddingRight: (menuButtonSpacing + 8) + 'px' }">
+			<view class="mm-nav-side mm-nav-back" @tap="navBack">
+				<text class="mm-nav-back-text">‹</text>
 			</view>
-			<text class="mm-nav-title">墨相师</text>
+			<text class="mm-nav-title" :style="{ top: navPadTop + 'px' }">与知遇聊聊</text>
 			<view class="mm-nav-side"></view>
 		</view>
 
@@ -13,7 +13,7 @@
 			移除顶部主体 Tab;每张卡只打开自己的独立会话。 -->
 		<view v-if="!buildMode && stateResponse != null" class="mm-journey-cards">
 			<view class="mm-stage-card" :class="stageCardClass('personal')" @tap="onEnterSubject('personal')">
-				<text class="mm-stage-card-title">我的墨相</text>
+				<text class="mm-stage-card-title">我的真实画像</text>
 				<text class="mm-stage-card-sub">{{ stageCardSub('personal') }}</text>
 				<text v-if="stageCardPercent('personal') > 0" class="mm-stage-card-pct">{{ stageCardPercent('personal') }}%</text>
 				<view v-if="stageHasPublished('personal')" class="mm-stage-card-btn" @tap.stop="goPortrait('personal')">
@@ -24,7 +24,7 @@
 				</view>
 			</view>
 			<view class="mm-stage-card" :class="stageCardClass('ideal_partner')" @tap="onEnterSubject('ideal_partner')">
-				<text class="mm-stage-card-title">愿遇之相</text>
+				<text class="mm-stage-card-title">期待的长期关系</text>
 				<text class="mm-stage-card-sub">{{ stageCardSub('ideal_partner') }}</text>
 				<text v-if="stageCardPercent('ideal_partner') > 0" class="mm-stage-card-pct">{{ stageCardPercent('ideal_partner') }}%</text>
 				<view v-if="stageHasPublished('ideal_partner')" class="mm-stage-card-btn" @tap.stop="goPortrait('ideal_partner')">
@@ -95,9 +95,6 @@
 			<view class="mm-state-btn" @tap="retryConnect">
 				<text class="mm-state-btn-text">重试</text>
 			</view>
-			<view class="mm-state-link" @tap="goFallbackBuild">
-				<text class="mm-state-link-text">改用备用题库 / 语音流程</text>
-			</view>
 		</view>
 
 		<!-- 对话主体 -->
@@ -159,7 +156,7 @@
 										<text v-if="item.displayValue != ''" class="mm-card-value">{{ cardValueText(item) }}</text>
 										<view class="mm-card-actions">
 											<view class="mm-card-btn mm-card-btn-primary" :class="{ 'mm-card-btn-disabled': msg.confirming == true }" @tap="confirmCardItem(msg)">
-												<text class="mm-card-btn-text-primary">确认这一条</text>
+												<text class="mm-card-btn-text-primary">✓ 确认这一条</text>
 											</view>
 											<view class="mm-card-btn" @tap="startEdit(item)">
 												<text class="mm-card-btn-text">需要修改</text>
@@ -211,7 +208,7 @@
 					<input
 						class="mm-input"
 						v-model="inputText"
-						placeholder="说点什么…"
+						placeholder="告诉知遇你的想法，或者聊聊今天的心情…"
 						:adjust-position="true"
 						confirm-type="send"
 						@confirm="sendText"
@@ -268,6 +265,13 @@ import { getMoxiangState, getSessionTurns, getMoxiangArchive, MoxiangStateRespon
 import { displayFieldValue } from '@/utils/profile-field-display.uts'
 import { categoryLabel } from '@/utils/moxiang-dimension.uts'
 import { loadMoxiangTrace } from '@/utils/moxiangTrace.uts'
+
+// ===== 导航与安全区域 =====
+const systemInfo = uni.getSystemInfoSync()
+const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
+const menuButtonInfo = uni.getMenuButtonBoundingClientRect()
+const navPadTop = menuButtonInfo != null && menuButtonInfo.top > statusBarHeight ? menuButtonInfo.top : statusBarHeight + 6
+const menuButtonSpacing = menuButtonInfo != null ? (systemInfo.windowWidth - menuButtonInfo.left) : 8
 
 // ===== 状态 =====
 // 产品能力仍叫“墨相”，对话中的 AI 角色使用独立身份名，避免把 LLM
@@ -928,27 +932,31 @@ async function refreshDraftState(card: ConfirmCardPayload) {
 	}
 }
 
-async function confirmAll(card: ConfirmCardPayload) {
-	const rev = currentRevision(card)
-	const actions: any[] = []
-	for (let i = 0; i < card.items.length; i++) {
-		actions.push(fieldAction(card.items[i].fieldKey, 'confirm', null, rev))
+	async function confirmAll(card: ConfirmCardPayload) {
+		const rev = currentRevision(card)
+		const actions: any[] = []
+		for (let i = 0; i < card.items.length; i++) {
+			actions.push(fieldAction(card.items[i].fieldKey, 'confirm', null, rev))
+		}
+		const res = await patchProfileDraft(card.draftId, actions, rev)
+		if (res.success) {
+			removeCardMessage(card.cardId)
+			setCardBySubject(card.subject, null)
+			// 同步反馈走消息流而不是 toast：toast 在 redirectTo 跳转时不可靠。
+			const synced = (res.data != null && res.data.synced_profile_fields != null) ? (res.data.synced_profile_fields as any[]) : []
+			if (synced.length > 0 && card.subject == 'personal') {
+				addMessage('master', '这几项我已顺手帮你补进了「编辑资料」，以后不用再手动填一遍。', false, card.subject)
+			}
+			await refreshDraftState(card)
+			await loadMoxiangState()
+			// 确认完成 ≠ 发布：必须把用户送到结果页点「发布这份成稿」，
+			// 否则草稿永远停在已确认未发布，「我的画像」看不到成稿。
+			goPortrait()
+		} else {
+			const msg = res.message != null ? ('' + res.message) : '确认失败,请重试'
+			uni.showToast({ title: msg, icon: 'none' })
+		}
 	}
-	const res = await patchProfileDraft(card.draftId, actions, rev)
-	if (res.success) {
-		removeCardMessage(card.cardId)
-		setCardBySubject(card.subject, null)
-		uni.showToast({ title: '都记对了', icon: 'none' })
-		await refreshDraftState(card)
-		await loadMoxiangState()
-		// 确认完成 ≠ 发布：必须把用户送到结果页点「发布这份成稿」，
-		// 否则草稿永远停在已确认未发布，「我的画像」看不到成稿。
-		goPortrait()
-	} else {
-		const msg = res.message != null ? ('' + res.message) : '确认失败,请重试'
-		uni.showToast({ title: msg, icon: 'none' })
-	}
-}
 
 async function confirmCardItem(msg: any) {
 	if (msg == null || msg.card == null || msg.confirming == true) return
@@ -964,16 +972,21 @@ async function confirmCardItem(msg: any) {
 	}
 	if (item == null) return
 
-	msg.confirming = true
-	try {
-		const rev = currentRevision(card)
-		const res = await patchProfileDraft(card.draftId, [fieldAction(item.fieldKey, 'confirm', null, rev)], rev)
-		if (!res.success) {
-			const message = res.message != null ? ('' + res.message) : '确认失败,请重试'
-			uni.showToast({ title: message, icon: 'none' })
-			return
-		}
-		await refreshDraftState(card)
+		msg.confirming = true
+		try {
+			const rev = currentRevision(card)
+			const res = await patchProfileDraft(card.draftId, [fieldAction(item.fieldKey, 'confirm', null, rev)], rev)
+			if (!res.success) {
+				const message = res.message != null ? ('' + res.message) : '确认失败,请重试'
+				uni.showToast({ title: message, icon: 'none' })
+				return
+			}
+			const synced = (res.data != null && res.data.synced_profile_fields != null) ? (res.data.synced_profile_fields as any[]) : []
+			if (synced.length > 0 && card.subject == 'personal') {
+				// 同步反馈走消息流：单条确认还留在对话里，用知遇的话术告知即可。
+				addMessage('master', '这一条我也顺手帮你补进了「编辑资料」，不用再手动填。', false, card.subject)
+			}
+			await refreshDraftState(card)
 		// 单条确认会改变六维确认数；立即重拉状态，避免进度条停留在旧快照。
 		await loadMoxiangState()
 		const nextIndex = Number(msg.confirmIndex ?? 0) + 1
@@ -1111,12 +1124,6 @@ function enterSubjectSession(subject: ProfileSubject) {
 function onBackToCards() {
 	// 双阶段卡 → MoxiangEntryState → 返回双阶段卡(无任何数据丢失)
 	pendingSubject.value = ''
-}
-
-function goFallbackBuild() {
-	uni.navigateTo({
-		url: '/pagesSub/profileExtra/my-portrait?subject=' + currentSubject.value + '&fallback=1'
-	})
 }
 
 // ===== 文字模式 =====
@@ -1497,38 +1504,68 @@ const devMoxiangTrace = ref<any>(null)
 .mm-page {
 	display: flex;
 	flex-direction: column;
+	width: 100%;
 	height: 100vh;
 	box-sizing: border-box;
 	background: var(--canvas);
+	--canvas: #F3EFE8;
+	--surface: #FFFFFF;
+	--surface-subtle: #FAF7F2;
+	--border: #E5DFD5;
+	--primary: #9C5B42;
+	--primary-deep: #7D4430;
+	--primary-light: #FAF2EE;
+	--accent: #C29F68;
+	--text-main: #23201E;
+	--text-sub: #807B75;
+	--text-muted: #B3ADA5;
 }
 
 /* ===== 导航栏 ===== */
 .mm-nav {
+	position: relative;
+	box-sizing: content-box;
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	justify-content: space-between;
 	flex-shrink: 0;
-	padding: 0 16px;
-	height: 44px;
-	padding-top: var(--status-bar-height, 0px);
+	padding-left: 10px;
+	padding-bottom: 8px;
 	background: var(--canvas);
+	z-index: 100;
+}
+.mm-nav-side {
+	z-index: 1;
+	min-width: 44px;
+	height: 40px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: flex-end;
 }
 .mm-nav-back {
-	width: 44px;
-	height: 44px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
+	justify-content: flex-start;
 }
-.mm-nav-back-text { font-size: 20px; color: var(--ink); }
+.mm-nav-back-text {
+	font-size: 28px;
+	color: #23201E;
+	padding: 0 8px;
+	line-height: 1;
+}
 .mm-nav-title {
+	position: absolute;
+	left: 0;
+	right: 0;
+	height: 40px;
+	line-height: 40px;
+	text-align: center;
 	font-size: 17px;
 	font-weight: 700;
-	color: var(--ink);
-	font-family: var(--serif, serif);
+	color: #23201E;
+	pointer-events: none;
+	z-index: 1;
 }
-.mm-nav-side { width: 28px; }
 
 /* ===== 双画像阶段 ===== */
 .mm-subject-panel {
@@ -1538,78 +1575,79 @@ const devMoxiangTrace = ref<any>(null)
 }
 .mm-stage-label {
 	font-size: 12px;
-	color: var(--ink2);
+	color: #807B75;
 	text-align: center;
 	margin-bottom: 7px;
 }
-/* Phase 2 P2-02: 旧顶部 Tab CSS 已不再使用(由 .mm-journey-cards 取代)。保留空行作分割。 */
 
-/* ===== Phase 2 双阶段卡(墨相师首页) ===== */
+/* ===== 双阶段卡(墨相师首页) ===== */
 .mm-journey-cards {
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
-	padding: 24px 16px 16px;
+	padding: 20px 16px 16px;
 }
 .mm-stage-card {
 	display: flex;
 	flex-direction: column;
-	border-radius: 14px;
-	padding: 16px 18px;
-	background: var(--surface);
-	border: 1px solid var(--line);
-	box-shadow: var(--shadow-sm);
+	border-radius: 12px;
+	padding: 16px;
+	background: #FFFFFF;
+	border: 1px solid #E5DFD5;
+	box-shadow: 0 4px 12px rgba(35, 32, 30, 0.04);
 }
 .mm-stage-card-active {
-	border-color: var(--accent2);
-	background: var(--accent-bg);
+	border-color: #E8DCCF;
+	background-image: linear-gradient(135deg, #FFFDFB 0%, #F8EFE4 100%);
 }
 .mm-stage-card-done {
-	border-color: var(--sage);
-	background: var(--sage-soft);
+	border-color: #D8D2C7;
+	background: #FAF7F2;
 }
 .mm-stage-card-locked {
-	opacity: 0.55;
-	background: var(--warm);
-	border-color: #D6C8AE;
+	opacity: 0.6;
+	background: #FAF7F2;
+	border-color: #E5DFD5;
 }
 .mm-stage-card-title {
-	font-size: 18px;
+	font-size: 17px;
 	font-weight: 700;
-	color: var(--ink);
-	font-family: var(--serif, serif);
+	color: #23201E;
 }
 .mm-stage-card-sub {
 	font-size: 12px;
-	color: var(--ink2);
+	color: #807B75;
 	margin-top: 4px;
 }
 .mm-stage-card-pct {
-	font-size: 26px;
+	font-size: 24px;
 	font-weight: 700;
-	color: var(--accent2);
-	margin-top: 12px;
+	color: #9C5B42;
+	margin-top: 10px;
 	align-self: flex-end;
-	font-family: var(--serif, serif);
 }
-.mm-stage-card-done .mm-stage-card-pct { color: var(--sage); }
+.mm-stage-card-done .mm-stage-card-pct { color: #807B75; }
 .mm-stage-card-btn {
 	margin-top: 10px;
 	align-self: flex-start;
-	padding: 6px 14px;
-	border-radius: 14px;
-	border: 1px solid var(--accent2);
-	background: var(--surface);
+	height: 44px;
+	padding: 0 18px;
+	border-radius: 8px;
+	background: #9C5B42;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
 .mm-stage-card-done .mm-stage-card-btn {
-	border-color: var(--sage);
+	background: #FFFFFF;
+	border: 1px solid #D8D2C7;
 }
 .mm-stage-card-btn-text {
-	font-size: 12px;
-	color: var(--accent2);
+	font-size: 13px;
+	color: #FFFFFF;
 	font-weight: 600;
 }
-.mm-stage-card-done .mm-stage-card-btn-text { color: var(--sage); }
+.mm-stage-card-done .mm-stage-card-btn-text { color: #4A4540; }
 .mm-entry-back {
 	margin-top: 12px;
 	padding: 10px 14px;
@@ -1619,7 +1657,7 @@ const devMoxiangTrace = ref<any>(null)
 }
 .mm-entry-back-text {
 	font-size: 12px;
-	color: var(--muted);
+	color: #807B75;
 }
 
 /* ===== 角色形象区 ===== */
@@ -1632,13 +1670,12 @@ const devMoxiangTrace = ref<any>(null)
 .mm-hero-name {
 	font-size: 18px;
 	font-weight: 700;
-	color: var(--ink);
-	font-family: var(--serif, serif);
+	color: #23201E;
 	margin-top: 8px;
 }
 .mm-hero-sub {
 	font-size: 12px;
-	color: var(--muted);
+	color: #807B75;
 	margin-top: 2px;
 }
 
@@ -1658,7 +1695,7 @@ const devMoxiangTrace = ref<any>(null)
 }
 .mm-steam-dot {
 	width: 8px; height: 8px; border-radius: 999px;
-	background: rgba(180, 118, 43, 0.3);
+	background: rgba(156, 91, 66, 0.3);
 	animation: mm-steam-rise 2.4s ease-in-out infinite;
 }
 .mm-steam-dot-2 { animation-delay: 0.8s; }
@@ -1668,17 +1705,22 @@ const devMoxiangTrace = ref<any>(null)
 	40% { opacity: 0.55; }
 	100% { transform: translateY(-8px) scale(1.2); opacity: 0; }
 }
-.mm-state-text { font-size: 15px; color: var(--ink2); font-family: var(--serif, serif); }
-.mm-state-sub { font-size: 12px; color: var(--muted); margin-top: 6px; text-align: center; padding: 0 32px; }
+.mm-state-text { font-size: 15px; color: #23201E; }
+.mm-state-sub { font-size: 12px; color: #807B75; margin-top: 6px; text-align: center; padding: 0 32px; }
 .mm-state-btn {
 	margin-top: 16px;
-	padding: 8px 24px;
+	height: 44px;
+	padding: 0 24px;
 	border-radius: 8px;
-	background: var(--accent2);
+	background: #9C5B42;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
-.mm-state-btn-text { font-size: 13px; color: var(--surface); font-weight: 700; }
+.mm-state-btn-text { font-size: 13px; color: #FFFFFF; font-weight: 700; }
 .mm-state-link { margin-top: 14px; padding: 8px 12px; }
-.mm-state-link-text { font-size: 12px; color: var(--accent2); text-decoration: underline; }
+.mm-state-link-text { font-size: 12px; color: #9C5B42; text-decoration: underline; }
+
 
 /* ===== 对话主体 ===== */
 .mm-body {
@@ -1707,14 +1749,13 @@ const devMoxiangTrace = ref<any>(null)
 .mm-empty-title {
 	font-size: 16px;
 	font-weight: 700;
-	color: var(--ink);
-	font-family: var(--serif, serif);
+	color: #23201E;
 }
 .mm-empty-sub {
 	margin-top: 8px;
 	font-size: 12px;
 	line-height: 1.6;
-	color: var(--ink2);
+	color: #807B75;
 	text-align: center;
 }
 
@@ -1728,42 +1769,45 @@ const devMoxiangTrace = ref<any>(null)
 .mm-msg-right { justify-content: flex-end; }
 
 .mm-msg-avatar {
-	width: 32px;
-	height: 32px;
-	margin-right: 6px;
+	width: 36px;
+	height: 36px;
+	margin-right: 8px;
 	flex-shrink: 0;
 }
 
 .mm-bubble {
 	max-width: 78%;
-	padding: 8px 12px;
-	border-radius: 10px 10px 10px 0;
+	padding: 12px 14px;
+	border-radius: 2px 14px 14px 14px;
 }
 .mm-bubble-master {
-	background: var(--surface);
-	border: 1px solid var(--line);
+	background: #FFFFFF;
+	border: 1px solid #E5DFD5;
+	border-left: 3px solid #9C5B42;
+	box-shadow: 0 2px 6px rgba(35, 32, 30, 0.04);
 }
 .mm-bubble-user {
-	background: var(--accent2);
-	border-radius: 10px 10px 0 10px;
+	background: #FAF7F2;
+	border: 1px solid #E5DFD5;
+	border-radius: 14px 2px 14px 14px;
+	box-shadow: 0 2px 6px rgba(35, 32, 30, 0.03);
 }
 .mm-bubble-text {
 	font-size: 14px;
 	line-height: 1.45;
 	word-break: break-all;
+	color: #23201E;
 }
-.mm-bubble-master .mm-bubble-text { color: var(--ink); }
-.mm-bubble-user .mm-bubble-text { color: var(--surface); }
 
 /* 听它读 */
 .mm-listen {
 	margin-top: 6px;
 	padding: 3px 10px;
 	border-radius: 999px;
-	background: rgba(180, 118, 43, 0.1);
+	background: #FAF2EE;
 	align-self: flex-start;
 }
-.mm-listen-text { font-size: 11px; color: var(--accent2); }
+.mm-listen-text { font-size: 11px; color: #9C5B42; }
 
 /* 思考中 */
 .mm-typing {
@@ -1775,7 +1819,7 @@ const devMoxiangTrace = ref<any>(null)
 }
 .mm-dot {
 	width: 6px; height: 6px; border-radius: 999px;
-	background: var(--muted);
+	background: #C29F68;
 	animation: mm-dot-bounce 1.2s ease-in-out infinite;
 }
 .mm-dot:nth-child(2) { animation-delay: 0.2s; }
@@ -1788,11 +1832,11 @@ const devMoxiangTrace = ref<any>(null)
 /* 实时转写 */
 .mm-partial {
 	padding: 6px 16px;
-	background: rgba(78, 125, 91, 0.08);
+	background: #FAF2EE;
 	margin: 0 12px 6px;
 	border-radius: 8px;
 }
-.mm-partial-text { font-size: 13px; color: #4E7D5B; }
+.mm-partial-text { font-size: 13px; color: #9C5B42; }
 
 /* TTS 播报条 */
 .mm-tts-bar {
@@ -1800,26 +1844,26 @@ const devMoxiangTrace = ref<any>(null)
 	flex-direction: row;
 	align-items: center;
 	padding: 8px 16px;
-	background: rgba(201, 123, 87, 0.1);
+	background: #FAF2EE;
 	gap: 12px;
 }
-.mm-tts-label { font-size: 12px; color: var(--ink2); flex: 1; }
+.mm-tts-label { font-size: 12px; color: #524C46; flex: 1; }
 .mm-tts-replay {
 	padding: 4px 12px;
 	border-radius: 999px;
-	background: rgba(201, 123, 87, 0.15);
+	background: #F5EAE4;
 }
-.mm-tts-replay-text { font-size: 11px; color: #A05A3E; }
+.mm-tts-replay-text { font-size: 11px; color: #9C5B42; }
 .mm-tts-close { padding: 4px 8px; }
-.mm-tts-close-text { font-size: 11px; color: var(--muted); }
+.mm-tts-close-text { font-size: 11px; color: #807B75; }
 
 /* ===== 底部输入区 ===== */
 .mm-input-bar {
 	flex-shrink: 0;
-	padding: 8px 12px;
-	padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-	background: var(--canvas);
-	border-top: 1px solid var(--line);
+	padding: 10px 14px;
+	padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+	background: #FFFFFF;
+	border-top: 1px solid #E5DFD5;
 }
 .mm-input-row {
 	display: flex;
@@ -1829,154 +1873,148 @@ const devMoxiangTrace = ref<any>(null)
 }
 .mm-input {
 	flex: 1;
-	height: 38px;
-	padding: 0 14px;
-	border-radius: 8px;
-	background: var(--surface);
-	border: 1px solid var(--line);
+	height: 44px;
+	padding: 0 16px;
+	border-radius: 22px;
+	background: #F7F3EC;
+	border: 1px solid #DFD8CC;
 	font-size: 14px;
-	color: var(--ink);
+	color: #23201E;
 }
 .mm-send-btn {
-	padding: 0 16px;
-	height: 38px;
-	border-radius: 8px;
-	background: rgba(180, 118, 43, 0.4);
+	height: 44px;
+	padding: 0 18px;
+	border-radius: 22px;
+	background: #DFD8CC;
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	flex-shrink: 0;
 }
 .mm-send-active {
-	background: var(--accent2);
+	background: #9C5B42;
 }
-.mm-send-text { font-size: 13px; color: var(--surface); font-weight: 700; }
+.mm-send-text { font-size: 14px; color: #FFFFFF; font-weight: 600; }
 
 .mm-mode-btn {
-	width: 38px;
-	height: 38px;
-	border-radius: 8px;
-	background: var(--surface);
-	border: 1px solid var(--line);
+	width: 44px;
+	height: 44px;
+	border-radius: 22px;
+	background: #F7F3EC;
+	border: 1px solid #DFD8CC;
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	flex-shrink: 0;
 }
-.mm-mode-btn-icon { font-size: 18px; }
+.mm-mode-btn-icon { font-size: 18px; color: #524C46; }
 
 /* 语音按钮 */
 .mm-voice-btn {
 	flex: 1;
-	height: 38px;
-	border-radius: 8px;
-	background: var(--surface);
-	border: 1px solid var(--line);
+	height: 44px;
+	border-radius: 22px;
+	background: #F7F3EC;
+	border: 1px solid #DFD8CC;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 }
 .mm-voice-active {
-	background: rgba(201, 123, 87, 0.15);
-	border-color: #C97B57;
+	background: #FAF2EE;
+	border-color: #9C5B42;
 }
-.mm-voice-btn-text { font-size: 14px; color: var(--ink); font-weight: 600; }
+.mm-voice-btn-text { font-size: 14px; color: #23201E; font-weight: 600; }
 
 .mm-listen-btn {
-	padding: 0 16px;
-	height: 38px;
-	border-radius: 8px;
-	background: rgba(180, 118, 43, 0.12);
+	padding: 0 14px;
+	height: 44px;
+	border-radius: 22px;
+	background: #FAF2EE;
+	border: 1px solid #E8DCCF;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 }
-.mm-listen-btn-text { font-size: 13px; color: var(--accent2); }
-
-/* ===== 发布就绪 ===== */
-.mm-ready {
-	margin: 8px 16px 0;
-	padding: 10px 12px;
-	border-radius: 10px;
-	background: rgba(180, 118, 43, 0.12);
-	border: 1px solid rgba(180, 118, 43, 0.3);
-	display: flex;
-	flex-direction: column;
-	align-items: stretch;
-}
-.mm-ready-text { font-size: 13px; color: var(--accent2); font-weight: 700; text-align: center; }
-.mm-ready-actions { display: flex; flex-direction: row; margin-top: 9px; }
-.mm-ready-btn {
-	flex: 1;
-	height: 34px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	border-radius: 8px;
-	background: var(--surface);
-	margin: 0 3px;
-}
-.mm-ready-btn-primary { background: var(--accent2); }
-.mm-ready-btn-text { font-size: 12px; color: var(--accent2); font-weight: 700; }
-.mm-ready-btn-text-primary { color: var(--text-invert); }
+.mm-listen-btn-text { font-size: 13px; color: #9C5B42; font-weight: 600; }
 
 /* ===== 确认卡片 ===== */
 .mm-card {
-	max-width: 78%;
-	background: var(--surface);
-	border: 1px solid var(--line);
-	border-radius: 12px;
-	padding: 12px;
+	max-width: 82%;
+	background: #FFFFFF;
+	border: 1px solid #E2DBD0;
+	border-radius: 14px;
+	box-shadow: 0 4px 12px rgba(35, 32, 30, 0.05);
+	overflow: hidden;
 }
 .mm-card-head {
+	background: #FBF8F3;
+	padding: 10px 14px;
+	border-bottom: 1px solid #EDE7DD;
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	justify-content: space-between;
 }
-.mm-card-title { font-size: 14px; font-weight: 700; color: var(--ink); }
-.mm-card-fold { font-size: 11px; color: var(--muted); }
+.mm-card-title { font-size: 13px; font-weight: 700; color: #9C5B42; }
+.mm-card-fold { font-size: 11px; color: #8A847C; }
 .mm-card-list { display: flex; flex-direction: column; }
 .mm-card-item {
 	display: flex;
 	flex-direction: column;
-	align-items: flex-start;
-	margin-top: 10px;
-	padding-top: 10px;
-	border-top: 1px solid #F0E7D5;
+	padding: 12px 14px;
 }
 .mm-card-cat {
-	font-size: 11px;
-	color: var(--accent2);
-	background: rgba(180, 118, 43, 0.1);
-	border-radius: 999px;
-	padding: 2px 8px;
+	font-size: 10px;
+	font-weight: 700;
+	color: #9C5B42;
+	background: #FAF2EE;
+	border-radius: 4px;
+	padding: 2px 6px;
+	align-self: flex-start;
+	margin-bottom: 6px;
 }
 .mm-card-content {
-	margin-top: 6px;
-	font-size: 13px;
-	color: var(--ink);
-	line-height: 1.5;
+	font-size: 12px;
+	color: #666059;
+	line-height: 16px;
+	font-style: italic;
+	margin-bottom: 8px;
 }
-.mm-card-value { margin-top: 4px; font-size: 12px; color: var(--ink2); }
+.mm-card-value {
+	background: #FDF9F5;
+	border-radius: 8px;
+	padding: 8px 10px;
+	border-left: 2px solid #9C5B42;
+	font-size: 13px;
+	font-weight: 600;
+	color: #23201E;
+	line-height: 18px;
+}
 .mm-card-actions {
 	display: flex;
 	flex-direction: row;
-	flex-wrap: wrap;
 	gap: 8px;
-	margin-top: 8px;
+	margin-top: 12px;
 }
 .mm-card-btn {
-	padding: 4px 14px;
-	border-radius: 999px;
-	background: rgba(180, 118, 43, 0.1);
-	border: 1px solid rgba(180, 118, 43, 0.25);
+	height: 40px;
+	padding: 0 14px;
+	border-radius: 8px;
+	background: #FFFFFF;
+	border: 1px solid #D8D1C5;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 }
-.mm-card-btn-text { font-size: 12px; color: var(--accent2); }
-.mm-card-btn-primary { background: var(--accent2); flex: 1; }
+.mm-card-btn-primary {
+	background: #9C5B42;
+	border: none;
+	flex: 1;
+}
 .mm-card-btn-disabled { opacity: 0.55; }
-.mm-card-btn-text-primary { font-size: 12px; color: var(--surface); font-weight: 700; }
+.mm-card-btn-text { font-size: 12px; color: #4A4540; font-weight: 500; }
+.mm-card-btn-text-primary { font-size: 13px; color: #FFFFFF; font-weight: 600; }
 .mm-card-edit {
 	display: flex;
 	flex-direction: column;
@@ -1987,20 +2025,20 @@ const devMoxiangTrace = ref<any>(null)
 	height: 72px;
 	padding: 8px 10px;
 	border-radius: 8px;
-	background: var(--canvas);
-	border: 1px solid var(--line);
+	background: #FAF7F2;
+	border: 1px solid #E5DFD5;
 	font-size: 13px;
-	color: var(--ink);
+	color: #23201E;
 }
 .mm-card-confirm {
 	margin-top: 12px;
-	height: 36px;
+	height: 40px;
 	border-radius: 8px;
-	background: var(--accent2);
+	background: #9C5B42;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 }
-.mm-card-confirm-text { font-size: 13px; color: var(--surface); font-weight: 700; }
+.mm-card-confirm-text { font-size: 13px; color: #FFFFFF; font-weight: 700; }
 
 </style>

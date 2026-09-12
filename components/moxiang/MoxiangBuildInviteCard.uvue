@@ -72,9 +72,10 @@ function onSnooze() {
 
 <style scoped>
 .mx-invite {
-	background: #FFFCF5;
-	border: 1px solid rgba(180, 118, 43, 0.4);
+	background: #FFFFFF;
+	border: 1px solid #E8DCCF;
 	border-radius: 12px;
+	box-shadow: 0 4px 12px rgba(156, 91, 66, 0.06);
 	padding: 14px;
 }
 .mx-invite-head {
@@ -84,34 +85,36 @@ function onSnooze() {
 .mx-invite-title {
 	font-size: 14px;
 	font-weight: 700;
-	color: #2E2418;
+	color: #23201E;
 }
 .mx-invite-sub {
 	font-size: 12px;
-	color: #5C4F3D;
+	color: #6C665F;
 	margin-top: 4px;
+	line-height: 16px;
 }
 .mx-invite-list {
 	margin-top: 10px;
 }
 .mx-invite-item {
 	padding: 8px 0;
-	border-top: 1px solid rgba(180, 118, 43, 0.18);
+	border-top: 1px solid #EFEAE2;
 }
 .mx-invite-item:first-child {
 	border-top: 0;
 }
 .mx-invite-dim {
 	font-size: 11px;
-	color: #B4762B;
-	background: rgba(180, 118, 43, 0.12);
-	padding: 2px 8px;
-	border-radius: 999px;
+	color: #9C5B42;
+	background: #FAF2EE;
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-weight: 600;
 }
 .mx-invite-content {
 	display: block;
 	font-size: 13px;
-	color: #2E2418;
+	color: #23201E;
 	line-height: 1.55;
 	margin-top: 4px;
 }
@@ -120,7 +123,7 @@ function onSnooze() {
 }
 .mx-invite-meta-label {
 	font-size: 11px;
-	color: #9A8C77;
+	color: #807B75;
 }
 .mx-invite-actions {
 	display: flex;
@@ -130,24 +133,24 @@ function onSnooze() {
 }
 .mx-invite-btn {
 	flex: 1;
-	height: 36px;
+	height: 44px;
 	border-radius: 8px;
-	background: #FFFCF5;
-	border: 1px solid rgba(180, 118, 43, 0.25);
+	background: #FFFFFF;
+	border: 1px solid #D8D2C7;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 }
 .mx-invite-btn-primary {
-	background: #B4762B;
-	border-color: none;
+	background: #9C5B42;
+	border: none;
 }
 .mx-invite-btn-text {
 	font-size: 13px;
-	color: #B4762B;
-	font-weight: 700;
+	color: #4A4540;
+	font-weight: 600;
 }
 .mx-invite-btn-text-primary {
-	color: #FFFCF5;
+	color: #FFFFFF;
 }
 </style>

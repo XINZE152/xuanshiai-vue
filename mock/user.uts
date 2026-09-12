@@ -457,6 +457,9 @@ export const mockUserDetail = {
   intro: '喜欢画画、猫和下雨天。周末常在西湖边写生，希望找到能一起看展、一起发呆的人。对生活保持好奇心，也愿意为重要的人留出时间。',
   introduction: '喜欢画画、猫和下雨天。周末常在西湖边写生，希望找到能一起看展、一起发呆的人。对生活保持好奇心，也愿意为重要的人留出时间。',
   tags: ['颜控', '宠物', '看展', '咖啡'],
+  moxiang_persona_title: '温润清雅的艺术旅人',
+  moxiang_persona_tags: ['慢热真诚', '艺术感知', '边界温和'],
+  moxiang_attachment_style: '安全型依恋',
   certifications: {
     realName: true,
     education: true,

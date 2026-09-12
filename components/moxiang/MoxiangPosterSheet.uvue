@@ -1,0 +1,339 @@
+<template>
+	<XsaSheet :visible="visible" :title="'墨相心帖 · 专属海报'" :theme="'atelier'" :tall="true" @close="onClose">
+		<view class="mps-container">
+			<!-- 顶部状态栏：展示当前随机生成的主题与“换一张”随机换签按钮 -->
+			<view class="mps-header-bar">
+				<view class="mps-current-theme-badge">
+					<view class="mps-theme-color-dot" :style="{ backgroundColor: currentThemeInfo.accentColor }"></view>
+					<text class="mps-current-theme-name">{{ currentThemeInfo.name }}</text>
+					<text class="mps-current-theme-desc">· {{ currentThemeInfo.desc }}</text>
+				</view>
+				<view class="mps-random-btn" :class="{ disabled: drawing }" @tap="onRandomTheme">
+					<text class="ic ic-sys ic-shuaxin mps-random-icon"></text>
+					<text class="mps-random-text">随机换一张</text>
+				</view>
+			</view>
+
+			<!-- 预览与画布区 -->
+			<view class="mps-preview-wrap">
+				<!-- 隐藏的 Canvas 绘制源 -->
+				<canvas
+					id="moxiangPosterCanvas"
+					width="600"
+					height="940"
+					class="mps-canvas"
+					style="width: 600px; height: 940px; position: fixed; left: -9999px; top: -9999px;"
+				></canvas>
+
+				<!-- 加载态 -->
+				<view v-if="drawing" class="mps-loading">
+					<view class="mps-loading-spinner"></view>
+					<text class="mps-loading-text">正在为您研墨绘制专属心帖…</text>
+				</view>
+
+				<!-- 图片预览（支持长按系统菜单保存/转发） -->
+				<image
+					v-else-if="posterImageUrl != ''"
+					class="mps-preview-img"
+					:src="posterImageUrl"
+					mode="aspectFit"
+					:show-menu-by-longpress="true"
+				></image>
+
+				<view v-else class="mps-empty" @tap="renderPoster">
+					<text class="mps-empty-text">海报生成失败，点击重试</text>
+				</view>
+			</view>
+
+			<!-- 底部操作与文案 -->
+			<view class="mps-footer">
+				<view class="mps-btn-row">
+					<view class="mps-btn mps-btn-sec" :class="{ disabled: drawing }" @tap="onRandomTheme">
+						<text class="ic ic-sys ic-shuaxin mps-btn-icon"></text>
+						<text class="mps-btn-text-sec">换个风格</text>
+					</view>
+					<view class="mps-btn mps-btn-primary" :class="{ disabled: drawing || saving || posterImageUrl == '' }" @tap="onSave">
+						<text class="mps-btn-text">{{ saving ? '正在保存…' : '保存海报到相册' }}</text>
+					</view>
+				</view>
+				<text class="mps-hint">提示：每次进入将随机挑选艺术风格，点击“换个风格”可随时切换</text>
+			</view>
+		</view>
+	</XsaSheet>
+</template>
+
+<script setup lang="uts">
+	import { ref, computed, watch, nextTick, getCurrentInstance } from 'vue'
+	import XsaSheet from '@/components/XsaSheet.uvue'
+	import {
+		MOXIANG_POSTER_THEMES,
+		getThemeByKey,
+		getRandomThemeKey,
+		drawMoxiangPoster,
+		savePosterToPhotos,
+		type MoxiangPosterData
+	} from '@/utils/moxiang-poster-drawer.uts'
+
+	interface Props {
+		visible: boolean
+		data: MoxiangPosterData | null
+	}
+
+	const props = withDefaults(defineProps<Props>(), {
+		visible: false,
+		data: null
+	})
+
+	const emit = defineEmits<{
+		close: []
+	}>()
+
+	const instance = getCurrentInstance()
+	// 初始随机抽取一个主题风格
+	const currentTheme = ref(getRandomThemeKey())
+	const drawing = ref(false)
+	const saving = ref(false)
+	const posterImageUrl = ref('')
+
+	const currentThemeInfo = computed(() => {
+		return getThemeByKey(currentTheme.value)
+	})
+
+	const renderPoster = async () => {
+		if (props.data == null || drawing.value) return
+		drawing.value = true
+		posterImageUrl.value = ''
+		try {
+			await nextTick()
+			const comp = instance != null && instance.proxy != null ? instance.proxy : null
+			const tempPath = await drawMoxiangPoster(
+				'moxiangPosterCanvas',
+				comp,
+				props.data as MoxiangPosterData,
+				currentTheme.value,
+				600,
+				940
+			)
+			posterImageUrl.value = tempPath
+		} catch (e: any) {
+			console.error('[MoxiangPosterSheet] draw error', e)
+			uni.showToast({ title: '绘帖失败，请稍后重试', icon: 'none' })
+		} finally {
+			drawing.value = false
+		}
+	}
+
+	// 弹窗打开时，若为新开启则随机一个主题
+	watch(() => props.visible, (val: boolean) => {
+		if (val && props.data != null) {
+			currentTheme.value = getRandomThemeKey()
+			renderPoster()
+		}
+	})
+
+	// 用户点击“随机换一张 / 换个风格”
+	const onRandomTheme = () => {
+		if (drawing.value) return
+		currentTheme.value = getRandomThemeKey(currentTheme.value)
+		renderPoster()
+	}
+
+	const onSave = async () => {
+		if (saving.value || drawing.value || posterImageUrl.value == '') return
+		saving.value = true
+		try {
+			await savePosterToPhotos(posterImageUrl.value)
+		} finally {
+			saving.value = false
+		}
+	}
+
+	const onClose = () => {
+		emit('close')
+	}
+</script>
+
+<style scoped>
+	.mps-container {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 4px 16px 24px;
+	}
+
+	.mps-header-bar {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		margin-bottom: 12px;
+		padding: 0 4px;
+	}
+
+	.mps-current-theme-badge {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 6px;
+		background: #F4EFEB;
+		padding: 4px 10px;
+		border-radius: 12px;
+	}
+
+	.mps-theme-color-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 999px;
+	}
+
+	.mps-current-theme-name {
+		font-size: 12px;
+		font-weight: 700;
+		color: #4A443E;
+	}
+
+	.mps-current-theme-desc {
+		font-size: 11px;
+		color: #8C847B;
+	}
+
+	.mps-random-btn {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 4px;
+		padding: 4px 10px;
+		border-radius: 12px;
+		background: #FFFFFF;
+		border: 1px solid #E5DFD7;
+	}
+
+	.mps-random-btn.disabled {
+		opacity: 0.5;
+	}
+
+	.mps-random-icon {
+		font-size: 13px;
+		color: #9C5B42;
+	}
+
+	.mps-random-text {
+		font-size: 12px;
+		color: #9C5B42;
+		font-weight: 600;
+	}
+
+	.mps-preview-wrap {
+		width: 280px;
+		height: 440px;
+		background: #EDE8E1;
+		border-radius: 14px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		overflow: hidden;
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+	}
+
+	.mps-canvas {
+		pointer-events: none;
+	}
+
+	.mps-preview-img {
+		width: 280px;
+		height: 440px;
+		border-radius: 14px;
+	}
+
+	.mps-loading, .mps-empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 12px;
+		padding: 0 20px;
+		text-align: center;
+	}
+
+	.mps-loading-spinner {
+		width: 28px;
+		height: 28px;
+		border-radius: 999px;
+		border: 3px solid #DDD6C9;
+		border-top-color: #9C5B42;
+	}
+
+	.mps-loading-text, .mps-empty-text {
+		font-size: 12px;
+		color: #7D756C;
+	}
+
+	.mps-footer {
+		width: 100%;
+		margin-top: 16px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.mps-btn-row {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 10px;
+		width: 100%;
+	}
+
+	.mps-btn {
+		height: 44px;
+		border-radius: 22px;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		box-sizing: border-box;
+	}
+
+	.mps-btn-sec {
+		flex: 1;
+		background: #F3EFE8;
+		border: 1px solid #DED7CB;
+		gap: 6px;
+	}
+
+	.mps-btn-icon {
+		font-size: 14px;
+		color: #7A7269;
+	}
+
+	.mps-btn-text-sec {
+		font-size: 14px;
+		font-weight: 600;
+		color: #5A524A;
+	}
+
+	.mps-btn-primary {
+		flex: 2;
+		background: #9C5B42;
+		box-shadow: 0 4px 12px rgba(156, 91, 66, 0.25);
+	}
+
+	.mps-btn.disabled {
+		opacity: 0.6;
+	}
+
+	.mps-btn-text {
+		color: #FFFFFF;
+		font-size: 14px;
+		font-weight: 700;
+	}
+
+	.mps-hint {
+		font-size: 11px;
+		color: #A39B91;
+		text-align: center;
+		line-height: 1.5;
+	}
+</style>

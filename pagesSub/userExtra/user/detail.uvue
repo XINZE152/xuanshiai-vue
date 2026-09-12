@@ -33,6 +33,39 @@
 				</view>
 
 				<view class="vip-detail-content">
+					<!-- 知遇墨相 · 灵魂底色 卡片 -->
+					<view v-if="user.moxiangPersonaTitle != '' || user.moxiangPersonaTags.length > 0" class="vip-section-card moxiang-section-card">
+						<view class="moxiang-card-header">
+							<view class="moxiang-header-title-group">
+								<text class="moxiang-seal-badge">墨</text>
+								<text class="vip-section-title moxiang-card-title">知遇墨相 · 灵魂底色</text>
+							</view>
+							<view v-if="isOwnProfile" class="moxiang-view-report" @tap="onViewMyPortrait">
+								<text class="moxiang-view-text">查看画像成稿</text>
+								<text class="moxiang-view-arrow">›</text>
+							</view>
+						</view>
+
+						<!-- 心性称号与依恋微标 -->
+						<view v-if="user.moxiangPersonaTitle != '' || user.moxiangAttachmentStyle != ''" class="moxiang-title-badge-row">
+							<view v-if="user.moxiangPersonaTitle != ''" class="moxiang-persona-badge">
+								<text class="moxiang-persona-symbol">◈</text>
+								<text class="moxiang-persona-title">{{ user.moxiangPersonaTitle }}</text>
+							</view>
+							<view v-if="user.moxiangAttachmentStyle != ''" class="moxiang-attach-pill">
+								<text class="moxiang-attach-text">{{ user.moxiangAttachmentStyle }}</text>
+							</view>
+						</view>
+
+						<!-- 特质胶囊标签流 -->
+						<view v-if="user.moxiangPersonaTags.length > 0" class="moxiang-tags-flow">
+							<view v-for="tag in user.moxiangPersonaTags" :key="tag" class="moxiang-tag-item">
+								<text class="moxiang-tag-dot">·</text>
+								<text class="moxiang-tag-label">{{ tag }}</text>
+							</view>
+						</view>
+					</view>
+
 					<view class="vip-section-card">
 						<text class="vip-section-title">基础资料</text>
 						<view class="basic-info-grid">
@@ -177,11 +210,12 @@ import XsaApplySheet from '@/components/XsaApplySheet.uvue'
 import XsaPaymentSheet from '@/components/XsaPaymentSheet.uvue'
 import XsaSpotlightSuccessSheet from '@/components/XsaSpotlightSuccessSheet.uvue'
 import XsaSheet from '@/components/XsaSheet.uvue'
-import { getUserDetail, likeUser, getOwnProfile, getMyPosts, getMembershipStatus, getUserVisitorCount, saveAiAvatarProfileSnapshot, getDynamicList } from '@/api'
+import { getUserDetail, likeUser, getOwnProfile, getMyPosts, getMembershipStatus, getUserVisitorCount, saveAiAvatarProfileSnapshot, getDynamicList, getPortraitNarrative } from '@/api'
 import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
 import locationJson from '@/data/location.json'
 import { SPOTLIGHT_AMOUNT, paySpotlight } from '@/api/spotlight.uts'
 import { guardRealName } from '@/utils/realNameGate.uts'
+import { attachmentStyleLabel, narrativeBadgeVisible } from '@/utils/moxiang-badge.uts'
 
 const isLockedView = ref(false)
 const viewerIsVip = ref(false)
@@ -207,7 +241,10 @@ const user = ref({
 	detailLocked: false,
 	name: '', age: '', avatar: '', isVIP: false, job: '', edu: '', city: '',
 	online: '', distance: '', recentActivity: '', match: 0, mbti: '', tags: [], bio: '',
-	cover: '', photos: [], lifePhotos: [], expect: [], basicInfo: []
+	cover: '', photos: [], lifePhotos: [], expect: [], basicInfo: [],
+	moxiangPersonaTitle: '',
+	moxiangPersonaTags: [] as string[],
+	moxiangAttachmentStyle: ''
 })
 
 const certs = ref([
@@ -316,10 +353,15 @@ const formatIncome = (raw: any): string => {
 user.value = {
 	id: 0, name: '', detailLocked: false, age: '', avatar: '', isVIP: false, job: '', edu: '', city: '',
 	online: '', distance: '', recentActivity: '', match: 0, tags: [], bio: '',
-	cover: '', photos: [], lifePhotos: [], expect: [], basicInfo: []
+	cover: '', photos: [], lifePhotos: [], expect: [], basicInfo: [],
+	moxiangPersonaTitle: '',
+	moxiangPersonaTags: [] as string[],
+	moxiangAttachmentStyle: ''
 }
 dynamics.value = []
 certs.value = []
+
+const formatAttachmentStyle = (rawStyle: any): string => attachmentStyleLabel(rawStyle)
 
 const mapDetailUser = (raw: any, id: number) => {
 	if (raw == null) return
@@ -379,6 +421,23 @@ const mapDetailUser = (raw: any, id: number) => {
 		[{ label: '现居', value: city }, { label: '家乡', value: hometown }, { label: '收入', value: income }],
 		[{ label: '婚姻', value: marriage }, { label: 'MBTI', value: mbti }, { label: '状态', value: activeStatus }]
 	]
+	const moxiangTitleRaw = firstField(card, ['moxiang_persona_title', 'persona_title']) || firstField(profile, ['moxiang_persona_title', 'persona_title']) || firstField(envelope, ['moxiang_persona_title', 'persona_title'])
+	const moxiangPersonaTitle = moxiangTitleRaw != null ? String(moxiangTitleRaw).trim() : ''
+
+	const moxiangTagsRaw = card.moxiang_persona_tags != null
+		? card.moxiang_persona_tags
+		: (profile.moxiang_persona_tags != null
+			? profile.moxiang_persona_tags
+			: (envelope.moxiang_persona_tags != null
+				? envelope.moxiang_persona_tags
+				: (card.persona_tags != null ? card.persona_tags : (profile.persona_tags != null ? profile.persona_tags : []))))
+	const moxiangPersonaTags = Array.isArray(moxiangTagsRaw)
+		? (moxiangTagsRaw as any[]).map((t: any): string => String(t).trim()).filter((t: string): boolean => t != '')
+		: []
+
+	const moxiangAttachRaw = firstField(card, ['moxiang_attachment_style', 'attachment_style']) || firstField(profile, ['moxiang_attachment_style', 'attachment_style']) || firstField(envelope, ['moxiang_attachment_style', 'attachment_style'])
+	const moxiangAttachmentStyle = formatAttachmentStyle(moxiangAttachRaw)
+
 	user.value = {
 		...user.value,
 		id: envelope.user_id != null ? Number(envelope.user_id) : (card.id != null ? Number(card.id) : id),
@@ -401,7 +460,10 @@ const mapDetailUser = (raw: any, id: number) => {
 		photos,
 		lifePhotos,
 		expect: expectations,
-		basicInfo: mappedInfo
+		basicInfo: mappedInfo,
+		moxiangPersonaTitle,
+		moxiangPersonaTags,
+		moxiangAttachmentStyle
 	}
 	applyUserId.value = user.value.id
 }
@@ -420,6 +482,24 @@ const load = async () => {
 		}
 		if (res != null && res.success === true && res.data != null) {
 			mapDetailUser(res, user.value.id)
+			if (isOwnProfile.value && user.value.moxiangPersonaTitle == '' && user.value.moxiangPersonaTags.length == 0) {
+				try {
+					const portraitRes = await getPortraitNarrative('personal')
+					// 该接口按设计透传 status 交前端驱动确认 UI，未确认成稿不得上资料页。
+					if (portraitRes != null && portraitRes.success === true && narrativeBadgeVisible(portraitRes.data)) {
+						const pData = portraitRes.data as any
+						if (pData.persona_title != null) {
+							user.value.moxiangPersonaTitle = String(pData.persona_title).trim()
+						}
+						const pTags = pData.persona_tags != null && Array.isArray(pData.persona_tags) ? pData.persona_tags as any[] : []
+						user.value.moxiangPersonaTags = pTags.map((t: any): string => String(t).trim()).filter((t: string): boolean => t != '')
+						const ei = pData.emotional_insight != null ? pData.emotional_insight as any : null
+						if (ei != null && ei.attachment_style != null) {
+							user.value.moxiangAttachmentStyle = formatAttachmentStyle(ei.attachment_style)
+						}
+					}
+				} catch (e) {}
+			}
 			if (!isOwnProfile.value && !isPreview.value && user.value.id > 0) {
 				const visitorRes = await getUserVisitorCount(user.value.id)
 				if (visitorRes != null && visitorRes.success === true && visitorRes.data != null) {
@@ -552,6 +632,12 @@ const openQuotaMembership = () => { uni.navigateTo({ url: '/pagesSub/profileExtr
 const handleDetailErrorAction = () => { if (detailQuotaExhausted.value) openQuotaMembership(); else load() }
 const onShare = () => { uni.showToast({ title: '分享给朋友', icon: 'none' }) }
 const goEdit = () => { uni.navigateTo({ url: '/pagesSub/userExtra/user/edit' }) }
+const onViewMyPortrait = () => {
+	uni.navigateTo({
+		url: '/pagesSub/profileExtra/my-portrait-result?subject=personal',
+		fail: () => { uni.showToast({ title: '画像成稿打开失败，请重试', icon: 'none' }) }
+	})
+}
 const dismissAiGuide = () => {
 	if (!showAiGuide.value) return
 	showAiGuide.value = false
@@ -874,4 +960,126 @@ const onLike = async () => {
 .match-interpret-text { font-size: 25rpx; color: var(--ink2); line-height: 1.7; }
 .match-sheet-tip { padding: 20rpx 24rpx; border-radius: 14rpx; background-color: var(--accent-bg); }
 .match-sheet-tip text { font-size: 22rpx; color: var(--accent2); line-height: 1.6; }
+
+/* ==================== 知遇墨相 · 灵魂底色 卡片 ==================== */
+.moxiang-section-card {
+	position: relative;
+	background: linear-gradient(145deg, #FCFAF7 0%, #F8F4ED 100%);
+	border: 1px solid #E8DFD3;
+}
+.moxiang-card-header {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+}
+.moxiang-header-title-group {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 12rpx;
+}
+.moxiang-seal-badge {
+	width: 32rpx;
+	height: 32rpx;
+	line-height: 32rpx;
+	text-align: center;
+	font-size: 20rpx;
+	color: #FFFFFF;
+	background-color: #A8383B;
+	border-radius: 6rpx;
+	font-weight: 700;
+}
+.moxiang-card-title {
+	color: #2D231F;
+}
+.moxiang-view-report {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 4rpx;
+	padding: 6rpx 14rpx;
+	border-radius: 999px;
+	background-color: rgba(156, 91, 66, 0.08);
+}
+.moxiang-view-text {
+	color: #9C5B42;
+	font-size: 22rpx;
+	font-weight: 600;
+}
+.moxiang-view-arrow {
+	color: #9C5B42;
+	font-size: 24rpx;
+	font-weight: 700;
+}
+.moxiang-title-badge-row {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 14rpx;
+}
+.moxiang-persona-badge {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8rpx;
+	padding: 10rpx 20rpx;
+	border-radius: 12rpx;
+	background-color: #F4EFEB;
+	border: 1px solid #DFD5C8;
+}
+.moxiang-persona-symbol {
+	color: #A8383B;
+	font-size: 22rpx;
+	font-weight: 700;
+}
+.moxiang-persona-title {
+	color: #5D3B2C;
+	font-size: 24rpx;
+	font-weight: 700;
+	/* 称号上限 64 字（后端 NarrativeResult.persona_title），长标题在徽章内省略。 */
+	max-width: 380rpx;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.moxiang-attach-pill {
+	padding: 8rpx 18rpx;
+	border-radius: 999px;
+	background-color: #F8F1EB;
+	border: 1px solid #E5D5C8;
+}
+.moxiang-attach-text {
+	color: #9C5B42;
+	font-size: 22rpx;
+	font-weight: 600;
+}
+.moxiang-tags-flow {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: 12rpx;
+}
+.moxiang-tag-item {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6rpx;
+	padding: 8rpx 20rpx;
+	border-radius: 999px;
+	background-color: #FFFFFF;
+	border: 1px solid #E8E0D2;
+	box-shadow: 0 2rpx 6rpx rgba(110, 69, 53, 0.04);
+}
+.moxiang-tag-dot {
+	color: #A8383B;
+	font-size: 24rpx;
+	font-weight: 700;
+}
+.moxiang-tag-label {
+	color: #6E4535;
+	font-size: 23rpx;
+	font-weight: 500;
+}
 </style>

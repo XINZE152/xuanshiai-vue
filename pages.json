@@ -389,10 +389,6 @@
           "style": { "navigationBarTitleText": "我的AI分身", "navigationStyle": "custom" }
         },
         {
-          "path": "my-portrait",
-          "style": { "navigationBarTitleText": "AI 画像", "navigationStyle": "custom" }
-        },
-        {
           "path": "my-portrait-master",
           "style": { "navigationBarTitleText": "墨相师", "navigationStyle": "custom" }
         },

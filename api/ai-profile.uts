@@ -1,6 +1,7 @@
 /**
  * M04 AI 画像前端服务。
- * 对接后端 /api/v1/ai/profile-sessions、/profile-drafts、/profile-revisions、/profiles。
+ * 对接后端 /api/v1/ai/profile-drafts、/profile-revisions、/profiles 与语音接口。
+ * 旧 /profile-sessions 问答 REST 已随后端 2026-09-11 删除，前端客户端同步移除。
  * 幂等键自动生成;异步任务通过 GET /ai/tasks/{task_id} 轮询。
  */
 
@@ -70,68 +71,6 @@ export function fieldLabel(key: string): string {
   if (entryLabel != '') return entryLabel
   const label = FIELD_KEY_LABELS.get(key)
   return label != null ? label : key
-}
-
-/** 创建或复用画像会话 */
-export async function createProfileSession(subject: string, consentVersion: string = 'profile-text-v1'): Promise<any> {
-  return request({
-    url: '/ai/profile-sessions',
-    method: 'POST',
-    data: { subject: subject, consent_version: consentVersion, input_mode: 'text' },
-    headers: { 'Idempotency-Key': genIdempotencyKey() }
-  })
-}
-
-/** 查询本人的画像会话 */
-export async function getProfileSession(sessionId: string): Promise<any> {
-  return request({ url: '/ai/profile-sessions/' + sessionId, method: 'GET' })
-}
-
-/** 提交一条文字回答,返回 turn + task */
-export async function submitProfileTurn(sessionId: string, answerText: string): Promise<any> {
-  return request({
-    url: '/ai/profile-sessions/' + sessionId + '/turns',
-    method: 'POST',
-    data: { client_turn_id: genIdempotencyKey(), answer_text: answerText },
-    headers: { 'Idempotency-Key': genIdempotencyKey() }
-  })
-}
-
-/** 软删除画像会话 */
-export async function deleteProfileSession(sessionId: string): Promise<any> {
-  return request({
-    url: '/ai/profile-sessions/' + sessionId,
-    method: 'DELETE',
-    headers: { 'Idempotency-Key': genIdempotencyKey() }
-  })
-}
-
-/** 暂停画像会话(后端已契约 /ai/profile-sessions/{id}/pause) */
-export async function pauseProfileSession(sessionId: string): Promise<any> {
-  return request({
-    url: '/ai/profile-sessions/' + sessionId + '/pause',
-    method: 'POST',
-    headers: { 'Idempotency-Key': genIdempotencyKey() }
-  })
-}
-
-/** 恢复画像会话(后端已契约 /ai/profile-sessions/{id}/resume) */
-export async function resumeProfileSession(sessionId: string): Promise<any> {
-  return request({
-    url: '/ai/profile-sessions/' + sessionId + '/resume',
-    method: 'POST',
-    headers: { 'Idempotency-Key': genIdempotencyKey() }
-  })
-}
-
-/** 跳过当前问题(不确认该字段,本次会话不再追问,进度不变) */
-export async function skipProfileQuestion(sessionId: string, fieldKey: string): Promise<any> {
-  return request({
-    url: '/ai/profile-sessions/' + sessionId + '/skip-question',
-    method: 'POST',
-    data: { field_key: fieldKey },
-    headers: { 'Idempotency-Key': genIdempotencyKey() }
-  })
 }
 
 /** 查询草稿字段 */
@@ -204,6 +143,14 @@ export async function deleteAiProfileField(subject: string, fieldKey: string): P
   })
 }
 
+/**
+ * 读取本人最新发布画像字段（含 structured 裸码字段 age/city_code 等，
+ * 供墨相海报等展示场景取脱敏事实值）。返回 { fields: [{field_key, value, ...}] }。
+ */
+export async function listPublishedProfileFields(subject: string): Promise<any> {
+  return request({ url: '/ai/profiles/' + subject + '/fields', method: 'GET' })
+}
+
 /** 轮询异步任务状态 */
 export async function pollTask(taskId: string): Promise<any> {
   return request({ url: '/ai/tasks/' + taskId, method: 'GET' })
@@ -239,45 +186,6 @@ export async function pollTaskUntilTerminal(taskId: string, maxAttempts: number 
     await sleep(Math.max(pollAfter, 1000))
   }
   return { done: false, status: 'timeout', task: null, error: '处理超时,请稍后查看结果' }
-}
-
-/**
- * 轮询抽取任务直到完成,然后拉取草稿。
- * 返回 { success, draft, error }
- */
-export async function pollExtractionAndLoadDraft(taskId: string, draftId: string, maxAttempts: number = 30, shouldContinue: (() => boolean) | null = null): Promise<any> {
-  for (let i = 0; i < maxAttempts; i++) {
-    if (shouldContinue != null && !shouldContinue()) {
-      return { success: false, draft: null, error: '页面已退出' }
-    }
-    const taskRes = await pollTask(taskId)
-    if (!taskRes.success || taskRes.data == null) {
-      return { success: false, draft: null, error: '任务状态查询失败' }
-    }
-    const status = String(taskRes.data.status != null ? taskRes.data.status : '')
-    if (status == 'succeeded') {
-      let resolvedDraftId = draftId
-      const resultRef = taskRes.data.result_ref != null ? String(taskRes.data.result_ref) : ''
-      if (resultRef.indexOf('profile-draft:') == 0) {
-        resolvedDraftId = resultRef.substring('profile-draft:'.length)
-      }
-      if (resolvedDraftId == '') {
-        return { success: false, draft: null, error: '草稿尚未生成,请稍后重试' }
-      }
-      const draftRes = await getProfileDraft(resolvedDraftId)
-      if (!draftRes.success || draftRes.data == null) {
-        return { success: false, draft: null, error: '草稿拉取失败' }
-      }
-      return { success: true, draft: draftRes.data, error: '' }
-    }
-    if (status == 'failed') {
-      const msg = taskRes.data.error_message != null ? String(taskRes.data.error_message) : 'AI 抽取失败,请重新回答'
-      return { success: false, draft: null, error: msg }
-    }
-    const pollAfter = Number(taskRes.data.poll_after_ms != null ? taskRes.data.poll_after_ms : 1000)
-    await sleep(pollAfter)
-  }
-  return { success: false, draft: null, error: 'AI 处理超时,请稍后重试' }
 }
 
 /** 映射后端错误码到用户可读文案 */
@@ -516,7 +424,7 @@ export async function transcribeAudio(audioPath: string, questionText: string = 
 
 /**
  * 真实 ASR 转写:上传音频 → 轮询任务 → 返回转写文本。
- * 复用 ai_task 异步轮询模式,与画像抽取 pollExtractionAndLoadDraft 同构。
+ * 复用 ai_task 异步轮询模式,与画像任务 pollTaskUntilTerminal 同构。
  */
 async function transcribeAudioReal(audioPath: string, questionFieldKey: string): Promise<any> {
   // 1. 上传音频文件,创建异步转写任务
