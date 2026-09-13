@@ -51,14 +51,20 @@ export async function loginByPhone(phone: string, code: string) {
 }
 
 export async function getAgreementVersions() {
-  return request({ url: '/auth/agreements', method: 'GET', skipAuth: true })
+  return request({
+    url: '/auth/agreements',
+    method: 'GET',
+    skipAuth: true,
+    mockData: { user_agreement: '1.0', privacy_policy: '1.0' }
+  })
 }
 
 export async function acceptAgreement(agreementType: string, version: string, scene: string = 'profile') {
   return request({
     url: '/auth/agreements/accept',
     method: 'POST',
-    data: { agreement_type: agreementType, version, scene }
+    data: { agreement_type: agreementType, version, scene },
+    mockData: { success: true, agreement_type: agreementType, version, scene }
   })
 }
 
@@ -99,10 +105,19 @@ export async function loginByWechat(code: string) {
     data: {
       code,
       platform: 'mp-weixin'
+    },
+    mockData: {
+      access_token: 'mock_wechat_access_token_xsa',
+      refresh_token: 'mock_wechat_refresh_token_xsa',
+      token_type: 'bearer',
+      expires_in: 3600,
+      need_bind_phone: false,
+      user_id: 1
     }
   })
   if (res.success && res.data != null && res.data.access_token != null) {
     setAuthTokens(String(res.data.access_token), res.data.refresh_token != null ? String(res.data.refresh_token) : '')
+    if (res.data.user_id != null) uni.setStorageSync(CURRENT_USER_ID_KEY, res.data.user_id)
   }
   return res
 }
@@ -112,7 +127,8 @@ export async function bindPhone(phone: string, code: string) {
   return request({
     url: '/auth/bind-phone',
     method: 'POST',
-    data: { phone, code, purpose: 'bind_phone' }
+    data: { phone, code, purpose: 'bind_phone' },
+    mockData: { success: true, bound: true }
   })
 }
 
@@ -121,7 +137,8 @@ export async function submitRealname(realName: string, idCard: string) {
   return request({
     url: '/auth/realname',
     method: 'POST',
-    data: { real_name: realName, id_card: idCard }
+    data: { real_name: realName, id_card: idCard },
+    mockData: { success: true, status: 1, real_name: realName }
   })
 }
 

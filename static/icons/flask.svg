@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- 情感实验室 · 锥形瓶（Erlenmeyer flask）：瓶口 + 瓶颈 + 锥形瓶身 + 液面线 -->
+  <path d="M8.6 3.8 L15.4 3.8" fill="none" stroke="#2C2C2C" stroke-width="1.90" stroke-linecap="round"/>
+  <path d="M9.6 3.8 L9.6 9.6 L5.4 19.6 L18.6 19.6 L14.4 9.6 L14.4 3.8" fill="none" stroke="#2C2C2C" stroke-width="1.90" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M7.78 15.0 L16.22 15.0" fill="none" stroke="#2C2C2C" stroke-width="1.90" stroke-linecap="round"/>
+</svg>

@@ -128,18 +128,18 @@
 			<view class="scroll-bottom-spacer"></view>
 		</scroll-view>
 
-			<!-- AI分身悬浮按钮：与首页同款液态玻璃·气泡低语图标，右下悬浮位（原合拍度悬浮球位置） -->
+			<!-- AI分身悬浮按钮：3D 小猫形象（与首页同款），右下悬浮位 -->
 			<view v-if="!isOwnProfile && !isPreview && !detailLoading && detailError == ''" class="detail-ai-float" @tap="openAiAvatar">
-				<view class="detail-ai-float-glass">
-					<view class="detail-ai-float-halo"></view>
-					<view class="detail-ai-float-bubble">
-						<view class="detail-ai-float-dot detail-ai-float-dot1"></view>
-						<view class="detail-ai-float-dot detail-ai-float-dot2"></view>
-						<view class="detail-ai-float-dot detail-ai-float-dot3"></view>
-					</view>
-				</view>
+				<image class="detail-ai-float-cat" src="/static/ai-cat/ai-cat.webp" mode="aspectFit"></image>
 			</view>
 			<view v-if="showAiGuide" class="ai-guide-bubble" @tap="dismissAiGuide"><text class="ai-guide-text">与对方的AI分身聊天获取更多信息</text></view>
+			<!-- 小猫说话气泡：引导气泡消失后才开始自动弹出，避免两块气泡打架 -->
+			<XsaAiCatBubble
+				:active="!isOwnProfile && !isPreview && !detailLoading && detailError == '' && !showAiGuide"
+				right="112rpx"
+				bottom="calc(346rpx + env(safe-area-inset-bottom))"
+				@tap="openAiAvatar"
+			/>
 
 			<view v-if="isOwnProfile && !isPreview && !detailLoading && detailError == ''" class="bottom-bar bottom-bar-own">
 				<view class="primary-action edit-only-btn" @tap="goEdit"><text class="primary-action-text">编辑资料</text></view>
@@ -177,6 +177,7 @@ import XsaApplySheet from '@/components/XsaApplySheet.uvue'
 import XsaPaymentSheet from '@/components/XsaPaymentSheet.uvue'
 import XsaSpotlightSuccessSheet from '@/components/XsaSpotlightSuccessSheet.uvue'
 import XsaSheet from '@/components/XsaSheet.uvue'
+import XsaAiCatBubble from '@/components/XsaAiCatBubble.uvue'
 import { getUserDetail, likeUser, getOwnProfile, getMyPosts, getMembershipStatus, getUserVisitorCount, saveAiAvatarProfileSnapshot, getDynamicList } from '@/api'
 import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
 import locationJson from '@/data/location.json'
@@ -838,16 +839,9 @@ const onLike = async () => {
 .heart-outline { color: var(--muted); }
 .heart-solid { color: var(--heart-red); }
 
-/* ==================== AI 分身悬浮按钮（与首页同款液态玻璃·气泡低语：右下悬浮位） ==================== */
-.detail-ai-float { position: fixed; right: 28rpx; bottom: calc(200rpx + env(safe-area-inset-bottom)); width: 112rpx; height: 112rpx; border-radius: 56rpx; z-index: 56; }
-.detail-ai-float-glass { position: relative; width: 112rpx; height: 112rpx; border-radius: 56rpx; background: radial-gradient(circle at 24% 16%, rgba(255,255,255,0.95), rgba(255,255,255,0.22) 48%), rgba(255,255,255,0.30); border: 1px solid rgba(255,255,255,0.78); -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%); box-shadow: inset 0 2rpx 0 rgba(255,255,255,0.95), inset 0 -14rpx 28rpx rgba(232,155,164,0.12), 0 21rpx 46rpx rgba(30, 90, 82, 0.24), 0 5rpx 14rpx rgba(0, 0, 0, 0.08); display: flex; align-items: center; justify-content: center; overflow: hidden; }
-.detail-ai-float-halo { position: absolute; left: 16%; right: 16%; bottom: 9%; height: 20%; border-radius: 50%; background: radial-gradient(ellipse at center, rgba(232,155,164,0.38), rgba(232,155,164,0)); }
-.detail-ai-float-bubble { position: relative; width: 50rpx; height: 38rpx; border-radius: 19rpx 19rpx 19rpx 5rpx; background: linear-gradient(140deg, #2D7C72 0%, #5FA99A 55%, #E89BA4 115%); box-shadow: 0 5rpx 14rpx rgba(30, 90, 82, 0.30), inset 0 2rpx 0 rgba(255,255,255,0.35); display: flex; flex-direction: row; align-items: center; justify-content: center; }
-.detail-ai-float-dot { width: 7rpx; height: 7rpx; border-radius: 4rpx; background: rgba(255,255,255,0.95); margin: 0 3rpx; animation: detail-ai-float-blink 1.6s ease-in-out infinite; }
-.detail-ai-float-dot1 { animation-delay: 0s; }
-.detail-ai-float-dot2 { animation-delay: 0.25s; }
-.detail-ai-float-dot3 { animation-delay: 0.5s; }
-@keyframes detail-ai-float-blink { 0%, 70%, 100% { opacity: 0.45; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-3rpx); } }
+/* ==================== AI 分身悬浮按钮（3D 小猫形象，静态） ==================== */
+.detail-ai-float { position: fixed; right: 28rpx; bottom: calc(200rpx + env(safe-area-inset-bottom)); width: 136rpx; height: 136rpx; z-index: 56; display: flex; align-items: center; justify-content: center; }
+.detail-ai-float-cat { width: 136rpx; height: 136rpx; flex: none; }
 
 /* ==================== 详情页图标字体（与首页同源） ==================== */
 @font-face { font-family: "iconfont-home"; src: url('/static/婚恋小程序图标/首页推荐与匹配/iconfont.woff2') format('woff2'), url('/static/婚恋小程序图标/首页推荐与匹配/iconfont.woff') format('woff'); }

@@ -92,27 +92,67 @@ export async function getDiscoveryPlaza(filters: any = null) {
 }
 
 export async function getMembershipPackages() {
-  return request({ url: '/membership/packages', method: 'GET' })
+  const res = await request({
+    url: '/membership/packages',
+    method: 'GET',
+    mockData: [
+      { code: 'newcomer', name: '新人专享', price: 299, original_price: 299, days: 90, tag: '含3次申请' },
+      { code: 'heart', name: '心动专享', price: 520, original_price: 520, days: 150, tag: '含5次申请' },
+      { code: 'love', name: '臻爱专享', price: 999, original_price: 999, days: 365, tag: '含20次申请' }
+    ]
+  })
+  if (!res.success) return res
+  return { success: true, data: res.data, code: res.code, message: res.message }
 }
 
 export async function getProfileOverview() {
-  return request({ url: '/users/me/overview', method: 'GET' })
+  return request({
+    url: '/users/me/overview',
+    method: 'GET',
+    mockData: {
+      profile_views: 128,
+      visitors: 128,
+      favorites: 36,
+      superlikes: 12,
+      match_count: 24,
+      completion_score: 100
+    }
+  })
 }
 
 export async function getBrowseHistory(page: number = 1, pageSize: number = 20) {
-  return request({ url: '/discovery/browse-history', method: 'GET', data: { page, page_size: pageSize } })
+  return request({
+    url: '/discovery/browse-history',
+    method: 'GET',
+    data: { page, page_size: pageSize },
+    mockData: { items: mockRecommendUsers, page: 1, page_size: pageSize, total: mockRecommendUsers.length, has_more: false }
+  })
 }
 
 export async function getVisitors(page: number = 1, pageSize: number = 20) {
-  return request({ url: '/discovery/visitors', method: 'GET', data: { page, page_size: pageSize } })
+  return request({
+    url: '/discovery/visitors',
+    method: 'GET',
+    data: { page, page_size: pageSize },
+    mockData: { items: mockSquareUsers, page: 1, page_size: pageSize, total: mockSquareUsers.length, has_more: false }
+  })
 }
 
 export async function getUserVisitorCount(userId: number) {
-  return request({ url: '/users/' + userId + '/visitor-count', method: 'GET' })
+  return request({
+    url: '/users/' + userId + '/visitor-count',
+    method: 'GET',
+    mockData: { count: 128, user_id: userId }
+  })
 }
 
 export async function getDiscoveryFavorites(page: number = 1, pageSize: number = 20) {
-	return request({ url: '/discovery/favorites', method: 'GET', data: { page, page_size: pageSize } })
+	return request({
+		url: '/discovery/favorites',
+		method: 'GET',
+		data: { page, page_size: pageSize },
+		mockData: { items: mockRecommendUsers, page: 1, page_size: pageSize, total: mockRecommendUsers.length, has_more: false }
+	})
 }
 
 function mapRelationPage(raw: any): any {
@@ -158,7 +198,12 @@ export async function getReceivedSuperlikes(page: number = 1, pageSize: number =
 }
 
 export async function searchDiscovery(filters: any = null) {
-  return request({ url: '/discovery/search', method: 'GET', data: filters != null ? filters : {} })
+  return request({
+    url: '/discovery/search',
+    method: 'GET',
+    data: filters != null ? filters : {},
+    mockData: { items: mockSquareUsers, page: 1, page_size: 20, total: mockSquareUsers.length, has_more: false }
+  })
 }
 
 export async function getOutgoingApplications(page: number = 1, pageSize: number = 20) {

@@ -111,7 +111,8 @@
 			<view class="menu-card">
 				<view class="menu-row" v-for="item in mainMenuItems" :key="item.label" @tap="handleMenuItem(item)">
 					<view class="menu-icon-wrap" :style="{ backgroundColor: item.iconBg }">
-						<text :class="item.iconClass + ' menu-icon'"></text>
+						<image v-if="item.iconSrc != ''" class="menu-icon-img" :src="item.iconSrc" mode="aspectFit"></image>
+						<text v-else :class="item.iconClass + ' menu-icon'"></text>
 					</view>
 					<text class="menu-label">{{ item.label }}</text>
 					<view v-if="item.badge" class="menu-badge">
@@ -339,6 +340,13 @@ const onMyRegistration = () => {
 	})
 }
 
+const onMyDate = () => {
+	uni.navigateTo({
+		url: '/pagesSub/profileExtra/my-date',
+		fail: () => { uni.showToast({ title: '页面打开失败，请重试', icon: 'none' }) }
+	})
+}
+
 const onCertification = () => {
 	uni.navigateTo({ url: '/pagesSub/profileExtra/certification' })
 }
@@ -418,15 +426,17 @@ const onEmotionLab = () => {
 	uni.navigateTo({ url: '/pages/emotion-lab/emotion-lab' })
 }
 
+// iconSrc 非空时用 SVG 图片图标（优先），否则用 iconClass 字体图标
 const mainMenuItems = [
-	{ iconClass: 'ic ic-vip ic-renwu', iconBg: '#EDE4F0', label: '我的任务', badge: 'NEW', action: onMyTasks },
-	{ iconClass: 'ic ic-me ic-dongtai', iconBg: '#E4EDE8', label: '我的动态', action: onMyMoments },
-	{ iconClass: 'ic ic-home ic-star', iconBg: '#E4EDE8', label: '情感实验室', action: onEmotionLab },
-	{ iconClass: 'ic ic-home ic-heart', iconBg: '#FDE8EC', label: '我的海报', action: onMyPoster },
-	{ iconClass: 'ic ic-social ic-huodong', iconBg: '#FEF3E4', label: '我的报名', action: onMyRegistration },
-	{ iconClass: 'ic ic-sys ic-shiming', iconBg: '#FEF3E4', label: '诚信认证', action: onCertification },
-	{ iconClass: 'ic ic-sys ic-fenxiang', iconBg: '#FEF3E4', label: '推荐给好友', action: onInviteFriend },
-	{ iconClass: 'ic ic-me ic-shezhi', iconBg: '#FEF3E4', label: '设置', action: onMenuSettings },
+	{ iconClass: 'ic ic-vip ic-renwu', iconSrc: '', iconBg: '#EDE4F0', label: '我的任务', badge: 'NEW', action: onMyTasks },
+	{ iconClass: 'ic ic-me ic-dongtai', iconSrc: '', iconBg: '#E4EDE8', label: '我的动态', action: onMyMoments },
+	{ iconClass: '', iconSrc: '/static/icons/flask.svg', iconBg: '#E4EDE8', label: '情感实验室', action: onEmotionLab },
+	{ iconClass: 'ic ic-home ic-heart', iconSrc: '', iconBg: '#FDE8EC', label: '我的海报', action: onMyPoster },
+	{ iconClass: 'ic ic-social ic-huodong', iconSrc: '', iconBg: '#FEF3E4', label: '我的报名', action: onMyRegistration },
+	{ iconClass: 'ic ic-social ic-peidui', iconSrc: '', iconBg: '#FDE8EC', label: '我的约会', action: onMyDate },
+	{ iconClass: 'ic ic-sys ic-shiming', iconSrc: '', iconBg: '#FEF3E4', label: '诚信认证', action: onCertification },
+	{ iconClass: 'ic ic-sys ic-fenxiang', iconSrc: '', iconBg: '#FEF3E4', label: '推荐给好友', action: onInviteFriend },
+	{ iconClass: 'ic ic-me ic-shezhi', iconSrc: '', iconBg: '#FEF3E4', label: '设置', action: onMenuSettings },
 ]
 
 const bottomMenuItems = [
@@ -964,6 +974,13 @@ page {
 .menu-icon {
 	font-size: 18px;
 	color: var(--profile-text);
+}
+
+/* 图片型菜单图标（SVG）：光学尺寸对齐字体图标的墨迹大小（≈17px 高） */
+.menu-icon-img {
+	width: 23px;
+	height: 23px;
+	flex-shrink: 0;
 }
 
 .menu-text-col {

@@ -324,6 +324,13 @@
           }
         },
         {
+          "path": "my-date",
+          "style": {
+            "navigationBarTitleText": "我的约会",
+            "navigationStyle": "custom"
+          }
+        },
+        {
           "path": "my-posters",
           "style": {
             "navigationBarTitleText": "选择海报",

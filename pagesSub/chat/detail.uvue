@@ -30,8 +30,11 @@
 					<view class="ai-head-badge"><text>AI</text></view>
 				</view>
 				<view class="ai-head-copy">
-					<text class="ai-head-name">{{ aiAvatarProfile.name != null ? aiAvatarProfile.name + '的 AI 分身' : 'AI 分身' }}</text>
-					<text class="ai-head-desc">只参考当前公开资料；对方不会收到提醒。</text>
+					<view class="ai-head-name-row">
+						<text class="ai-head-name">{{ aiAvatarProfile.name != null ? aiAvatarProfile.name + '的 AI 分身' : 'AI 分身' }}</text>
+						<view class="ai-head-live-dot"></view>
+					</view>
+					<text class="ai-head-desc">只参考当前公开资料 · 对方不会收到提醒</text>
 				</view>
 				<button class="ai-avatar-clear" :disabled="aiAvatarSending" @click="clearAiAvatarHistory">清空</button>
 			</view>
@@ -85,26 +88,26 @@
 							class="avatar"
 							:src="message.avatar"
 							mode="aspectFill"
-							v-else-if="!message.isMine && !isAiAvatarMode"
+							v-else-if="!message.isMine"
 							@click="openPeerProfile"
 						></image>
 
 							<view class="bubble-column" :class="{ mine: message.isMine }">
-								<text class="ai-message-source" v-if="isAiAvatarMode && !message.isMine">{{ getAiMessageLabel(message) }}</text>
-								<view class="message-bubble" :class="message.type">
+								<view
+									class="ai-message-source"
+									:class="getAiMessageTone(message)"
+									v-if="isAiAvatarMode && !message.isMine"
+								>
+									<view class="ai-source-dot"></view>
+									<text class="ai-source-text">{{ getAiMessageLabel(message) }}</text>
+								</view>
+								<view class="message-bubble" :class="[message.type, getAiMessageTone(message)]">
 									<text class="revoked-content" v-if="message.revoked == true">消息已撤回</text>
 									<view class="protected-content" v-else-if="isParentMode && message.protectedContent">
 										<text class="protected-content-text">内容已保护</text>
 									</view>
 									<text class="text-content" v-else-if="message.type === 'text'">{{ message.content }}</text>
-									<view
-										v-if="isAiAvatarMode && !message.isMine && message.handoffStatus === 'pending'"
-										class="ai-handoff-state"
-									>
-										<view class="ai-handoff-dot"></view>
-										<text>演示状态：不会通知对方</text>
-									</view>
-								<image
+									<image
 									class="image-content"
 									:src="message.content"
 									mode="aspectFill"
@@ -115,6 +118,13 @@
 										<audio class="voice-player" :src="message.content" controls></audio>
 									</view>
 									<video class="video-content" :src="message.content" controls v-else-if="message.type === 'video'"></video>
+								</view>
+								<view
+									v-if="isAiAvatarMode && !message.isMine && message.handoffStatus === 'pending'"
+									class="ai-handoff-state"
+								>
+									<view class="ai-handoff-dot"></view>
+									<text>已将问题转交给本人 · 不会通知对方</text>
 								</view>
 								<text
 									v-if="!isParentMode && message.isMine && message.id > 0 && message.status == 'sent' && message.revoked != true"
@@ -398,10 +408,16 @@
 	}
 
 	const getAiMessageLabel = (msg: any): string => {
-		if (msg != null && msg.source === 'owner-answer') return '本人补充回答（演示）'
-		if (msg != null && msg.source === 'mock-person') return '本人回答（模拟）'
-		if (msg != null && msg.source === 'ai-avatar' && msg.handoffStatus === 'pending') return '已转交（演示）'
+		if (msg != null && msg.source === 'owner-answer') return '本人补充 · 模拟'
+		if (msg != null && msg.source === 'mock-person') return '本人回答 · 模拟'
 		return 'AI 分身'
+	}
+
+	// 气泡/标签语气：'owner' 走暖色（本人补充），'ai' 走主色（AI 分身），'' 表示非 AI 分身会话
+	const getAiMessageTone = (msg: any): string => {
+		if (!isAiAvatarMode.value || msg == null || msg.isMine == true) return ''
+		if (msg.source === 'owner-answer' || msg.source === 'mock-person') return 'owner'
+		return 'ai'
 	}
 
 	const scheduleAiHandoff = (rows: any[]) => {
@@ -1743,4 +1759,148 @@
 			display: flex;
 			align-items: center;
 		}
+
+	/* ================= AI 分身模式 · A1 雾白青瓷 =================
+	   作用域限定在 .chat-page.ai-avatar-mode，真人聊天模式与父模式（大字模式）完全不受影响。 */
+
+	.chat-page.ai-avatar-mode { background: #F2F3F5; }
+
+	/* --- 头部：分身身份条 --- */
+	.chat-page.ai-avatar-mode .ai-head {
+		padding: 12px 16px;
+		background: var(--surface);
+		border-bottom: 1px solid #ECEEEF;
+	}
+
+	.chat-page.ai-avatar-mode .ai-head-name-row {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 5px;
+	}
+
+	.chat-page.ai-avatar-mode .ai-head-live-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--accent);
+		flex-shrink: 0;
+	}
+
+	.chat-page.ai-avatar-mode .ai-head-name { color: var(--accent2); font-size: 16px; font-weight: 700; }
+	.chat-page.ai-avatar-mode .ai-head-desc { color: #8A9694; font-size: 11px; line-height: 1.5; }
+
+	.chat-page.ai-avatar-mode .ai-avatar-clear {
+		padding: 7px 14px;
+		border: 0;
+		border-radius: 999px;
+		background: #F0F2F3;
+		color: #5C6866;
+		font-size: 12px;
+		line-height: 1.2;
+	}
+
+	.chat-page.ai-avatar-mode .ai-avatar-clear[disabled] { opacity: 0.5; }
+
+	/* --- 消息区 --- */
+	.chat-page.ai-avatar-mode .message-list { padding: 14px; }
+	.chat-page.ai-avatar-mode .message-item { margin-bottom: 18px; }
+	.chat-page.ai-avatar-mode .ai-avatar-notice { margin: 8px 16px 12px; }
+
+	.chat-page.ai-avatar-mode .time-text {
+		padding: 4px 12px;
+		background: #E4E6E8;
+		color: #8B9195;
+		font-size: 11px;
+	}
+
+	.chat-page.ai-avatar-mode .bubble-column { max-width: 74%; }
+	.chat-page.ai-avatar-mode .message-bubble { max-width: 100%; border-radius: 16px; }
+	.chat-page.ai-avatar-mode .message-wrapper.other .message-bubble {
+		background: var(--surface);
+		box-shadow: 0 1px 3px rgba(16, 24, 32, 0.05);
+	}
+	.chat-page.ai-avatar-mode .message-wrapper.other .message-bubble.owner {
+		background: #FDF3EA;
+		box-shadow: none;
+	}
+	.chat-page.ai-avatar-mode .message-wrapper.mine .message-bubble { background: var(--accent); }
+	.chat-page.ai-avatar-mode .text-content { font-size: 15px; line-height: 1.55; }
+
+	/* --- 来源标签：AI 分身（主色） / 本人补充（暖色） --- */
+	.chat-page.ai-avatar-mode .ai-message-source {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 5px;
+		margin-bottom: 6px;
+		margin-left: 2px;
+	}
+
+	.chat-page.ai-avatar-mode .ai-source-dot {
+		width: 5px;
+		height: 5px;
+		border-radius: 50%;
+		background: var(--accent);
+		flex-shrink: 0;
+	}
+
+	.chat-page.ai-avatar-mode .ai-source-text { color: var(--accent2); font-size: 11px; line-height: 1.3; }
+	.chat-page.ai-avatar-mode .ai-message-source.owner .ai-source-dot { background: #E0955E; }
+	.chat-page.ai-avatar-mode .ai-message-source.owner .ai-source-text { color: #BF7A3F; }
+
+	/* --- 转交状态胶囊（气泡下方） --- */
+	.chat-page.ai-avatar-mode .ai-handoff-state {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 6px;
+		margin-top: 8px;
+		padding: 6px 12px;
+		border-radius: 999px;
+		background: #E9EBEC;
+		color: #7E8588;
+		font-size: 11px;
+		line-height: 1.4;
+	}
+
+	.chat-page.ai-avatar-mode .ai-handoff-dot {
+		width: 5px;
+		height: 5px;
+		border-radius: 50%;
+		background: #E0955E;
+		flex-shrink: 0;
+	}
+
+	/* --- 底部输入区 --- */
+	.chat-page.ai-avatar-mode .input-bar.ai-mode {
+		background: var(--surface);
+		border-top: 1px solid #ECEEEF;
+		padding-top: 10px;
+		gap: 10px;
+	}
+
+	.chat-page.ai-avatar-mode .input.ai-mode {
+		height: 40px;
+		border-radius: 20px;
+		background: #F4F5F6;
+		font-size: 14px;
+		color: #2A3033;
+	}
+
+	.chat-page.ai-avatar-mode .send-btn.ai-mode {
+		height: 40px;
+		min-width: 76px;
+		padding: 0 20px;
+		border-radius: 20px;
+		font-size: 14px;
+	}
+
+	.chat-page.ai-avatar-mode .send-btn.ai-mode[disabled] {
+		opacity: 1;
+		background: #E9EBEC;
+		color: #A8AEB1;
+	}
+
+	.chat-page.ai-avatar-mode .ai-disclaimer { text-align: center; }
 	</style>

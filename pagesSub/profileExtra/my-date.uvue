@@ -8,8 +8,8 @@
 		<scroll-view scroll-y class="content-scroll" show-scrollbar="false">
 			<view class="content-inner">
 				<view class="page-head">
-					<text class="page-title">我的报名</text>
-					<text class="page-sub">共 {{ totalCount }} 条记录 · {{ pendingCount }} 场待审核</text>
+					<text class="page-title">我的约会</text>
+					<text class="page-sub">共 {{ totalCount }} 场约会 · {{ pendingCount }} 场待确认</text>
 				</view>
 
 				<view class="filter-tabs">
@@ -29,24 +29,28 @@
 							</view>
 							<view class="ticket-copy">
 								<text class="ticket-title">{{ item.title }}</text>
+								<view class="ticket-with">
+									<image class="with-avatar" :src="item.partnerAvatar" mode="aspectFill"></image>
+									<text class="with-name">{{ item.partnerName }}</text>
+								</view>
 								<text class="ticket-loc">{{ item.location }}</text>
 							</view>
 						</view>
 						<view class="status-stamp" :class="item.stampClass"><text>{{ item.statusLabel }}</text></view>
 						<view class="ticket-stub">
-							<view class="fee-wrap">
-								<text class="fee-label">费用</text>
-								<text class="fee-value" :class="item.feeClass">{{ item.fee }}</text>
+							<view class="met-wrap">
+								<text class="met-label">见面方式</text>
+								<text class="met-value" :class="item.metClass">{{ item.metValue }}</text>
 							</view>
-							<view class="detail-link" @tap="viewDetail(item)"><text>活动详情</text><text class="detail-arrow">→</text></view>
+							<view class="detail-link" @tap="viewDetail(item)"><text>约会详情</text><text class="detail-arrow">→</text></view>
 						</view>
 					</view>
 				</view>
 
 				<view v-else class="empty-state">
 					<view class="empty-ring"></view>
-					<text class="empty-title">暂无相关报名</text>
-					<text class="empty-copy">新的活动报名记录会显示在这里</text>
+					<text class="empty-title">暂无相关约会</text>
+					<text class="empty-copy">确认后的约会安排会显示在这里</text>
 				</view>
 				<view class="bottom-space"></view>
 			</view>
@@ -55,94 +59,132 @@
 </template>
 
 <script setup lang="uts">
-type StatusKey = 'all' | 'success' | 'pending' | 'rejected' | 'checked'
-type StatusTab = { key: StatusKey; label: string }
-type ActivityItem = {
+type DateKey = 'all' | 'pending' | 'confirmed' | 'done' | 'cancelled'
+type DateTab = { key: DateKey; label: string }
+type DateItem = {
 	id: number
-	status: StatusKey
+	status: DateKey
 	statusLabel: string
 	stampClass: string
 	dateText: string
 	weekText: string
 	title: string
+	partnerName: string
+	partnerAvatar: string
 	location: string
-	fee: string
-	feeClass: string
+	metValue: string
+	metClass: string
 }
 
 const systemInfo = uni.getSystemInfoSync()
 const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
-const activeFilter = ref<StatusKey>('all')
+const activeFilter = ref<DateKey>('all')
 
-const statusTabs: StatusTab[] = [
+const statusTabs: DateTab[] = [
 	{ key: 'all', label: '全部' },
-	{ key: 'success', label: '报名成功' },
-	{ key: 'pending', label: '待审' },
-	{ key: 'rejected', label: '被拒' },
-	{ key: 'checked', label: '已签到' }
+	{ key: 'pending', label: '待确认' },
+	{ key: 'confirmed', label: '已确认' },
+	{ key: 'done', label: '已完成' },
+	{ key: 'cancelled', label: '已取消' }
 ]
 
-const activities: ActivityItem[] = [
+const dates: DateItem[] = [
 	{
 		id: 1,
 		status: 'pending',
-		statusLabel: '等待审核',
+		statusLabel: '待确认',
 		stampClass: 'stamp-pending',
-		dateText: '进行',
-		weekText: '长期',
-		title: '单身青年 免费择偶竞争力评分',
-		location: '宣誓爱 · 线上',
-		fee: '免费',
-		feeClass: 'fee-free'
+		dateText: '07.05',
+		weekText: '周日 15:00',
+		title: '咖啡馆慢聊',
+		partnerName: '沈亦舟',
+		partnerAvatar: '/static/avatars/matchmaking-anime-034.jpg',
+		location: '滨江 · 天目里 B 区',
+		metValue: '线下见面',
+		metClass: 'met-offline'
 	},
 	{
 		id: 2,
-		status: 'success',
-		statusLabel: '报名成功',
+		status: 'confirmed',
+		statusLabel: '已确认',
 		stampClass: 'stamp-success',
-		dateText: '06.13',
+		dateText: '07.12',
 		weekText: '周六 14:00',
-		title: '95后专场 8 分钟轮桌下午茶',
-		location: '滨江区泰安路附近',
-		fee: '¥29',
-		feeClass: 'fee-paid'
+		title: '美术馆同行',
+		partnerName: '温知意',
+		partnerAvatar: '/static/avatars/matchmaking-anime-047.jpg',
+		location: '南山路 · 浙江美术馆',
+		metValue: '线下见面',
+		metClass: 'met-offline'
 	},
 	{
 		id: 3,
-		status: 'rejected',
-		statusLabel: '未通过',
-		stampClass: 'stamp-rejected',
-		dateText: '07.12',
-		weekText: '周六 14:00',
-		title: '周末城市漫步',
-		location: '静安区附近',
-		fee: '¥9',
-		feeClass: 'fee-paid'
+		status: 'confirmed',
+		statusLabel: '已确认',
+		stampClass: 'stamp-success',
+		dateText: '07.19',
+		weekText: '周六 19:00',
+		title: '晚餐约会',
+		partnerName: '苏窈',
+		partnerAvatar: '/static/avatars/matchmaking-anime-058.jpg',
+		location: '湖滨 · 银泰 in77',
+		metValue: '线下见面',
+		metClass: 'met-offline'
 	},
 	{
 		id: 4,
-		status: 'checked',
-		statusLabel: '已签到',
+		status: 'done',
+		statusLabel: '已完成',
 		stampClass: 'stamp-checked',
-		dateText: '07.19',
-		weekText: '周六 14:00',
-		title: '单身评分',
-		location: '活动地点已记录',
-		fee: '免费',
-		feeClass: 'fee-free'
+		dateText: '06.28',
+		weekText: '周六 19:30',
+		title: '江边散步',
+		partnerName: '林清欢',
+		partnerAvatar: '/static/avatars/matchmaking-anime-063.jpg',
+		location: '钱塘江滨江步道',
+		metValue: '线下见面',
+		metClass: 'met-offline'
+	},
+	{
+		id: 5,
+		status: 'done',
+		statusLabel: '已完成',
+		stampClass: 'stamp-checked',
+		dateText: '06.15',
+		weekText: '周日 13:00',
+		title: '视频初见',
+		partnerName: '宋轻语',
+		partnerAvatar: '/static/avatars/matchmaking-anime-071.jpg',
+		location: '线上 · 视频通话',
+		metValue: '视频约会',
+		metClass: 'met-online'
+	},
+	{
+		id: 6,
+		status: 'cancelled',
+		statusLabel: '已取消',
+		stampClass: 'stamp-rejected',
+		dateText: '06.22',
+		weekText: '周日 16:00',
+		title: '公园漫步',
+		partnerName: '韩星河',
+		partnerAvatar: '/static/avatars/matchmaking-anime-019.jpg',
+		location: '西湖景区 · 曲院风荷',
+		metValue: '线下见面',
+		metClass: 'met-offline'
 	}
 ]
 
-const totalCount = activities.length
+const totalCount = dates.length
 let pendingTotal = 0
-for (const item of activities) {
+for (const item of dates) {
 	if (item.status === 'pending') pendingTotal++
 }
 const pendingCount = pendingTotal
 
-const visibleItems = computed<ActivityItem[]>(() => {
-	const result: ActivityItem[] = []
-	for (const item of activities) {
+const visibleItems = computed<DateItem[]>(() => {
+	const result: DateItem[] = []
+	for (const item of dates) {
 		if (activeFilter.value === 'all' || item.status === activeFilter.value) {
 			result.push(item)
 		}
@@ -151,8 +193,8 @@ const visibleItems = computed<ActivityItem[]>(() => {
 })
 
 const goBack = () => { uni.navigateBack() }
-const selectFilter = (key: StatusKey) => { activeFilter.value = key }
-const viewDetail = (item: ActivityItem) => {
+const selectFilter = (key: DateKey) => { activeFilter.value = key }
+const viewDetail = (item: DateItem) => {
 	uni.showToast({ title: `${item.title}详情 Demo`, icon: 'none' })
 }
 </script>
@@ -240,7 +282,7 @@ const viewDetail = (item: ActivityItem) => {
 .filter-tabs {
 	display: flex;
 	flex-direction: row;
-	gap: 40rpx;
+	gap: 36rpx;
 	padding: 0 4rpx;
 	border-bottom: 1px solid var(--line);
 }
@@ -349,8 +391,31 @@ const viewDetail = (item: ActivityItem) => {
 	line-height: 1.45;
 }
 
+/* 约会对象：头像 + 名字 */
+.ticket-with {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-top: 14rpx;
+}
+
+.with-avatar {
+	width: 40rpx;
+	height: 40rpx;
+	border-radius: 20rpx;
+	flex-shrink: 0;
+	background-color: var(--bg-subtle);
+}
+
+.with-name {
+	margin-left: 12rpx;
+	color: var(--ink2);
+	font-size: 24rpx;
+	letter-spacing: 2rpx;
+}
+
 .ticket-loc {
-	margin-top: 12rpx;
+	margin-top: 10rpx;
 	color: var(--muted);
 	font-size: 24rpx;
 	line-height: 1.5;
@@ -367,11 +432,9 @@ const viewDetail = (item: ActivityItem) => {
 }
 
 .status-stamp text {
-	/* 字体对齐首页：PingFang 黑体、22rpx/600、无宽字距 */
-	font-family: var(--sans);
-	font-size: 22rpx;
+	font-size: 20rpx;
 	font-weight: 600;
-	letter-spacing: 1rpx;
+	letter-spacing: 4rpx;
 	color: currentColor;
 }
 
@@ -392,34 +455,31 @@ const viewDetail = (item: ActivityItem) => {
 	box-sizing: border-box;
 }
 
-.fee-wrap {
+.met-wrap {
 	display: flex;
 	flex-direction: row;
 	align-items: baseline;
 }
 
-.fee-label {
-	/* 字体对齐首页：PingFang 黑体、20rpx、无字距 */
-	font-family: var(--sans);
+.met-label {
 	color: var(--muted);
 	font-size: 20rpx;
-	letter-spacing: 0;
+	letter-spacing: 2rpx;
 	margin-right: 12rpx;
 }
 
-.fee-value {
-	font-family: var(--serif);
-	font-size: 32rpx;
-	font-weight: 700;
+.met-value {
+	font-size: 26rpx;
+	font-weight: 600;
+	letter-spacing: 2rpx;
 }
 
-.fee-free {
-	color: var(--sage);
-}
-
-.fee-paid {
+.met-offline {
 	color: var(--ink);
-	font-variant-numeric: tabular-nums;
+}
+
+.met-online {
+	color: var(--accent);
 }
 
 .detail-link {
@@ -429,11 +489,9 @@ const viewDetail = (item: ActivityItem) => {
 }
 
 .detail-link text {
-	/* 字体对齐首页：PingFang 黑体、24rpx、无字距 */
-	font-family: var(--sans);
 	color: var(--ink2);
 	font-size: 24rpx;
-	letter-spacing: 0;
+	letter-spacing: 4rpx;
 }
 
 .detail-arrow {

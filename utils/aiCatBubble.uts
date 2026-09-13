@@ -1,0 +1,19 @@
+/**
+ * AI 分身小猫 · 说话气泡的会话级状态
+ *
+ * 需求：用户点过气泡右上角的「×」后，本次会话内不再自动弹出。
+ * 实现：仅存内存（模块级单例），不落盘 —— App 冷启动后重新开始自动弹出。
+ * 作用范围：全 App 共享（首页推荐页与用户详情页用的是同一只小猫）。
+ */
+
+let bubbleClosed: boolean = false
+
+/** 本次会话内用户是否已关闭过气泡 */
+export function isAiCatBubbleClosed(): boolean {
+	return bubbleClosed
+}
+
+/** 记录关闭状态（true = 本次会话不再自动弹出） */
+export function setAiCatBubbleClosed(closed: boolean): void {
+	bubbleClosed = closed
+}

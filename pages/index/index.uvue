@@ -526,15 +526,15 @@
 					</view>
 					<view class="vip-hero-badges">
 						<view class="vip-hero-badge">
-							<text class="ic ic-home ic-star vip-hero-badge-icon"></text>
+							<image class="vip-hero-badge-icon" src="/static/icons/vip-crown.svg" mode="aspectFit"></image>
 							<text class="vip-hero-badge-text">VIP标识</text>
 						</view>
 						<view class="vip-hero-badge">
-							<text class="ic ic-home ic-star vip-hero-badge-icon"></text>
+							<image class="vip-hero-badge-icon" src="/static/icons/auth-check.svg" mode="aspectFit"></image>
 							<text class="vip-hero-badge-text">多重认证</text>
 						</view>
 						<view class="vip-hero-badge">
-							<text class="ic ic-home ic-star vip-hero-badge-icon"></text>
+							<image class="vip-hero-badge-icon" src="/static/icons/match-love.svg" mode="aspectFit"></image>
 							<text class="vip-hero-badge-text">优先匹配</text>
 						</view>
 					</view>
@@ -544,33 +544,50 @@
 					<view class="vip-cat-tab" @tap="switchVipCat(0)"><text :class="['vip-cat-tab-text', vipCatIndex === 0 ? 'active' : '']">高颜值专区</text><view v-if="vipCatIndex === 0" class="vip-cat-indicator"></view></view>
 					<view class="vip-cat-tab" @tap="switchVipCat(1)"><text :class="['vip-cat-tab-text', vipCatIndex === 1 ? 'active' : '']">高收入专区</text><view v-if="vipCatIndex === 1" class="vip-cat-indicator"></view></view>
 					<view class="vip-cat-tab" @tap="switchVipCat(2)"><text :class="['vip-cat-tab-text', vipCatIndex === 2 ? 'active' : '']">高学历专区</text><view v-if="vipCatIndex === 2" class="vip-cat-indicator"></view></view>
-					<view class="vip-cat-tab" @tap="switchVipCat(3)"><text :class="['vip-cat-tab-text', vipCatIndex === 3 ? 'active' : '']">95后专区</text><view v-if="vipCatIndex === 3" class="vip-cat-indicator"></view></view>
+					<view class="vip-cat-tab" @tap="switchVipCat(3)"><text :class="['vip-cat-tab-text', vipCatIndex === 3 ? 'active' : '']">同频专区</text><view v-if="vipCatIndex === 3" class="vip-cat-indicator"></view></view>
 				</view>
 
-				<view v-if="vipCardRows.length > 0" class="vip-filter-row">
-					<text class="vip-result-count">{{ '共' + vipCardTotal + '位会员' }}</text>
+				<view class="vip-zone-detail">
+					<view class="vip-zone-main">
+						<view class="vip-zone-icon-wrap" :style="{ backgroundColor: currentVipZone.iconBg }">
+							<image class="vip-zone-icon" :src="currentVipZone.icon" mode="aspectFit"></image>
+						</view>
+						<view class="vip-zone-title-group">
+							<text class="vip-zone-name">{{ currentVipZone.name }}</text>
+							<text class="vip-zone-en">{{ currentVipZone.en }}</text>
+						</view>
+					</view>
+					<view class="vip-zone-meta">
+						<text class="vip-zone-threshold">{{ currentVipZone.threshold }}</text>
+						<text class="vip-zone-count"><text :style="{ color: currentVipZone.iconColor }">{{ formatZoneCount(currentVipZone.count) }}</text> 人在册</text>
+					</view>
+					<text class="vip-zone-slogan">
+						{{ currentVipZone.sloganPrefix }}<text class="vip-zone-highlight" :style="{ color: currentVipZone.iconColor }">{{ currentVipZone.sloganHighlight }}</text>{{ currentVipZone.sloganSuffix }}
+					</text>
 				</view>
 
-				<view v-if="vipCardRows.length > 0" class="vip-card-grid">
-					<view class="vip-card-row" v-for="(row, ri) in vipCardRows" :key="ri">
-						<view class="vip-card-item" v-for="(card, ci) in row" :key="card.id + '-' + ci">
-							<view class="vip-card-content" @tap="goUserDetail(card.id)">
-								<view class="vip-card-photo">
-									<image class="vip-card-photo-img" :src="card.photo" mode="aspectFill"></image>
-									<view class="vip-card-crown"><text class="ic ic-vip ic-huiyuan vip-card-crown-icon"></text></view>
-									<view :class="['vip-card-gender', card.gender === '女' ? 'female' : 'male']">
-										<text :class="['vip-gender-icon', card.gender === '女' ? 'female' : 'male']">{{ card.gender === '女' ? '♀' : '♂' }}</text>
-									</view>
+				<view v-if="vipCardList.length > 0" class="vip-card-list">
+					<view class="square-user-card" v-for="(card, ci) in vipCardList" :key="card.id + '-' + ci" @tap="goUserDetail(card.id)">
+						<view class="sq-photo-wrap">
+							<image class="sq-photo" :src="card.photo" mode="aspectFill"></image>
+							<view v-if="card.isVip" class="vip-tag"><text class="ic ic-vip ic-huiyuan vip-tag-icon"></text><text class="vip-tag-text"> VIP</text></view>
+						</view>
+						<view class="sq-card-info">
+							<view class="sq-left-info">
+								<view class="sq-name-row">
+									<text class="sq-name">{{ card.name }}</text>
+									<text class="sq-age">{{ card.age }}岁</text>
 								</view>
-								<view class="vip-card-bottom">
-									<text class="vip-card-name">{{ card.name }}</text>
-									<view class="vip-card-meta">
-										<text class="vip-card-age">{{ card.age }}</text>
-										<view class="vip-card-dot"></view>
-										<text class="vip-card-height">{{ card.height }}</text>
-									</view>
+								<view class="sq-meta-row">
+									<text class="sq-meta-text"><text class="ic ic-home ic-dingwei sq-loc-icon"></text> 距你 {{ card.distance }}km</text>
+									<view class="sq-dot"></view>
+									<text class="sq-meta-text">{{ card.job }} · {{ card.city }}</text>
 								</view>
-</view>
+							</view>
+							<view class="sq-like-btn" @click.stop="onLike(card.id)">
+								<text v-if="isLiked(card.id)" class="sq-heart heart-font heart-solid"></text>
+								<text v-else class="sq-heart heart-font heart-outline"></text>
+							</view>
 						</view>
 					</view>
 				</view>
@@ -590,27 +607,21 @@
 				</view>
 
 				<view class="vip-bottom-cta">
-					<text class="ic ic-home ic-star vip-cta-icon"></text><text class="vip-cta-title"> 升级VIP会员</text>
+					<image class="vip-cta-icon" src="/static/icons/vip-crown.svg" mode="aspectFit"></image>
+					<text class="vip-cta-title">升级VIP会员</text>
 					<text class="vip-cta-desc">解锁全部会员资料 · 无限牵线次数 · 优先展示曝光</text>
-						<view class="vip-price-row">
-							<view class="vip-price-opt">
-							<text class="vip-price-period">{{ planAt(0).duration }}</text>
-							<text class="vip-price-value">{{ planAt(0).price }}</text>
-						</view>
-							<view class="vip-price-opt recommended">
-							<view class="vip-price-badge"><text class="vip-price-badge-text">推荐</text></view>
-							<text class="vip-price-period">{{ planAt(1).duration }}</text>
-							<text class="vip-price-value">{{ planAt(1).price }}</text>
-						</view>
-							<view class="vip-price-opt">
-							<text class="vip-price-period">{{ planAt(2).duration }}</text>
-							<text class="vip-price-value">{{ planAt(2).price }}</text>
+					<view class="vip-cta-benefits">
+						<view class="vip-cta-ben-item" v-for="(b, bi) in vipBottomBenefits" :key="bi">
+							<view class="vip-cta-ben-icon" :class="b.colorClass"><image class="vip-cta-ben-icon-img" :src="b.icon" mode="aspectFit"></image></view>
+							<view class="vip-cta-ben-text">
+								<text class="vip-cta-ben-title">{{ b.title }}</text>
+								<text class="vip-cta-ben-desc">{{ b.desc }}</text>
+							</view>
 						</view>
 					</view>
 					<view class="vip-cta-btn" @tap="openVipPage">
 						<text class="vip-cta-btn-text">立即开通VIP</text>
 					</view>
-					<text class="vip-cta-hint">付费即同意《会员服务协议》· 可随时取消</text>
 				</view>
 
 				<view class="scroll-bottom-spacer"></view>
@@ -631,17 +642,17 @@
 				</view>
 			</view>
 
-			<!-- AI分身悬浮按钮（仅推荐页显示）：与当前展示用户的AI分身聊天，液态玻璃·气泡低语 -->
+			<!-- AI分身悬浮按钮（仅推荐页显示）：3D 小猫形象，与当前展示用户的AI分身聊天 -->
 			<view v-if="currentTab === 0 && canShowRecommendUsers" class="ai-float-btn" @click="openAiAvatarForCurrentUser">
-				<view class="ai-float-glass">
-					<view class="ai-float-halo"></view>
-					<view class="ai-float-bubble">
-						<view class="ai-float-dot ai-float-dot1"></view>
-						<view class="ai-float-dot ai-float-dot2"></view>
-						<view class="ai-float-dot ai-float-dot3"></view>
-					</view>
-				</view>
+				<image class="ai-float-cat" src="/static/ai-cat/ai-cat.webp" mode="aspectFit"></image>
 			</view>
+			<!-- 小猫说话气泡：随机 3~6 秒自动弹出，点击气泡进 AI 分身，× 关闭后本次会话不再弹出 -->
+			<XsaAiCatBubble
+				:active="currentTab === 0 && canShowRecommendUsers"
+				right="112rpx"
+				bottom="506rpx"
+				@tap="openAiAvatarForCurrentUser"
+			/>
 		</view>
 
 		<!-- ====== Sheets & Modals ====== -->
@@ -720,6 +731,7 @@
 	import XsaApplySheet from '@/components/XsaApplySheet.uvue'
 	import XsaTabBar from '@/components/XsaTabBar.uvue'
 	import XsaAiMatchSheet from '@/components/XsaAiMatchSheet.uvue'
+	import XsaAiCatBubble from '@/components/XsaAiCatBubble.uvue'
 	import { getEmotionLabSummary } from '@/api/emotionLab.uts'
 	import { guardRealName } from '@/utils/realNameGate.uts'
 	import { likeUser, blockUser, unblockUser, saveAiAvatarProfileSnapshot } from '@/api'
@@ -852,6 +864,61 @@
 	// ========== 会员专区数据 ==========
 	const vipCatIndex = ref(0)
 	const switchVipCat = (index: number) => { vipCatIndex.value = index }
+	const formatZoneCount = (n: number): string => {
+		const s = '' + n
+		let out = ''
+		for (let i = 0; i < s.length; i++) {
+			if (i > 0 && (s.length - i) % 3 === 0) out += ','
+			out += s[i]
+		}
+		return out
+	}
+	const parseIncomeYearly = (income: any): number => {
+		const str = income != null ? '' + income : ''
+		const m = str.match(/(\d+)[kK]/g)
+		if (m != null && m.length > 0) {
+			const last = m[m.length - 1]
+			const n = Number(last.replace(/[kK]/, ''))
+			if (!isNaN(n)) return n * 1000 * 12
+		}
+		const n2 = Number(str.replace(/[^\d]/g, ''))
+		return isNaN(n2) ? 0 : n2
+	}
+	const vipZones = ref([
+		{
+			key: 'glamour', name: '高颜值专区', en: 'GLAMOUR', icon: '/static/icons/zone-glamour.svg',
+			iconColor: '#C97B7B', iconBg: '#F9EAEA',
+			threshold: '形象认证通过 · 真人核验', count: 1286,
+			sloganPrefix: '第一眼的心动值得被认真对待，',
+			sloganHighlight: '入驻后资料进入专区首屏',
+			sloganSuffix: '，被看见的机会是普通用户的 4 倍。'
+		},
+		{
+			key: 'elite', name: '高收入专区', en: 'ELITE', icon: '/static/icons/zone-elite.svg',
+			iconColor: '#B89A5E', iconBg: '#F5ECD8',
+			threshold: '年收入 30w+ · 凭证核验', count: 842,
+			sloganPrefix: '不必为生活将就，也不必为钱解释，',
+			sloganHighlight: '同频的圈层里聊得来',
+			sloganSuffix: '的概率高得多。'
+		},
+		{
+			key: 'scholar', name: '高学历专区', en: 'SCHOLAR', icon: '/static/icons/zone-scholar.svg',
+			iconColor: '#5A8A6E', iconBg: '#E8F2EC',
+			threshold: '985/211 或硕士以上 · 学历认证', count: 1073,
+			sloganPrefix: '聊得来，比什么都难得，',
+			sloganHighlight: '相似的教育背景',
+			sloganSuffix: '意味着相近的表达方式与看待世界的方式。'
+		},
+		{
+			key: 'resonance', name: '同频专区', en: 'RESONANCE', icon: '/static/icons/zone-resonance.svg',
+			iconColor: '#8B7CB3', iconBg: '#EDEAF5',
+			threshold: '完成人格测试 · 资料完整 80%', count: 2415,
+			sloganPrefix: '条件未必顶尖，但',
+			sloganHighlight: '聊得来这件事，比什么都难得',
+			sloganSuffix: '。按人格契合度推荐，先看懂你，再介绍你们认识。'
+		}
+	])
+	const currentVipZone = computed(() => vipZones.value[vipCatIndex.value] != null ? vipZones.value[vipCatIndex.value] : vipZones.value[0])
 
 	// ========== 推荐页过滤 + 配额 ==========
 	const recommendUsers = ref<any[]>([])
@@ -867,20 +934,32 @@
 	const vipSquareUsers = computed(() => squareUsers.value.filter((user: any) => user != null && (user.is_vip === true || user.isVip === true)))
 	const vipSquareAt = (index: number): any => vipSquareUsers.value.length > index ? vipSquareUsers.value[index] : {}
 	const vipUsersForCategory = computed(() => {
-		if (vipCatIndex.value === 1) return vipSquareUsers.value.filter((user: any) => Number(user.income || 0) >= 300000)
-		if (vipCatIndex.value === 2) return vipSquareUsers.value.filter((user: any) => Number(user.education_level || 0) > 0 && Number(user.education_level) <= 2)
-		if (vipCatIndex.value === 3) return vipSquareUsers.value.filter((user: any) => Number(user.age || 0) >= 27 && Number(user.age || 0) <= 31)
+		if (vipCatIndex.value === 1) return vipSquareUsers.value.filter((user: any) => parseIncomeYearly(user.income) >= 300000)
+		if (vipCatIndex.value === 2) return vipSquareUsers.value.filter((user: any) => /硕士|博士|研究生|985|211/.test('' + (user.education || '')))
+		if (vipCatIndex.value === 3) return vipSquareUsers.value.filter((user: any) => (user.mbti != null && '' + user.mbti !== '') || Number(user.profile_completion || user.completion_score || 0) >= 80)
 		return vipSquareUsers.value
 	})
-	const toVipCard = (user: any): any => ({ id: Number(user.id || 0), name: user.name != null ? '' + user.name : '', age: user.age != null ? '' + user.age + '岁' : '', height: user.height != null ? '' + user.height + 'cm' : '', gender: user.gender != null ? '' + user.gender : '', photo: user.avatar != null ? '' + user.avatar : '' })
-	const vipCardRows = computed(() => {
+	// 会员专区卡片：复用广场大卡（square-user-card）的字段结构
+	const toVipCard = (user: any): any => ({
+		id: Number(user.id || 0),
+		name: user.name != null ? '' + user.name : '',
+		age: user.age != null ? Number(user.age) : 0,
+		distance: user.distance != null ? user.distance : 0,
+		job: user.job != null ? '' + user.job : '未填写',
+		city: user.city != null ? '' + user.city : '未填写',
+		photo: user.avatar != null ? '' + user.avatar : '',
+		isVip: user.is_vip === true || user.isVip === true
+	})
+	const vipCardList = computed(() => {
 		const cards: any[] = []
 		for (let i = 0; i < vipUsersForCategory.value.length && i < 9; i++) cards.push(toVipCard(vipUsersForCategory.value[i]))
-		const rows: any[][] = []
-		for (let i = 0; i < cards.length; i += 3) rows.push(cards.slice(i, Math.min(i + 3, cards.length)))
-		return rows
+		return cards
 	})
-	const vipCardTotal = computed(() => vipUsersForCategory.value.length)
+	const vipBottomBenefits = ref([
+		{ icon: '/static/icons/vip-ben-crown.svg', title: 'VIP 标识与优先曝光', desc: '头像 VIP 标识，专区与搜索加权曝光，优先被看见。', colorClass: 'gold' },
+		{ icon: '/static/icons/vip-ben-filter.svg', title: 'MBTI 高级筛选', desc: '按人格契合度筛选，快速找到同频的人。', colorClass: 'mint' },
+		{ icon: '/static/icons/vip-ben-incognito.svg', title: '无痕浏览与访客全查看', desc: '无痕访问不留记录，完整访客列表随时查看。', colorClass: 'warm' }
+	])
 	const filteredRecommendUsers = computed(() => recommendUsers.value)
 	const canShowRecommendUsers = computed(() => recommendUsers.value.length > 0)
 	const currentRecommendIndex = ref(0)
@@ -1453,16 +1532,9 @@
 .like-btn { width: 112rpx; height: 112rpx; border-radius: 56rpx; background-color: var(--bg-card); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04); }
 .heart-icon { font-size: 52rpx; }
 
-/* ==================== AI悬浮按钮（液态玻璃·气泡低语，纯view+渐变绘制，不依赖clip-path/SVG） ==================== */
-.ai-float-btn { position: fixed; right: 28rpx; bottom: 200rpx; width: 112rpx; height: 112rpx; border-radius: 56rpx; z-index: 10; }
-.ai-float-glass { position: relative; width: 112rpx; height: 112rpx; border-radius: 56rpx; background: radial-gradient(circle at 24% 16%, rgba(255,255,255,0.95), rgba(255,255,255,0.22) 48%), rgba(255,255,255,0.30); border: 1px solid rgba(255,255,255,0.78); -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%); box-shadow: inset 0 2rpx 0 rgba(255,255,255,0.95), inset 0 -14rpx 28rpx rgba(232,155,164,0.12), 0 21rpx 46rpx rgba(30, 90, 82, 0.24), 0 5rpx 14rpx rgba(0, 0, 0, 0.08); display: flex; align-items: center; justify-content: center; overflow: hidden; }
-.ai-float-halo { position: absolute; left: 16%; right: 16%; bottom: 9%; height: 20%; border-radius: 50%; background: radial-gradient(ellipse at center, rgba(232,155,164,0.38), rgba(232,155,164,0)); }
-.ai-float-bubble { position: relative; width: 50rpx; height: 38rpx; border-radius: 19rpx 19rpx 19rpx 5rpx; background: linear-gradient(140deg, #2D7C72 0%, #5FA99A 55%, #E89BA4 115%); box-shadow: 0 5rpx 14rpx rgba(30, 90, 82, 0.30), inset 0 2rpx 0 rgba(255,255,255,0.35); display: flex; flex-direction: row; align-items: center; justify-content: center; }
-.ai-float-dot { width: 7rpx; height: 7rpx; border-radius: 4rpx; background: rgba(255,255,255,0.95); margin: 0 3rpx; animation: ai-float-blink 1.6s ease-in-out infinite; }
-.ai-float-dot1 { animation-delay: 0s; }
-.ai-float-dot2 { animation-delay: 0.25s; }
-.ai-float-dot3 { animation-delay: 0.5s; }
-@keyframes ai-float-blink { 0%, 70%, 100% { opacity: 0.45; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-3rpx); } }
+/* ==================== AI悬浮按钮（3D 小猫形象，静态） ==================== */
+.ai-float-btn { position: fixed; right: 28rpx; bottom: 200rpx; width: 136rpx; height: 136rpx; z-index: 10; display: flex; align-items: center; justify-content: center; }
+.ai-float-cat { width: 136rpx; height: 136rpx; flex: none; }
 
 /* ==================== AI解读文案 ==================== */
 .ai-interpret { display: flex; flex-direction: column; gap: 12rpx; padding: 24rpx; border-radius: var(--radius-md); background-color: var(--accent-soft); }
@@ -1527,7 +1599,7 @@
 .vip-hero-subtitle { font-size: 26rpx; color: #C9D5CA; }
 .vip-hero-badges { display: flex; flex-direction: row; gap: 32rpx; padding-top: 24rpx; }
 .vip-hero-badge { display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
-.vip-hero-badge-icon { font-size: 28rpx; color: var(--gold); }
+.vip-hero-badge-icon { width: 30rpx; height: 30rpx; }
 .vip-hero-badge-text { font-size: 24rpx; color: #C9D5CA; }
 
 .vip-cat-tabs { display: flex; flex-direction: row; background-color: var(--bg-card); border-radius: var(--radius-lg); padding: 0 8rpx; margin-bottom: 24rpx; }
@@ -1536,33 +1608,31 @@
 .vip-cat-tab-text.active { font-size: 28rpx; font-weight: 700; color: var(--text-primary); }
 .vip-cat-indicator { width: 48rpx; height: 6rpx; background-color: var(--accent); border-radius: 3rpx; }
 
-.vip-filter-row { display: flex; flex-direction: row; justify-content: space-between; align-items: center; padding: 24rpx 0; }
-.vip-result-count { font-size: 28rpx; font-weight: 600; color: var(--text-primary); }
-.vip-filter-right { display: flex; flex-direction: row; align-items: center; gap: 16rpx; }
-.vip-accelerate-btn { display: flex; flex-direction: row; align-items: center; gap: 8rpx; padding: 10rpx 20rpx; border-radius: var(--radius-full); background-color: var(--accent); }
-.vip-accel-icon { font-size: 24rpx; color: var(--text-inverse); }
-.vip-accel-text { font-size: 24rpx; color: var(--text-inverse); font-weight: 600; }
+.vip-zone-detail {
+	display: flex; flex-direction: column; gap: 18rpx;
+	padding: 8rpx 8rpx 24rpx; margin-bottom: 8rpx;
+	/* 直接铺在页面背景上，不做独立卡片 */
+}
+.vip-zone-main { display: flex; flex-direction: row; align-items: center; gap: 20rpx; }
+.vip-zone-icon-wrap {
+	width: 88rpx; height: 88rpx; border-radius: 24rpx;
+	display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.vip-zone-icon { width: 48rpx; height: 48rpx; }
+.vip-zone-title-group { display: flex; flex-direction: column; gap: 4rpx; }
+.vip-zone-name { font-size: 34rpx; font-weight: 700; color: var(--text-primary); }
+.vip-zone-en { font-size: 22rpx; letter-spacing: 2rpx; color: var(--text-muted); }
+.vip-zone-meta {
+	display: flex; flex-direction: row; align-items: center; justify-content: space-between;
+	margin-top: -4rpx;
+}
+.vip-zone-threshold { font-size: 24rpx; color: var(--text-secondary); }
+.vip-zone-count { font-size: 24rpx; color: var(--text-secondary); }
+.vip-zone-count text { font-weight: 600; }
+.vip-zone-slogan { font-size: 26rpx; line-height: 1.6; color: var(--text-secondary); }
+.vip-zone-highlight { font-weight: 600; }
 
-.vip-card-grid { display: flex; flex-direction: column; gap: 20rpx; }
-.vip-card-row { display: flex; flex-direction: row; gap: 20rpx; }
-.vip-card-item { flex: 1; display: flex; flex-direction: column; background-color: var(--bg-card); border-radius: var(--radius-lg); overflow: hidden; box-shadow: 0 4rpx 24rpx rgba(0, 0, 0, 0.03); }
-.vip-card-content { position: relative; display: flex; flex-direction: column; }
-.vip-card-photo { width: 100%; height: 280rpx; position: relative; overflow: hidden; }
-.vip-card-photo-img { width: 100%; height: 100%; }
-.vip-card-crown { position: absolute; top: 12rpx; left: 12rpx; display: flex; align-items: center; padding: 4rpx 10rpx; border-radius: var(--radius-sm); background-color: #C9A96E; }
-.vip-card-crown-icon { font-size: 16rpx; }
-.vip-card-gender { position: absolute; top: 12rpx; right: 12rpx; display: flex; align-items: center; padding: 4rpx 10rpx; border-radius: var(--radius-sm); }
-.vip-card-gender.female { background-color: #FFE4E6; }
-.vip-card-gender.male { background-color: #DBEAFE; }
-.vip-gender-icon { font-size: 20rpx; font-weight: 700; }
-.vip-gender-icon.female { color: #E11D48; }
-.vip-gender-icon.male { color: #2563EB; }
-.vip-card-bottom { display: flex; flex-direction: column; gap: 8rpx; padding: 20rpx; }
-.vip-card-name { font-size: 28rpx; font-weight: 600; color: var(--text-primary); }
-.vip-card-meta { display: flex; flex-direction: row; align-items: center; gap: 8rpx; }
-.vip-card-age { font-size: 24rpx; color: var(--text-secondary); }
-.vip-card-dot { width: 4rpx; height: 4rpx; border-radius: 50%; background-color: var(--text-muted); }
-.vip-card-height { font-size: 24rpx; color: var(--text-secondary); }
+.vip-card-list { display: flex; flex-direction: column; gap: 28rpx; }
 
 .vip-privilege-section { display: flex; flex-direction: column; gap: 24rpx; padding: 32rpx 16rpx; }
 .vip-priv-header { display: flex; flex-direction: row; justify-content: space-between; align-items: center; }
@@ -1599,16 +1669,18 @@
 .vip-bottom-cta { display: flex; flex-direction: column; align-items: center; gap: 20rpx; padding: 40rpx 32rpx 48rpx 32rpx; background: linear-gradient(135deg, #2D4A3E, #C9A96E); border-radius: var(--radius-xl); }
 .vip-cta-title { font-size: 36rpx; font-weight: 700; color: #FFFFFF; }
 .vip-cta-desc { font-size: 24rpx; color: #CCCCCC; text-align: center; line-height: 1.5; }
-.vip-price-row { display: flex; flex-direction: row; gap: 16rpx; width: 100%; padding-top: 24rpx; }
-.vip-price-opt { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8rpx; padding: 28rpx 16rpx 16rpx 16rpx; border-radius: var(--radius-md); background-color: rgba(255, 255, 255, 0.1); position: relative; overflow: visible; }
-.vip-price-opt.recommended { background-color: rgba(201, 169, 110, 0.2); border: 2rpx solid var(--gold); }
-.vip-price-badge { position: absolute; top: -20rpx; left: 50%; transform: translateX(-50%); padding: 6rpx 18rpx; border-radius: var(--radius-sm); background-color: var(--gold); white-space: nowrap; z-index: 2; }
-.vip-price-badge-text { font-size: 20rpx; color: #FFFFFF; font-weight: 600; line-height: 1.2; }
-.vip-price-period { font-size: 24rpx; color: #CCCCCC; }
-.vip-price-value { font-size: 36rpx; font-weight: 700; color: var(--gold); }
+.vip-cta-benefits { display: flex; flex-direction: column; gap: 16rpx; width: 100%; }
+.vip-cta-ben-item { display: flex; flex-direction: row; align-items: center; gap: 20rpx; padding: 24rpx; border-radius: var(--radius-lg); background: rgba(255, 255, 255, 0.10); }
+.vip-cta-ben-icon { width: 64rpx; height: 64rpx; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.vip-cta-ben-icon-img { width: 34rpx; height: 34rpx; }
+.vip-cta-ben-icon.gold { background: rgba(201, 169, 110, 0.35); }
+.vip-cta-ben-icon.warm { background: rgba(224, 149, 94, 0.35); }
+.vip-cta-ben-icon.mint { background: rgba(126, 200, 160, 0.35); }
+.vip-cta-ben-text { flex: 1; display: flex; flex-direction: column; gap: 8rpx; }
+.vip-cta-ben-title { font-size: 28rpx; font-weight: 600; color: #FFFFFF; }
+.vip-cta-ben-desc { font-size: 22rpx; color: rgba(255, 255, 255, 0.78); line-height: 1.5; }
 .vip-cta-btn { width: 100%; height: 96rpx; border-radius: 48rpx; background-color: var(--accent); display: flex; align-items: center; justify-content: center; }
 .vip-cta-btn-text { font-size: 30rpx; font-weight: 700; color: #FFFFFF; }
-.vip-cta-hint { font-size: 22rpx; color: #888888; text-align: center; }
 
 /* ============================================================
    AI Sheet（已迁移至 components/XsaAiMatchSheet.uvue）
@@ -1688,7 +1760,7 @@
 .sq-arrow { font-size: 22rpx; color: var(--text-muted); }
 .activity-dot { font-size: 24rpx; color: var(--accent); margin-right: 4rpx; }
 .vip-tag-icon { font-size: 24rpx; color: var(--text-inverse); margin-right: 4rpx; }
-.vip-cta-icon { font-size: 36rpx; color: var(--gold); margin-right: 8rpx; }
+.vip-cta-icon { width: 44rpx; height: 44rpx; }
 
 /* 婚恋图标字体 */
 @font-face { font-family: "iconfont-home"; src: url('/static/婚恋小程序图标/首页推荐与匹配/iconfont.woff2') format('woff2'), url('/static/婚恋小程序图标/首页推荐与匹配/iconfont.woff') format('woff'); }
