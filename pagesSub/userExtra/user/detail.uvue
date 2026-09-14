@@ -382,7 +382,8 @@ const mapDetailUser = (raw: any, id: number) => {
 	]
 	user.value = {
 		...user.value,
-		id: envelope.user_id != null ? Number(envelope.user_id) : (card.id != null ? Number(card.id) : id),
+		// 使用路由传入的 id，防止后端返回的 user_id/card.id 错误覆盖成其他用户
+		id: id,
 		name: value(nickname, card.name, user.value.name),
 		detailLocked,
 		age,
@@ -414,11 +415,13 @@ const load = async () => {
 	visitorCount.value = null
 	try {
 		let res: any = null
+		console.log('[user detail] load start, isOwnProfile', isOwnProfile.value, 'userId', user.value.id)
 		if (isOwnProfile.value) {
 			res = await getOwnProfile()
 		} else {
 			res = await getUserDetail(user.value.id)
 		}
+		console.log('[user detail] load response success', res.success, 'data id', res.data != null ? (res.data.user_id || res.data.id || res.data.card?.id) : null)
 		if (res != null && res.success === true && res.data != null) {
 			mapDetailUser(res, user.value.id)
 			if (!isOwnProfile.value && !isPreview.value && user.value.id > 0) {
@@ -517,7 +520,7 @@ onMounted(async () => {
 	const options = currentPage.options
 	isPreview.value = options.preview === 'true' || options.preview === true
 
-	let parsed = 1
+	let parsed = 0
 	if (options.userId != null && options.userId != '') {
 		const candidate = Number(options.userId)
 		if (!isNaN(candidate) && candidate > 0) parsed = candidate
@@ -531,10 +534,12 @@ onMounted(async () => {
 		}
 	} catch (e) {}
 	isOwnProfile.value = options.own === 'true' || options.own === true || isPreview.value || (viewerId > 0 && viewerId == parsed)
+	console.log('[user detail] options', options, 'parsed', parsed, 'viewerId', viewerId, 'isOwnProfile', isOwnProfile.value)
 	user.value.id = parsed
 	applyUserId.value = parsed
 	await loadViewerMembership()
 	await load()
+	console.log('[user detail] after load user.value.id', user.value.id, 'name', user.value.name)
 	if (!isOwnProfile.value && !isPreview.value && uni.getStorageSync('xsa_ai_avatar_guide_shown') != true) showAiGuide.value = true
 	if (options.anchor != null && ('' + options.anchor) != '') {
 		const anchorId = '' + options.anchor

@@ -85,6 +85,7 @@
 					<view class="preview-row"><text class="preview-label">现居地</text><text class="preview-value">{{ completionText('location', formData.residenceCityCode, '未填写', 5) }}</text></view>
 					<view class="preview-row"><text class="preview-label">家乡</text><text class="preview-value">{{ completionText('hometown', formData.hometown, '未填写', 4) }}</text></view>
 					<view class="preview-row"><text class="preview-label">职业</text><text class="preview-value">{{ completionText('occupation', occupationPreview == '未填写' ? '' : occupationPreview, '未填写', 4) }}</text></view>
+					<view class="preview-row"><text class="preview-label">公司</text><text class="preview-value">{{ completionText('company', formData.company, '未填写', 4) }}</text></view>
 					<view class="preview-row"><text class="preview-label">收入</text><text class="preview-value">{{ completionText('income', incomePreview == '未填写' ? '' : incomePreview, '未填写', 4) }}</text></view>
 					<view class="preview-row"><text class="preview-label">婚姻状况</text><text class="preview-value">{{ completionText('marriage', maritalText == '未选择' ? '' : maritalText, '未填写', 5) }}</text></view>
 					<view class="preview-row"><text class="preview-label">MBTI</text><text class="preview-value">{{ completionText('mbti', formData.mbti, '未填写', 2) }}</text></view>
@@ -737,6 +738,7 @@
 		if (key == 'interest') return formData.value.interestTags.length >= 3
 		if (key == 'personality') return formData.value.personalityTags.length >= 3
 		if (key == 'preference') return formData.value.ageMin != '' || formData.value.ageMax != ''
+		if (key == 'company') return textValue(formData.value.company).trim() != ''
 		return false
 	}
 	const completionPassed = (key: string): boolean => {
@@ -764,7 +766,7 @@
 		const missing = keys.filter((key: string) => completionItems.value[key].completed != true)
 		if (missing.length == 0) return ''
 		const labels: any = {
-			gender: '性别', birthday: '出生日期', location: '所在地区', marriage: '婚姻状况', occupation: '职业',
+			gender: '性别', birthday: '出生日期', location: '所在地区', marriage: '婚姻状况', occupation: '职业', company: '公司',
 			education: '学历', income: '收入', height: '身高', weight: '体重', hometown: '家乡', avatar: '头像',
 			intro: '自我介绍', album: '相册', interest: '兴趣标签', personality: '性格标签', mbti: 'MBTI',
 			preference: '择偶要求', realname: '实名认证', single_pledge: '单身承诺'
