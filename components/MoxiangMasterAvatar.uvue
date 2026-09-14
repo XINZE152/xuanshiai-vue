@@ -2,8 +2,9 @@
 	<!-- 墨相师·AI 引路人 角色立绘组件。
 	     state: idle 空闲 / thinking 思考中 / speaking 说话中 / listening 倾听中
 	     每个状态对应一张动作立绘,在对话页的回复头像和语音对话区使用。 -->
-	<view class="mm-avatar" :class="'mm-' + state">
+	<view class="mm-avatar" :class="['mm-' + state, 'mm-avatar-' + size]">
 		<view class="mm-halo"></view>
+		<view class="mm-frame"></view>
 		<image class="mm-figure" :src="avatarSrc" mode="aspectFit"></image>
 		<view class="mm-status-dot"></view>
 	</view>
@@ -12,11 +13,15 @@
 <script setup lang="uts">
 interface Props {
 	state?: string
+	size?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
-	state: 'idle'
+	state: 'idle',
+	size: 'large'
 })
+
+const size = computed(() : string => props.size == 'small' ? 'small' : 'large')
 
 const avatarSrc = computed(() : string => {
 	if (props.state == 'listening') return '/pagesSub/profileExtra/static/moxiang-master-listening.webp'
@@ -29,33 +34,36 @@ const avatarSrc = computed(() : string => {
 <style scoped>
 .mm-avatar {
 	position: relative;
-	width: 88px;
-	height: 88px;
+	width: 96px;
+	height: 96px;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
 }
 
-/* 光晕:状态色环 */
+.mm-avatar-small { width: 36px; height: 36px; }
+
+/* 光晕:状态色环 (方向二：暖陶土与砂金温润光泽) */
 .mm-halo {
 	position: absolute;
 	width: 80px;
 	height: 80px;
 	border-radius: 999px;
-	background: radial-gradient(circle at 50% 50%, rgba(180, 118, 43, 0.12), rgba(180, 118, 43, 0) 70%);
+	background: radial-gradient(circle at 50% 50%, rgba(156, 91, 66, 0.14), rgba(156, 91, 66, 0) 70%);
 	animation: mm-halo-breathe 3.6s ease-in-out infinite;
 }
+.mm-avatar-small .mm-halo { width: 34px; height: 34px; animation: none; opacity: 0.7; }
 .mm-thinking .mm-halo {
-	background: radial-gradient(circle at 50% 50%, rgba(92, 79, 61, 0.15), rgba(92, 79, 61, 0) 70%);
+	background: radial-gradient(circle at 50% 50%, rgba(194, 159, 104, 0.18), rgba(194, 159, 104, 0) 70%);
 	animation-duration: 2s;
 }
 .mm-speaking .mm-halo {
-	background: radial-gradient(circle at 50% 50%, rgba(201, 123, 87, 0.2), rgba(201, 123, 87, 0) 70%);
+	background: radial-gradient(circle at 50% 50%, rgba(156, 91, 66, 0.22), rgba(156, 91, 66, 0) 70%);
 	animation-duration: 1.4s;
 }
 .mm-listening .mm-halo {
-	background: radial-gradient(circle at 50% 50%, rgba(78, 125, 91, 0.18), rgba(78, 125, 91, 0) 70%);
+	background: radial-gradient(circle at 50% 50%, rgba(125, 68, 48, 0.2), rgba(125, 68, 48, 0) 70%);
 	animation-duration: 1.8s;
 }
 @keyframes mm-halo-breathe {
@@ -66,11 +74,22 @@ const avatarSrc = computed(() : string => {
 /* 立绘主体:AI 动漫角色形象 PNG */
 .mm-figure {
 	position: relative;
-	width: 80px;
-	height: 80px;
+	width: 82px;
+	height: 82px;
 	border-radius: 999px;
 	z-index: 1;
 }
+.mm-avatar-small .mm-figure { width: 30px; height: 30px; }
+
+.mm-frame {
+	position: absolute;
+	width: 88px;
+	height: 88px;
+	border: 1px solid rgba(156, 91, 66, 0.28);
+	border-radius: 999px;
+	z-index: 1;
+}
+.mm-avatar-small .mm-frame { width: 34px; height: 34px; border-color: rgba(156, 91, 66, 0.22); }
 
 /* 状态指示点 */
 .mm-status-dot {
@@ -80,19 +99,20 @@ const avatarSrc = computed(() : string => {
 	width: 8px;
 	height: 8px;
 	border-radius: 999px;
-	background: #9A8C77;
+	background: #9C5B42;
 	z-index: 2;
 }
+.mm-avatar-small .mm-status-dot { top: 1px; right: 1px; width: 6px; height: 6px; }
 .mm-thinking .mm-status-dot {
-	background: #5C4F3D;
+	background: #C29F68;
 	animation: mm-dot-blink 1.2s ease-in-out infinite;
 }
 .mm-speaking .mm-status-dot {
-	background: #C97B57;
+	background: #9C5B42;
 	animation: mm-dot-blink 0.8s ease-in-out infinite;
 }
 .mm-listening .mm-status-dot {
-	background: #4E7D5B;
+	background: #7D4430;
 	animation: mm-dot-pulse 1s ease-in-out infinite;
 }
 @keyframes mm-dot-blink {

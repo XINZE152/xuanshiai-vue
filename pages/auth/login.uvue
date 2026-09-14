@@ -321,7 +321,7 @@
 
 	const handleFirstLogin = () => {
 		if (!agreementChecked.value) return
-		uni.navigateTo({ url: '/pagesSub/userExtra/onboarding/profile' })
+		uni.navigateTo({ url: '/pages/auth/register' })
 	}
 </script>
 

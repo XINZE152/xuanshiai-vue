@@ -62,17 +62,6 @@
 					<text class="completion-reminder-copy">{{ discoveryError }}</text>
 					<view class="completion-gate-button" @tap="loadHomeDiscovery"><text>重新加载</text></view>
 				</view>
-				<view v-else-if="profileCompletionError != ''" class="completion-reminder completion-reminder-error">
-					<text class="completion-reminder-title">资料状态暂时无法读取</text>
-					<text class="completion-reminder-copy">{{ profileCompletionError }}，仍可浏览公开推荐。</text>
-					<view class="completion-gate-button" @tap="loadHomeDiscovery"><text>重新加载</text></view>
-				</view>
-				<view v-else-if="profileCompletionLoaded && profileCompletion < 100" class="completion-reminder">
-					<text class="completion-reminder-title">资料完善度 {{ profileCompletion }}%</text>
-					<text class="completion-reminder-copy">完善资料后能获得更有参考价值的推荐；现在也可继续浏览。</text>
-					<view class="completion-gate-progress"><view class="completion-gate-fill" :style="{ width: profileCompletion + '%' }"></view></view>
-					<navigator class="completion-gate-button" url="/pagesSub/userExtra/user/edit" hover-class="none"><text>去完善资料</text></navigator>
-				</view>
 				<view v-if="recommendUsers.length === 0 && discoveryError == ''" class="completion-gate">
 					<text class="completion-gate-title">暂时没有新的推荐</text>
 					<text class="completion-gate-copy">我们正在更新公开推荐资料，请稍后再来看看。</text>
@@ -700,6 +689,26 @@
 			</view>
 		</view>
 
+		<!-- 当前推荐用户的资料分享：布局与“我的-推荐给好友”保持一致 -->
+		<view v-if="profileShareVisible" class="invite-share-mask" @tap="closeProfileShare">
+			<view class="invite-share-sheet" @tap.stop>
+				<view class="invite-share-handle"></view>
+				<text class="invite-share-title">分享 Ta 的资料</text>
+				<view class="invite-share-options">
+					<view class="invite-share-option" @tap="shareProfileToFriend">
+						<view class="invite-share-option-icon invite-share-option-icon-green"><text class="invite-share-symbol">↗</text></view>
+						<text class="invite-share-option-label">发送给朋友</text>
+					</view>
+					<view class="invite-share-option" @tap="goProfilePoster">
+						<view class="invite-share-option-icon invite-share-option-icon-gold"><text class="invite-share-symbol">▧</text></view>
+						<text class="invite-share-option-label">生成海报</text>
+					</view>
+				</view>
+				<text class="invite-share-note">仅展示 Ta 已授权公开的资料与认证状态。</text>
+				<view class="invite-share-cancel" @tap="closeProfileShare"><text>取消</text></view>
+			</view>
+		</view>
+
 <!-- 自定义底部导航栏 -->
 
 <XsaTabBar />
@@ -722,8 +731,8 @@
 </template>
 
 <script setup lang="uts">
-	const systemInfo = uni.getSystemInfoSync()
-	const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
+	const windowInfo = uni.getWindowInfo()
+	const statusBarHeight = windowInfo.statusBarHeight != null ? windowInfo.statusBarHeight : 20
 
 	import XsaSheet from '@/components/XsaSheet.uvue'
 	import XsaModal from '@/components/XsaModal.uvue'
@@ -735,10 +744,9 @@
 	import { getEmotionLabSummary } from '@/api/emotionLab.uts'
 	import { guardRealName } from '@/utils/realNameGate.uts'
 	import { likeUser, blockUser, unblockUser, saveAiAvatarProfileSnapshot } from '@/api'
-	import { getDiscoveryRecommendations, getDiscoveryPlaza, getDynamicList, getDynamicDetail, getUserDetail, getOwnProfile, getProfileCompletion } from '@/api'
+	import { getDiscoveryRecommendations, getDiscoveryPlaza, getDynamicList, getDynamicDetail, getUserDetail, getOwnProfile } from '@/api'
 	import { getMembershipPackages } from '@/api/discovery.uts'
 	import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
-	import locationJson from '@/data/location.json'
 	import {
 		recordProfileView,
 		resetDailyIfNeeded,
@@ -836,11 +844,6 @@
 	const locationTextByCityCode = (rawCode: any): string => {
 		const cityCode = rawCode != null ? '' + rawCode : ''
 		if (cityCode == '') return '未填写'
-		const provinces = Array.isArray(locationJson) ? locationJson as any[] : []
-		for (const province of provinces) {
-			const cities = Array.isArray(province.city) ? province.city as any[] : []
-			for (const city of cities) if ('' + city.code == cityCode) return province.name + ' ' + city.name
-		}
 		return cityCode
 	}
 	const basicInfoRows = computed(() => [
@@ -922,9 +925,6 @@
 
 	// ========== 推荐页过滤 + 配额 ==========
 	const recommendUsers = ref<any[]>([])
-	const profileCompletion = ref(0)
-	const profileCompletionLoaded = ref(false)
-	const profileCompletionError = ref('')
 	const discoveryError = ref('')
 	const squareUsers = ref<any[]>([])
 	const squareTotal = ref(0)
@@ -1005,33 +1005,7 @@
 		if (currentIndex >= 0) recommendUsers.value.splice(currentIndex, 1, enriched)
 		recommendBackground.value = resolveMediaUrl(profile.background_wall)
 	}
-	const loadProfileCompletion = async (): Promise<boolean> => {
-		profileCompletionLoaded.value = false
-		profileCompletionError.value = ''
-		const response = await getProfileCompletion()
-		if (response.success && response.data != null) {
-			const data = response.data as any
-			const score = Number(data.score != null ? data.score : data.completion_score)
-			if (!isNaN(score)) {
-				profileCompletion.value = Math.max(0, Math.min(100, score))
-				profileCompletionLoaded.value = true
-				return true
-			}
-		}
-		const profileRes = await getOwnProfile()
-		if (profileRes.success && profileRes.data != null) {
-			const score = Number((profileRes.data as any).completion_score)
-			if (!isNaN(score)) {
-				profileCompletion.value = Math.max(0, Math.min(100, score))
-				profileCompletionLoaded.value = true
-				return true
-			}
-		}
-		profileCompletionError.value = '请检查登录状态和网络后重试'
-		return false
-	}
 	const loadHomeDiscovery = async () => {
-		await loadProfileCompletion()
 		discoveryError.value = ''
 		const recommendRes = await getDiscoveryRecommendations({ page: 1, page_size: 20 })
 		if (recommendRes != null && recommendRes.success && recommendRes.data != null) {
@@ -1316,7 +1290,25 @@
 		return photos != null && photos.length > 0 ? '' + photos[0] : ''
 	})
 	const viewAllMoments = () => { goUserDetailAnchored(recommendUserId.value, 'anchor-moments') }
-	const shareProfile = () => { showToast('已生成分享入口') }
+	const profileShareVisible = ref(false)
+	const shareProfile = () => { profileShareVisible.value = true }
+	const closeProfileShare = () => { profileShareVisible.value = false }
+	const shareProfileToFriend = () => {
+		profileShareVisible.value = false
+		showToast('已准备好分享内容')
+	}
+	const goProfilePoster = () => {
+		const userId = recommendUserId.value
+		profileShareVisible.value = false
+		if (userId <= 0) {
+			showToast('当前用户资料不可用')
+			return
+		}
+		uni.navigateTo({
+			url: '/pagesSub/profileExtra/my-posters?userId=' + userId,
+			fail: () => { showToast('海报页面打开失败，请重试') }
+		})
+	}
 	const likedUserIds = ref([] as number[])
 	const isLiked = (userId: number): boolean => likedUserIds.value.indexOf(Number(userId)) >= 0
 	const onLike = async (userId: number = 0) => {
@@ -1355,8 +1347,8 @@
 			}
 		}
 		resetDailyIfNeeded()
-		loadHomeDiscovery()
-		loadMembershipPlans()
+		if (getAccessToken() != '') loadHomeDiscovery()
+		if (getAccessToken() != '') loadMembershipPlans()
 	})
 
 	onShow(() => {
@@ -1370,7 +1362,7 @@
 			uni.removeStorageSync('xsa_skip_welcome_once')
 			welcomeVisible.value = false
 		}
-		if (!welcomeVisible.value) loadHomeDiscovery()
+		if (!welcomeVisible.value && getAccessToken() != '') loadHomeDiscovery()
 	})
 </script>
 
@@ -1718,8 +1710,6 @@
 .completion-gate-mark { width: 128rpx; height: 128rpx; display: flex; align-items: center; justify-content: center; border: 10rpx solid var(--accent); border-radius: 50%; color: var(--accent-dark); font-size: 30rpx; font-weight: 800; box-sizing: border-box; }
 .completion-gate-title { margin-top: 32rpx; color: var(--text-primary); font-size: 32rpx; font-weight: 700; }
 .completion-gate-copy { margin-top: 18rpx; color: var(--text-secondary); font-size: 25rpx; line-height: 1.7; }
-.completion-gate-progress { width: 100%; height: 12rpx; margin-top: 36rpx; overflow: hidden; border-radius: 6rpx; background-color: var(--bg-card-soft); }
-.completion-gate-fill { height: 100%; border-radius: 6rpx; background-color: var(--accent); }
 .completion-gate-button { width: 100%; height: 88rpx; margin-top: 36rpx; display: flex; align-items: center; justify-content: center; border-radius: 44rpx; background-color: var(--accent); color: var(--text-inverse); font-size: 28rpx; font-weight: 700; }
 /* 屏蔽/举报行 */
 .block-row { display: flex; flex-direction: row; justify-content: center; align-items: center; width: 100%; padding: 16rpx 0 8rpx 0; }
@@ -1738,6 +1728,90 @@
 .blocked-user-info text:last-child { font-size: 12px; color: var(--muted); }
 .unblock-button { padding: 10px 8px; border: 2px solid var(--accent2); border-radius: 6px; color: var(--accent2); font-size: 12px; white-space: nowrap; }
 .block-back-button { height: 48px; margin-top: 22px; border-radius: 24px; display: flex; align-items: center; justify-content: center; background: linear-gradient(90deg, var(--accent), var(--accent2)); color: var(--text-invert); font-size: 18px; font-weight: 800; }
+
+/* 资料分享弹窗：复用个人中心的双选项底部面板布局 */
+.invite-share-mask {
+	position: fixed;
+	z-index: 80;
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: calc(72px + env(safe-area-inset-bottom));
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-end;
+	background-color: rgba(12, 19, 19, 0.68);
+}
+.invite-share-sheet {
+	width: 100%;
+	padding: 24rpx 32rpx 26rpx;
+	border-radius: 28rpx 28rpx 0 0;
+	background-color: var(--warm);
+	box-sizing: border-box;
+}
+.invite-share-handle {
+	width: 64rpx;
+	height: 6rpx;
+	margin: 0 auto 32rpx;
+	border-radius: var(--radius-full);
+	background-color: var(--line);
+}
+.invite-share-title {
+	display: block;
+	margin-bottom: 28rpx;
+	color: var(--text-primary);
+	font-size: 30rpx;
+	font-weight: 600;
+}
+.invite-share-options { display: flex; flex-direction: row; gap: 24rpx; }
+.invite-share-option {
+	flex: 1;
+	height: 220rpx;
+	padding: 20rpx 8rpx;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid var(--accent);
+	border-radius: 24rpx;
+	background-color: var(--surface);
+	box-sizing: border-box;
+}
+.invite-share-option + .invite-share-option { border-color: var(--gold); background-color: var(--match-paper); }
+.invite-share-option:active { transform: scale(0.98); }
+.invite-share-option-icon {
+	width: 72rpx;
+	height: 72rpx;
+	margin-bottom: 20rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: var(--radius-full);
+	font-size: 34rpx;
+}
+.invite-share-option-icon-green { color: var(--accent2); background-color: var(--accent-bg); }
+.invite-share-option-icon-gold { color: var(--gold); background-color: var(--paper); }
+.invite-share-symbol { line-height: 1; }
+.invite-share-option-label { color: var(--text-primary); font-size: 26rpx; font-weight: 600; }
+.invite-share-note {
+	display: block;
+	margin: 28rpx 4rpx 24rpx;
+	color: var(--text-muted);
+	font-size: 20rpx;
+	line-height: 1.5;
+	text-align: center;
+}
+.invite-share-cancel {
+	height: 72rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: var(--radius-full);
+	background-color: var(--paper);
+	color: var(--accent2);
+	font-size: 24rpx;
+}
+.invite-share-cancel:active { transform: scale(0.99); }
 /* 底部操作栏 */
 
 .ai-float-btn { z-index: 55; bottom: 360rpx; }

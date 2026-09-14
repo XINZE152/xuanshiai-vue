@@ -203,6 +203,9 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 	// discover: all / mbti / alumni
 	const currentTab = ref('discover')
 	const currentFilter = ref('all')
+	const COMMUNITY_ENTRY_TARGET_KEY = 'xsa-community-entry-target'
+	const communityMounted = ref(false)
+	const hasShown = ref(false)
 	const loading = ref(false)
 	const loadError = ref('')
 	const hasMore = ref(true)
@@ -258,19 +261,41 @@ const cityName = ref('')
 			]
 	})
 
-onMounted(async () => {
+	const consumeEntryTarget = (): boolean => {
+		let target = ''
+		try {
+			target = '' + uni.getStorageSync(COMMUNITY_ENTRY_TARGET_KEY)
+			if (target != '') uni.removeStorageSync(COMMUNITY_ENTRY_TARGET_KEY)
+		} catch (e) {
+			console.error(e)
+		}
+		if (target != 'follow-all') return false
+		currentTab.value = 'follow'
+		currentFilter.value = 'all'
+		bannerIndex.value = 0
+		dynamicList.value = []
+		return true
+	}
+
+	onMounted(async () => {
+		consumeEntryTarget()
 			await loadCity()
-			loadDynamics(true)
+			await loadDynamics(true)
 			loadTopics()
 			loadActivity()
 			loadBanners()
 			loadUnread()
+			communityMounted.value = true
 		})
 
 	onShow(() => {
+		const firstShow = !hasShown.value
+		hasShown.value = true
+		const targeted = consumeEntryTarget()
 		loadUnread()
+		if (firstShow || !communityMounted.value) return
 		// 从资料页喜欢用户返回后，关注流需要刷新
-		if (currentTab.value === 'follow') {
+		if (targeted || currentTab.value === 'follow') {
 			reload()
 		}
 	})

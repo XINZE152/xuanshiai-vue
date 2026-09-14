@@ -1,0 +1,1690 @@
+/**
+ * 墨相海报 Canvas 绘制引擎
+ * 遵循 DESIGN.md 东方雅致「墨相心帖」视觉语言
+ * 严守脱敏铁律：绝不绘制用户真实姓名、手机号、公司与精确地址
+ *
+ * 画布上的每一处内容都只有两个来源：主题装饰文案（诗意短句、英文标）与
+ * MoxiangPosterData 携带的真实脱敏数据。渲染层不预设任何「看起来像指标」的
+ * 假数值——此前各主题内联的四维百分比是写死的常量，会被用户读成自己的画像
+ * 结论，属事实性失真，故整体移除，改为回落真实数据（详见 drawRightInsightColumn）。
+ * 依恋风格文案统一走 utils/moxiang-badge.uts，不在此处复制第二份映射。
+ */
+
+import { attachmentStyleLabel } from '@/utils/moxiang-badge.uts'
+
+export interface MoxiangPosterData {
+  personaTitle: string
+  personaTags: string[]
+  attachmentStyle: string
+  attachmentSummary: string
+  highlights: string[]
+  boundaries: string[]
+  masterMessage: string
+  nickname?: string
+  ageText?: string
+  cityText?: string
+  verifiedBadge?: string
+}
+
+export interface MoxiangPosterTheme {
+  key: string
+  name: string
+  accentColor: string
+  desc: string
+  /** 朱砂方印底色（DESIGN.md「Moxiang / 墨相心帖与海报视觉规范」登记的印章 token）。 */
+  sealBg: string
+  /** 印章印文色。 */
+  sealTextColor: string
+}
+
+export const MOXIANG_POSTER_THEMES: MoxiangPosterTheme[] = [
+  {
+    key: 'mood',
+    name: '情绪频率',
+    accentColor: '#9C8DBB',
+    desc: '暮紫落日 · 星海心频',
+    sealBg: '#A8383B',
+    sealTextColor: '#FDF6F2'
+  },
+  {
+    key: 'profile',
+    name: '风格档案',
+    accentColor: '#4C767E',
+    desc: '黛青晨曦 · 雏菊微光',
+    sealBg: '#C03639',
+    sealTextColor: '#FFF8F5'
+  },
+  {
+    key: 'poem',
+    name: '心相诗笺',
+    accentColor: '#2B4A5C',
+    desc: '墨夜孤月 · 纸鹤浮花',
+    sealBg: '#D4B170',
+    sealTextColor: '#2A2118'
+  },
+  {
+    key: 'relationship',
+    name: '能量图谱',
+    accentColor: '#C07886',
+    desc: '落霞双星 · 灵魂共振',
+    sealBg: '#A8383B',
+    sealTextColor: '#FDF6F2'
+  }
+]
+
+export function getThemeByKey(key: string): MoxiangPosterTheme {
+  let targetKey = key
+  if (targetKey == 'qianyan') targetKey = 'mood'
+  else if (targetKey == 'yuebai') targetKey = 'profile'
+  else if (targetKey == 'shendai') targetKey = 'poem'
+
+  for (let i = 0; i < MOXIANG_POSTER_THEMES.length; i++) {
+    if (MOXIANG_POSTER_THEMES[i].key == targetKey) {
+      return MOXIANG_POSTER_THEMES[i]
+    }
+  }
+  return MOXIANG_POSTER_THEMES[0]
+}
+
+export function getRandomThemeKey(excludeKey: string = ''): string {
+  const available = MOXIANG_POSTER_THEMES.filter(t => t.key != excludeKey)
+  if (available.length == 0) return MOXIANG_POSTER_THEMES[0].key
+  const randomIndex = Math.floor(Math.random() * available.length)
+  return available[randomIndex].key
+}
+
+/**
+ * 依恋风格文案统一走 utils/moxiang-badge.uts 的唯一一份映射，
+ * 避免「安全型」/「安全型依恋」两套文案再次分叉；未知编码返回空串由调用方隐藏。
+ */
+function formatAttachmentStyle(style: string): string {
+  return attachmentStyleLabel(style)
+}
+
+function drawRoundedRect(
+  ctx: any,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number
+) {
+  ctx.beginPath()
+  ctx.moveTo(x + radius, y)
+  ctx.lineTo(x + width - radius, y)
+  ctx.arc(x + width - radius, y + radius, radius, -Math.PI / 2, 0)
+  ctx.lineTo(x + width, y + height - radius)
+  ctx.arc(x + width - radius, y + height - radius, radius, 0, Math.PI / 2)
+  ctx.lineTo(x + radius, y + height)
+  ctx.arc(x + radius, y + height - radius, radius, Math.PI / 2, Math.PI)
+  ctx.lineTo(x, y + radius)
+  ctx.arc(x + radius, y + radius, radius, Math.PI, -Math.PI / 2)
+  ctx.closePath()
+}
+
+// 行首禁则：这些标点不得出现在行首，换行时回拉到上一行（悬挂标点）。
+// 否则「……做自己。」会在「。」处断行，末行只剩一个孤零零的句点。
+const NO_LINE_START_CHARS = '。，、；：？！）】》」』〉·…'
+
+function wrapTextLines(
+  ctx: any,
+  text: string,
+  maxWidth: number
+): string[] {
+  const lines: string[] = []
+  if (text == '') return lines
+  let currentLine = ''
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charAt(i)
+    const testLine = currentLine + char
+    const metrics = ctx.measureText(testLine)
+    const testWidth = metrics != null && metrics.width != null ? metrics.width : testLine.length * 14
+    if (testWidth > maxWidth && currentLine != '') {
+      if (NO_LINE_START_CHARS.indexOf(char) >= 0) {
+        // 标点跟随上一行：随它略微出格，也不让句读落在行首（含全串末字）。
+        currentLine = testLine
+      } else {
+        lines.push(currentLine)
+        currentLine = char
+      }
+    } else {
+      currentLine = testLine
+    }
+  }
+  if (currentLine != '') lines.push(currentLine)
+  return lines
+}
+
+function safeCreateLinearGradient(ctx: any, x0: number, y0: number, x1: number, y1: number, fallback: string): any {
+  if (typeof ctx.createLinearGradient === 'function') {
+    return ctx.createLinearGradient(x0, y0, x1, y1)
+  }
+  return {
+    addColorStop: (_stop: number, _color: string) => {},
+    toString: () => fallback
+  }
+}
+
+function safeCreateRadialGradient(ctx: any, x0: number, y0: number, r0: number, x1: number, y1: number, r1: number, fallback: string): any {
+  if (typeof ctx.createRadialGradient === 'function') {
+    return ctx.createRadialGradient(x0, y0, r0, x1, y1, r1)
+  }
+  return {
+    addColorStop: (_stop: number, _color: string) => {},
+    toString: () => fallback
+  }
+}
+
+function drawStarTwinkles(ctx: any, stars: number[][]) {
+  for (let i = 0; i < stars.length; i++) {
+    const st = stars[i]
+    ctx.fillStyle = `rgba(255, 255, 255, ${st[2]})`
+    ctx.beginPath()
+    ctx.arc(st[0], st[1], st[3], 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+function drawFourPointStar(ctx: any, cx: number, cy: number, size: number, color: string) {
+  ctx.fillStyle = color
+  ctx.beginPath()
+  ctx.moveTo(cx, cy - size)
+  ctx.lineTo(cx + size * 0.28, cy - size * 0.28)
+  ctx.lineTo(cx + size, cy)
+  ctx.lineTo(cx + size * 0.28, cy + size * 0.28)
+  ctx.lineTo(cx, cy + size)
+  ctx.lineTo(cx - size * 0.28, cy + size * 0.28)
+  ctx.lineTo(cx - size, cy)
+  ctx.lineTo(cx - size * 0.28, cy - size * 0.28)
+  ctx.closePath()
+  ctx.fill()
+}
+
+function drawCelestialOrbit(ctx: any, cx: number, cy: number, r: number, starAngle: number, color: string) {
+  ctx.strokeStyle = color
+  ctx.lineWidth = 0.8
+  ctx.beginPath()
+  ctx.arc(cx, cy, r, 0, Math.PI * 2)
+  ctx.stroke()
+
+  const sx = cx + r * Math.cos(starAngle)
+  const sy = cy + r * Math.sin(starAngle)
+  drawFourPointStar(ctx, sx, sy, 5, 'rgba(255, 255, 255, 0.95)')
+}
+
+function drawSunReflectionWaves(ctx: any, seaY: number, orbX: number, waveColor: string) {
+  ctx.fillStyle = waveColor
+  for (let y = seaY + 6; y < seaY + 160; y += 8) {
+    const diff = y - seaY
+    const waveW = Math.max(12, 180 - diff * 0.95)
+    drawRoundedRect(ctx, orbX - waveW / 2, y, waveW, 2, 1)
+    ctx.fill()
+  }
+}
+
+function drawLighthouse(ctx: any, x: number, y: number, color: string) {
+  ctx.fillStyle = color
+  ctx.beginPath()
+  ctx.moveTo(x - 4, y + 26)
+  ctx.lineTo(x + 4, y + 26)
+  ctx.lineTo(x + 3, y + 6)
+  ctx.lineTo(x - 3, y + 6)
+  ctx.closePath()
+  ctx.fill()
+
+  drawRoundedRect(ctx, x - 5, y + 2, 10, 4, 1)
+  ctx.fill()
+  ctx.beginPath()
+  ctx.arc(x, y + 1, 2.5, 0, Math.PI * 2)
+  ctx.fill()
+
+  ctx.fillStyle = 'rgba(255, 245, 210, 0.9)'
+  ctx.beginPath()
+  ctx.arc(x, y + 4, 1.5, 0, Math.PI * 2)
+  ctx.fill()
+}
+
+function drawSolitaryWoman(ctx: any, x: number, y: number, dressColor: string, hairColor: string) {
+  ctx.fillStyle = hairColor
+  ctx.beginPath()
+  ctx.arc(x, y, 7, 0, Math.PI * 2)
+  ctx.fill()
+
+  ctx.beginPath()
+  ctx.moveTo(x - 5, y - 2)
+  ctx.lineTo(x - 12, y + 14)
+  ctx.lineTo(x - 4, y + 10)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.fillStyle = dressColor
+  ctx.beginPath()
+  ctx.moveTo(x - 3, y + 6)
+  ctx.lineTo(x + 6, y + 14)
+  ctx.lineTo(x + 18, y + 36)
+  ctx.lineTo(x - 14, y + 36)
+  ctx.lineTo(x - 6, y + 16)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'
+  ctx.beginPath()
+  ctx.moveTo(x - 4, y + 18)
+  ctx.lineTo(x + 10, y + 36)
+  ctx.lineTo(x - 10, y + 36)
+  ctx.closePath()
+  ctx.fill()
+}
+
+function drawLovingCouple(ctx: any, x: number, y: number) {
+  // 女子 (左侧)
+  ctx.fillStyle = '#1D1420'
+  ctx.beginPath()
+  ctx.arc(x - 8, y, 6.5, 0, Math.PI * 2)
+  ctx.fill()
+
+  ctx.beginPath()
+  ctx.moveTo(x - 12, y - 1)
+  ctx.lineTo(x - 18, y + 16)
+  ctx.lineTo(x - 9, y + 12)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.fillStyle = '#E8DDD0'
+  ctx.beginPath()
+  ctx.moveTo(x - 10, y + 6)
+  ctx.lineTo(x - 1, y + 12)
+  ctx.lineTo(x + 4, y + 34)
+  ctx.lineTo(x - 22, y + 34)
+  ctx.closePath()
+  ctx.fill()
+
+  // 男子 (右侧，肩靠肩)
+  ctx.fillStyle = '#15101A'
+  ctx.beginPath()
+  ctx.arc(x + 9, y - 2, 7, 0, Math.PI * 2)
+  ctx.fill()
+
+  ctx.fillStyle = '#4A3D4C'
+  ctx.beginPath()
+  ctx.moveTo(x + 4, y + 5)
+  ctx.lineTo(x + 16, y + 6)
+  ctx.lineTo(x + 22, y + 34)
+  ctx.lineTo(x - 1, y + 34)
+  ctx.closePath()
+  ctx.fill()
+}
+
+function drawPinkBlossoms(ctx: any, originX: number, originY: number) {
+  const petals = [
+    [0, 0], [-10, 8], [8, 12], [-18, 22], [4, 26], [16, 18], [-8, 38], [12, 42]
+  ]
+  for (let i = 0; i < petals.length; i++) {
+    const px = originX + petals[i][0]
+    const py = originY + petals[i][1]
+
+    ctx.strokeStyle = '#3A2E35'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(px, py)
+    ctx.lineTo(px + 4, py + 14)
+    ctx.stroke()
+
+    ctx.fillStyle = 'rgba(248, 194, 202, 0.9)'
+    ctx.beginPath()
+    ctx.arc(px, py, 3.5, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = 'rgba(255, 235, 238, 0.95)'
+    ctx.beginPath()
+    ctx.arc(px + 1, py - 1, 2, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+function drawWhiteDaisies(ctx: any, originX: number, originY: number) {
+  const daisies = [
+    [0, 0], [18, -12], [-14, 18], [24, 14], [8, 34], [-22, 38], [34, 46], [16, 56]
+  ]
+  for (let i = 0; i < daisies.length; i++) {
+    const dx = originX + daisies[i][0]
+    const dy = originY + daisies[i][1]
+
+    ctx.strokeStyle = '#2B3E36'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(dx, dy)
+    ctx.lineTo(dx - 3, dy + 20)
+    ctx.stroke()
+
+    ctx.fillStyle = 'rgba(255, 253, 246, 0.95)'
+    for (let a = 0; a < 6; a++) {
+      const angle = (Math.PI * 2 / 6) * a
+      const petalX = dx + 3.8 * Math.cos(angle)
+      const petalY = dy + 3.8 * Math.sin(angle)
+      ctx.beginPath()
+      ctx.arc(petalX, petalY, 2.2, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    ctx.fillStyle = '#F5BE38'
+    ctx.beginPath()
+    ctx.arc(dx, dy, 2.2, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+function drawOrigamiCranes(ctx: any, cranes: number[][]) {
+  for (let i = 0; i < cranes.length; i++) {
+    const cx = cranes[i][0]
+    const cy = cranes[i][1]
+    const s = cranes[i][2]
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
+    ctx.beginPath()
+    ctx.moveTo(cx, cy)
+    ctx.lineTo(cx - s * 6, cy - s * 7)
+    ctx.lineTo(cx - s * 2, cy + s * 2)
+    ctx.lineTo(cx, cy + s * 3)
+    ctx.lineTo(cx + s * 4, cy - s * 5)
+    ctx.lineTo(cx + s * 6, cy - s * 2)
+    ctx.closePath()
+    ctx.fill()
+
+    ctx.fillStyle = 'rgba(255, 245, 230, 0.3)'
+    ctx.beginPath()
+    ctx.moveTo(cx, cy + 4)
+    ctx.lineTo(cx - s * 4, cy + s * 6)
+    ctx.lineTo(cx + s * 4, cy + s * 6)
+    ctx.closePath()
+    ctx.fill()
+  }
+}
+
+function drawChinesePavilion(ctx: any, x: number, y: number) {
+  ctx.fillStyle = '#222C33'
+  ctx.beginPath()
+  ctx.moveTo(x - 18, y + 10)
+  ctx.lineTo(x - 24, y + 6)
+  ctx.lineTo(x - 14, y)
+  ctx.lineTo(x + 14, y)
+  ctx.lineTo(x + 24, y + 6)
+  ctx.lineTo(x + 18, y + 10)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.fillRect(x - 12, y + 10, 3, 14)
+  ctx.fillRect(x + 9, y + 10, 3, 14)
+
+  ctx.fillStyle = 'rgba(255, 225, 140, 0.85)'
+  ctx.fillRect(x - 7, y + 12, 14, 10)
+}
+
+function drawSailboat(ctx: any, x: number, y: number) {
+  ctx.fillStyle = '#261F2C'
+  ctx.beginPath()
+  ctx.moveTo(x - 7, y + 3)
+  ctx.lineTo(x + 7, y + 3)
+  ctx.lineTo(x + 4, y + 7)
+  ctx.lineTo(x - 5, y + 7)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.fillStyle = '#FFFFFF'
+  ctx.beginPath()
+  ctx.moveTo(x, y + 2)
+  ctx.lineTo(x, y - 10)
+  ctx.lineTo(x + 6, y + 1)
+  ctx.closePath()
+  ctx.fill()
+}
+
+function drawCrescentMoon(ctx: any, cx: number, cy: number, r: number) {
+  ctx.fillStyle = 'rgba(255, 245, 215, 0.9)'
+  ctx.beginPath()
+  ctx.arc(cx, cy, r, -Math.PI * 0.4, Math.PI * 0.6)
+  ctx.arc(cx - r * 0.4, cy - r * 0.2, r * 0.88, Math.PI * 0.6, -Math.PI * 0.4, true)
+  ctx.closePath()
+  ctx.fill()
+}
+
+function truncateToWidth(ctx: any, text: string, maxWidth: number): string {
+  const metrics = ctx.measureText(text)
+  const width = metrics != null && metrics.width != null ? metrics.width : text.length * 12
+  if (width <= maxWidth) return text
+  let out = ''
+  for (let i = 0; i < text.length; i++) {
+    const next = out + text.charAt(i)
+    const probe = ctx.measureText(next + '…')
+    const nextWidth = probe != null && probe.width != null ? probe.width : (next.length + 1) * 12
+    if (nextWidth > maxWidth) break
+    out = next
+  }
+  return out == '' ? '' : out + '…'
+}
+
+/** 直辖市：省级即市级，没有中间层级，只能保留第一段。 */
+const MUNICIPALITIES: string[] = ['北京市', '上海市', '天津市', '重庆市']
+
+/**
+ * 常驻城市脱敏：白名单只允许「省市级中文，不带区县精确地址」，而后端 `residence_display`
+ * 会连区县一起拼出来（实测 `北京市 东城区`、`浙江省 杭州市 西湖区`），页面直传就会把
+ * 精确居住片区印在对外分享的海报上。这里在绘制边界统一收紧：
+ *   1. 直辖市只留市名；
+ *   2. 其余最多保留「省 + 市」两段；
+ *   3. 末段若仍是区/县级（排除「地区」这类地级名），继续丢弃。
+ * 放在绘制层而不是调用层，是为了让任何调用方都拿不到越界结果。
+ */
+export function sanitizeCityText(raw: string): string {
+  if (raw == null) return ''
+  const parts: string[] = []
+  const segments = raw.split(' ')
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i].trim()
+    if (segment != '' && segment != '市辖区' && segment != '县') parts.push(segment)
+  }
+  if (parts.length == 0) return ''
+
+  const isMunicipality = MUNICIPALITIES.indexOf(parts[0]) >= 0
+  const kept = isMunicipality ? parts.slice(0, 1) : parts.slice(0, 2)
+
+  if (kept.length > 1) {
+    const last = kept[kept.length - 1]
+    const endsWithDistrict = (last.endsWith('区') && !last.endsWith('地区')) || last.endsWith('县')
+    if (endsWithDistrict) kept.pop()
+  }
+  return kept.join(' ')
+}
+
+/**
+ * 身份行：昵称 · 年龄段 · 常驻城市 · 认证徽章。
+ * 全部来自调用方按白名单取回的脱敏字段，任一缺失只省略该段，不用占位符补齐。
+ */
+function buildIdentityLine(data: MoxiangPosterData): string {
+  const parts: string[] = []
+  if (data.nickname != null && data.nickname != '') parts.push(data.nickname)
+  if (data.ageText != null && data.ageText != '') parts.push(data.ageText)
+  if (data.cityText != null && data.cityText != '') parts.push(sanitizeCityText(data.cityText))
+  if (data.verifiedBadge != null && data.verifiedBadge != '') parts.push(data.verifiedBadge)
+  return parts.join(' · ')
+}
+
+function filterNonEmpty(items: string[]): string[] {
+  const out: string[] = []
+  if (items == null) return out
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    if (item != null && item != '') out.push(item)
+  }
+  return out
+}
+
+function drawPosterHeader(
+  ctx: any,
+  w: number,
+  title: string,
+  enTitle: string,
+  leftPoemTop: string[],
+  leftPoemBottom: string[],
+  rightHeader: string[],
+  rightEn: string,
+  data: MoxiangPosterData
+) {
+  ctx.textAlign = 'right'
+  ctx.font = '12px sans-serif'
+  ctx.fillStyle = 'rgba(255, 245, 240, 0.85)'
+  let rY = 46
+  for (let i = 0; i < rightHeader.length; i++) {
+    ctx.fillText(rightHeader[i], w - 44, rY)
+    rY += 18
+  }
+
+  ctx.font = '9px sans-serif'
+  ctx.fillStyle = 'rgba(255, 245, 240, 0.55)'
+  ctx.fillText(rightEn, w - 44, rY + 8)
+
+  ctx.fillStyle = '#FFFFFF'
+  ctx.font = '36px serif'
+  ctx.textAlign = 'left'
+  ctx.fillText(title, 44, 82)
+
+  ctx.font = '10px sans-serif'
+  ctx.fillStyle = 'rgba(255, 245, 240, 0.8)'
+  ctx.fillText(enTitle, 46, 108)
+
+  // 特质标签：真实 persona_tags，排在标题下方作为刊头短题，不再占用右侧数据列。
+  // 固定单行并按宽度截断——标签行数一旦浮动，会把左栏诗句推入日月轮区域。
+  const tags = filterNonEmpty(data.personaTags)
+  let poemStartY = 146
+  if (tags.length > 0) {
+    ctx.font = '11px sans-serif'
+    ctx.fillStyle = 'rgba(255, 226, 214, 0.92)'
+    ctx.fillText(truncateToWidth(ctx, tags.join(' · '), 232), 46, 126)
+    poemStartY = 149
+  }
+
+  ctx.font = '12px sans-serif'
+  ctx.fillStyle = 'rgba(255, 248, 242, 0.88)'
+  let lY = poemStartY
+  for (let i = 0; i < leftPoemTop.length; i++) {
+    ctx.fillText(leftPoemTop[i], 44, lY)
+    lY += 20
+  }
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(44, lY + 6)
+  ctx.lineTo(76, lY + 6)
+  ctx.stroke()
+  lY += 26
+
+  ctx.font = '11px sans-serif'
+  ctx.fillStyle = 'rgba(255, 240, 235, 0.78)'
+  for (let i = 0; i < leftPoemBottom.length; i++) {
+    ctx.fillText(leftPoemBottom[i], 44, lY)
+    lY += 18
+  }
+}
+
+/** 截断到宽度并强制加省略号——用于「后面还有内容但版面放不下」的收尾行。 */
+function clipToWidthWithEllipsis(ctx: any, text: string, maxWidth: number): string {
+  let out = ''
+  for (let i = 0; i < text.length; i++) {
+    const probe = out + text.charAt(i) + '…'
+    const metrics = ctx.measureText(probe)
+    const width = metrics != null && metrics.width != null ? metrics.width : probe.length * 12
+    if (width > maxWidth) break
+    out += text.charAt(i)
+  }
+  return out == '' ? '…' : out + '…'
+}
+
+/**
+ * 取前 maxLines 行；若原文更长，给末行补省略号。
+ * 版面对文本做「最多 N 行」限制时必须走这里，避免截断被读成句子自然结束。
+ */
+function takeLinesWithEllipsis(ctx: any, lines: string[], maxLines: number, maxWidth: number): string[] {
+  const out: string[] = []
+  for (let i = 0; i < Math.min(lines.length, maxLines); i++) out.push(lines[i])
+  if (lines.length > out.length && out.length > 0) {
+    out[out.length - 1] = clipToWidthWithEllipsis(ctx, out[out.length - 1], maxWidth)
+  }
+  return out
+}
+
+/**
+ * 撰写右栏的一个真实数据小节（标题 + 逐条），并按 maxY 收口。
+ *
+ * 后端产出的真实文本远长于版面（实测单条可达 40 余字、两条就要占 11 行），
+ * 而右栏可用高度只到日月轮上沿。早期版本按内容无条件向下画，真实数据下会
+ * 压到日月轮上，浅色文字落在浅色圆盘上直接看不见。这里改为「先量可用行数、
+ * 再决定画几条」：放不下的条目不再绘制，被截断的最后一行强制带省略号，
+ * 让读者知道还有内容，而不是被悄悄砍掉。
+ */
+function drawRightList(
+  ctx: any,
+  rightEdge: number,
+  maxWidth: number,
+  startY: number,
+  maxY: number,
+  title: string,
+  items: string[]
+): number {
+  const lineHeight = 16
+  const titleAdvance = 24
+  // 标题必须至少带得动一行正文才画：否则会出现「相处安全边界」下面空无一物的
+  // 有标无内容小节（真实长文本下实测过），读者会以为这一栏坏了。
+  if (items.length == 0 || startY + titleAdvance + lineHeight > maxY) return startY
+
+  ctx.textAlign = 'right'
+  ctx.font = '11px sans-serif'
+  ctx.fillStyle = 'rgba(255, 240, 230, 0.62)'
+  ctx.fillText(title, rightEdge, startY)
+
+  let rowY = startY + titleAdvance
+  for (let i = 0; i < items.length; i++) {
+    const maxLines = Math.floor((maxY - rowY) / lineHeight)
+    if (maxLines < 1) break
+
+    const lines = wrapTextLines(ctx, items[i], maxWidth - 12)
+    const shown = takeLinesWithEllipsis(ctx, lines, maxLines, maxWidth - 12)
+
+    ctx.fillStyle = 'rgba(255, 226, 214, 0.95)'
+    ctx.beginPath()
+    ctx.arc(rightEdge - maxWidth + 3, rowY - 4, 2, 0, Math.PI * 2)
+    ctx.fill()
+
+    ctx.font = '11px sans-serif'
+    ctx.fillStyle = 'rgba(255, 248, 242, 0.9)'
+    for (let j = 0; j < shown.length; j++) {
+      ctx.fillText(shown[j], rightEdge, rowY + j * lineHeight)
+    }
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(rightEdge - maxWidth, rowY + shown.length * lineHeight)
+    ctx.lineTo(rightEdge, rowY + shown.length * lineHeight)
+    ctx.stroke()
+
+    rowY += shown.length * lineHeight + 14
+  }
+  return rowY
+}
+
+/**
+ * 右侧「知遇眼中的你」专栏：相处闪光点 + 相处安全边界，均来自真实画像。
+ * 此前这一栏是写死的四维百分比，会被读成用户自己的画像结论，属事实性失真；
+ * 画像覆盖度百分比不在海报展示白名单内，故整栏移除，改由真实文本填充。
+ * 两类内容都没有时整栏留白——宁可留白，不编内容。
+ * maxY 为日月轮上沿，右栏一律在其上方收口，不与圆盘交叠。
+ */
+function drawRightColumn(ctx: any, w: number, maxY: number, data: MoxiangPosterData) {
+  const rightEdge = w - 44
+  const maxWidth = 142
+  const afterHighlights = drawRightList(
+    ctx, rightEdge, maxWidth, 148, maxY, '相处闪光点', filterNonEmpty(data.highlights)
+  )
+  drawRightList(
+    ctx, rightEdge, maxWidth, afterHighlights + 12, maxY, '相处安全边界', filterNonEmpty(data.boundaries)
+  )
+}
+
+/**
+ * 中心金句区：人格标题（真实 persona_title）主导，下挂依恋透视微标与诠释。
+ * 标题缺失时回落主题自带的诗意句，保持版面完整。
+ * maxY 为日月轮可见下沿（各主题水天线），整块内容据此垂直居中并夹紧，
+ * 避免文字压到地平线以下的深色山峦/水面而失去可读性。
+ */
+function drawCenterQuote(
+  ctx: any,
+  orbX: number,
+  orbY: number,
+  orbRadius: number,
+  maxY: number,
+  defaultLine1: string,
+  defaultLine2: string,
+  enSub: string,
+  data: MoxiangPosterData
+) {
+  const maxWidth = orbRadius * 1.55
+  // 标题与依恋诠释都按「最多两行」排版；超出的部分必须带省略号，否则读者会以为
+  // 句子本来到这里就结束了（实测真实诠释 48 字，两行截断后会丢掉「和安心的伴侣。」）。
+  const titleAll = data.personaTitle != '' ? wrapTextLines(ctx, data.personaTitle, maxWidth) : []
+  const titleLines = takeLinesWithEllipsis(ctx, titleAll, 2, maxWidth)
+  if (titleLines.length == 0) {
+    titleLines.push(defaultLine1)
+    if (defaultLine2 != '') titleLines.push(defaultLine2)
+  }
+
+  const attachment = data.attachmentStyle != '' ? formatAttachmentStyle(data.attachmentStyle) : ''
+  const summaryWidth = orbRadius * 1.75
+  const summaryAll = (attachment != '' && data.attachmentSummary != '')
+    ? wrapTextLines(ctx, data.attachmentSummary, summaryWidth)
+    : []
+  const summaryLines = takeLinesWithEllipsis(ctx, summaryAll, 2, summaryWidth)
+
+  // 先量后画：按各行步进量算出整块高度，再决定起始基线。
+  const titleAdvance = 20
+  const enAdvance = 18
+  const badgeAdvance = attachment != '' ? 21 : 0
+  const summaryAdvance = 14
+  let advance = titleLines.length * titleAdvance + 6 + enAdvance + badgeAdvance + summaryLines.length * summaryAdvance
+  const lastAdvance = summaryLines.length > 0 ? summaryAdvance : (attachment != '' ? badgeAdvance : enAdvance)
+  const visualHeight = advance - lastAdvance + 24
+
+  let baseline = orbY - visualHeight / 2 + 12
+  const topBound = orbY - orbRadius + 30
+  if (baseline - 12 < topBound) baseline = topBound + 12
+  // 山脊峰值最高可高出水天线约 30px，留出余量后再夹紧，否则末行会压在深色山上。
+  const bottomBound = maxY - 34
+  if (baseline + (advance - lastAdvance) + 12 > bottomBound) {
+    baseline = bottomBound - (advance - lastAdvance) - 12
+  }
+
+  ctx.textAlign = 'center'
+  let y = baseline
+
+  ctx.fillStyle = '#2A202A'
+  ctx.font = '15px serif'
+  for (let i = 0; i < titleLines.length; i++) {
+    ctx.fillText(titleLines[i], orbX, y)
+    y += titleAdvance
+  }
+
+  y += 6
+  ctx.font = '9px sans-serif'
+  ctx.fillStyle = '#6E5268'
+  ctx.fillText(enSub, orbX, y)
+  y += enAdvance
+
+  if (attachment != '') {
+    const badgeWidth = ctx.measureText(attachment).width + 20
+    ctx.fillStyle = 'rgba(168, 56, 59, 0.16)'
+    drawRoundedRect(ctx, orbX - badgeWidth / 2, y - 11, badgeWidth, 17, 8.5)
+    ctx.fill()
+
+    ctx.font = '10px sans-serif'
+    ctx.fillStyle = '#8C3A3E'
+    ctx.fillText(attachment, orbX, y + 1)
+    y += badgeAdvance
+
+    for (let i = 0; i < summaryLines.length; i++) {
+      ctx.font = '10px sans-serif'
+      ctx.fillStyle = '#4A3A46'
+      ctx.fillText(summaryLines[i], orbX, y)
+      y += summaryAdvance
+    }
+  }
+}
+
+/**
+ * 落款区：左侧身份行（脱敏白名单内），右侧主题书法短句。
+ * 知遇寄语（真实 master_message）优先于书法短句，字数超限按宽度截断。
+ */
+/**
+ * 朱砂方印（40×40 方角印，印文「知遇墨相」）。
+ * DESIGN.md「Moxiang / 墨相心帖与海报视觉规范」登记的落款元素，
+ * 底色与印文色随主题走 theme.sealBg / theme.sealTextColor。
+ */
+function drawCinnabarSeal(ctx: any, x: number, y: number, theme: MoxiangPosterTheme) {
+  const size = 40
+
+  ctx.fillStyle = theme.sealBg
+  drawRoundedRect(ctx, x, y, size, size, 6)
+  ctx.fill()
+
+  ctx.textAlign = 'center'
+  ctx.fillStyle = theme.sealTextColor
+  ctx.font = '11px serif'
+  ctx.fillText('知遇', x + size / 2, y + 16)
+  ctx.fillText('墨相', x + size / 2, y + 31)
+}
+
+function drawBottomFooter(
+  ctx: any,
+  w: number,
+  h: number,
+  leftTagline: string,
+  leftEn: string,
+  rightArtisticLine1: string,
+  rightArtisticLine2: string,
+  rightEn: string,
+  data: MoxiangPosterData,
+  theme: MoxiangPosterTheme
+) {
+  ctx.textAlign = 'left'
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.88)'
+  ctx.font = '12px sans-serif'
+  ctx.fillText(leftTagline, 44, h - 86)
+  ctx.font = '9px sans-serif'
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.52)'
+  ctx.fillText(leftEn, 44, h - 70)
+
+  // 落款始终绘制：身份行（白名单内，可为空）在前，平台名固定在后。
+  // 身份接口失败时只留平台名，不留空档也不补占位符。
+  // 昵称过长时按宽度截断身份段，但平台名「宣誓爱知遇心相」必须完整保留——
+  // 直接整行截断会把品牌名切掉，落款就失去了意义。
+  const identityLine = buildIdentityLine(data)
+  ctx.textAlign = 'left'
+  ctx.font = '11px sans-serif'
+  ctx.fillStyle = 'rgba(255, 235, 225, 0.8)'
+  const brandSuffix = ' · 宣誓爱知遇心相'
+  const brandWidth = ctx.measureText(brandSuffix).width
+  const imprint = identityLine != ''
+    ? truncateToWidth(ctx, identityLine, 340 - brandWidth) + brandSuffix
+    : '宣誓爱知遇心相'
+  ctx.fillText(imprint, 44, h - 50)
+
+  // 右下角方印占位：右栏文本整体左移并上抬，与印章并排而不叠压。
+  const sealSize = 40
+  const sealX = w - 44 - sealSize
+  const sealY = h - 78
+  const textRight = sealX - 14
+
+  ctx.textAlign = 'right'
+  ctx.fillStyle = '#FFF5EE'
+
+  // 知遇寄语优先：真实文案，最多两行，超出宽度以省略号截断。
+  if (data.masterMessage != '') {
+    ctx.font = '13px serif'
+    const lines = wrapTextLines(ctx, data.masterMessage, 220)
+    if (lines.length <= 2) {
+      for (let i = 0; i < lines.length; i++) {
+        ctx.fillText(lines[i], textRight, h - 106 + i * 20)
+      }
+    } else {
+      // 放不下两行时只保留首行并截断，避免把寄语压成小字破坏右侧留白。
+      ctx.fillText(truncateToWidth(ctx, data.masterMessage, 220), textRight, h - 98)
+    }
+  } else {
+    ctx.font = '22px serif'
+    if (rightArtisticLine2 != '') {
+      ctx.fillText(rightArtisticLine1, textRight, h - 102)
+      ctx.fillText(rightArtisticLine2, textRight, h - 78)
+    } else {
+      ctx.fillText(rightArtisticLine1, textRight, h - 90)
+    }
+  }
+
+  ctx.strokeStyle = 'rgba(255, 230, 210, 0.5)'
+  ctx.lineWidth = 1.2
+  ctx.beginPath()
+  ctx.moveTo(textRight - 76, h - 70)
+  ctx.lineTo(textRight, h - 70)
+  ctx.stroke()
+
+  ctx.font = '9px sans-serif'
+  ctx.fillStyle = 'rgba(255, 245, 240, 0.65)'
+  ctx.fillText(rightEn, textRight, h - 52)
+
+  drawCinnabarSeal(ctx, sealX, sealY, theme)
+}
+
+function drawMoodPoster(
+  ctx: any,
+  data: MoxiangPosterData,
+  w: number,
+  h: number,
+  theme: MoxiangPosterTheme
+) {
+  // 1. 天空背景渐变 (暮紫暮色 -> 晚霞霞粉 -> 幽蓝海面)
+  const skyGrad = safeCreateLinearGradient(ctx, 0, 0, 0, h, '#4E6190')
+  skyGrad.addColorStop(0, '#4E6190')
+  skyGrad.addColorStop(0.28, '#86729F')
+  skyGrad.addColorStop(0.52, '#D79BB0')
+  skyGrad.addColorStop(0.68, '#F0C2C8')
+  skyGrad.addColorStop(0.76, '#282335')
+  skyGrad.addColorStop(1, '#15131E')
+  ctx.fillStyle = skyGrad
+  ctx.fillRect(0, 0, w, h)
+
+  // 2. 星空与星轨
+  drawCelestialOrbit(ctx, 360, 110, 140, Math.PI * 1.8, 'rgba(255, 255, 255, 0.28)')
+  const stars = [
+    [120, 80, 0.85, 1.2], [280, 60, 0.9, 1.5], [480, 100, 0.7, 1.0], [520, 50, 0.9, 1.6],
+    [190, 160, 0.6, 1.0], [310, 260, 0.75, 1.4], [310, 310, 0.65, 1.2]
+  ]
+  drawStarTwinkles(ctx, stars)
+
+  // 3. 巨型柔光日轮
+  const orbX = 300
+  const orbY = 475
+  const orbRadius = 145
+
+  const glowGrad = safeCreateRadialGradient(ctx, orbX, orbY, orbRadius * 0.5, orbX, orbY, orbRadius * 1.6, 'rgba(255, 245, 235, 0.45)')
+  glowGrad.addColorStop(0, 'rgba(255, 245, 235, 0.45)')
+  glowGrad.addColorStop(0.5, 'rgba(255, 220, 210, 0.2)')
+  glowGrad.addColorStop(1, 'rgba(215, 155, 176, 0)')
+  ctx.fillStyle = glowGrad
+  ctx.beginPath()
+  ctx.arc(orbX, orbY, orbRadius * 1.6, 0, Math.PI * 2)
+  ctx.fill()
+
+  const orbGrad = safeCreateRadialGradient(ctx, orbX, orbY - 30, 20, orbX, orbY, orbRadius, '#FFFDF8')
+  orbGrad.addColorStop(0, '#FFFDF8')
+  orbGrad.addColorStop(0.7, '#FFE8E0')
+  orbGrad.addColorStop(1, '#F7CAD2')
+  ctx.fillStyle = orbGrad
+  ctx.beginPath()
+  ctx.arc(orbX, orbY, orbRadius, 0, Math.PI * 2)
+  ctx.fill()
+
+  // 4. 海面与水波微光
+  const seaY = 560
+  const seaGrad = safeCreateLinearGradient(ctx, 0, seaY, 0, h, '#A77395')
+  seaGrad.addColorStop(0, '#A77395')
+  seaGrad.addColorStop(0.18, '#C68FA5')
+  seaGrad.addColorStop(0.35, '#56425E')
+  seaGrad.addColorStop(1, '#1A1826')
+  ctx.fillStyle = seaGrad
+  ctx.fillRect(0, seaY, w, h - seaY)
+
+  drawSunReflectionWaves(ctx, seaY, orbX, 'rgba(255, 248, 235, 0.42)')
+
+  // 5. 远山与近礁剪影
+  ctx.fillStyle = '#635373'
+  ctx.beginPath()
+  ctx.moveTo(0, 560)
+  ctx.lineTo(80, 535)
+  ctx.lineTo(190, 550)
+  ctx.lineTo(260, 530)
+  ctx.lineTo(340, 560)
+  ctx.lineTo(0, 560)
+  ctx.fill()
+
+  ctx.beginPath()
+  ctx.moveTo(380, 560)
+  ctx.lineTo(470, 535)
+  ctx.lineTo(550, 520)
+  ctx.lineTo(600, 545)
+  ctx.lineTo(600, 560)
+  ctx.lineTo(380, 560)
+  ctx.fill()
+
+  // 右侧小岛与灯塔
+  drawLighthouse(ctx, 535, 528, '#211C2B')
+  ctx.fillStyle = '#211C2B'
+  ctx.beginPath()
+  ctx.moveTo(480, 560)
+  ctx.lineTo(535, 544)
+  ctx.lineTo(600, 556)
+  ctx.lineTo(600, 560)
+  ctx.lineTo(480, 560)
+  ctx.fill()
+
+  // 左下巨大礁石近景
+  ctx.fillStyle = '#171420'
+  ctx.beginPath()
+  ctx.moveTo(0, 590)
+  ctx.lineTo(60, 560)
+  ctx.lineTo(120, 610)
+  ctx.lineTo(240, 680)
+  ctx.lineTo(320, 750)
+  ctx.lineTo(600, 830)
+  ctx.lineTo(600, h)
+  ctx.lineTo(0, h)
+  ctx.closePath()
+  ctx.fill()
+
+  // 飞鸟剪影 (归巢飞向落日)
+  const birds = [[160, 420], [185, 412], [220, 430], [240, 418], [270, 425]]
+  ctx.fillStyle = '#3D3043'
+  for (let i = 0; i < birds.length; i++) {
+    const bx = birds[i][0]
+    const by = birds[i][1]
+    ctx.beginPath()
+    ctx.arc(bx - 4, by, 6, Math.PI, Math.PI * 1.7)
+    ctx.arc(bx + 4, by, 6, Math.PI * 1.3, 0)
+    ctx.fill()
+  }
+
+  // 独坐礁石女子剪影
+  drawSolitaryWoman(ctx, 185, 665, '#EFE4E0', '#1C1522')
+
+  // 礁石丛微粉野花
+  drawPinkBlossoms(ctx, 45, h - 140)
+
+  // 6. 排版体系
+  drawPosterHeader(
+    ctx,
+    w,
+    '情绪频率',
+    'M Y   I N N E R   L A N D S C A P E',
+    ['在纷繁的世界里', '我听见自己', '也看见温柔的光'],
+    ['不同的情绪', '共同构成', '独一无二的我'],
+    ['情绪是内心的天气', '也是我与世界相遇的方式'],
+    'A MORE PEACEFUL AND BRIGHTER ME',
+    data
+  )
+
+  drawRightColumn(ctx, w, orbY - orbRadius + 8, data)
+
+  drawCenterQuote(
+    ctx,
+    orbX,
+    orbY,
+    orbRadius,
+    seaY,
+    '我们终将在自我理解里相遇。',
+    '',
+    'MEET A BRIGHTER SELF SOMEDAY',
+    data
+  )
+
+  drawBottomFooter(
+    ctx,
+    w,
+    h,
+    '情绪流动 · 生活也在发光',
+    'SAME FEELINGS, A RICHER LIFE',
+    '温柔地成为自己',
+    '',
+    'BE KIND · BE YOU',
+    data,
+    theme
+  )
+}
+
+// -------------------------------------------------------------
+// 模版 2: 《风格档案》(Profile) - 黛青晨曦 · 雏菊微光
+// -------------------------------------------------------------
+function drawProfilePoster(
+  ctx: any,
+  data: MoxiangPosterData,
+  w: number,
+  h: number,
+  theme: MoxiangPosterTheme
+) {
+  // 1. 雅致青碧黛蓝天空渐变 (青碧黛蓝 -> 晨雾苍翠 -> 霞杏微光 -> 墨暗海岩)
+  const skyGrad = safeCreateLinearGradient(ctx, 0, 0, 0, h, '#1E3C42')
+  skyGrad.addColorStop(0, '#1E3C42')
+  skyGrad.addColorStop(0.26, '#2D555D')
+  skyGrad.addColorStop(0.48, '#4E787F')
+  skyGrad.addColorStop(0.68, '#D8B3A0')
+  skyGrad.addColorStop(0.76, '#1A292D')
+  skyGrad.addColorStop(1, '#111B1E')
+  ctx.fillStyle = skyGrad
+  ctx.fillRect(0, 0, w, h)
+
+  // 2. 星辰与风格星轨
+  drawCelestialOrbit(ctx, 360, 110, 138, Math.PI * 1.82, 'rgba(240, 255, 255, 0.32)')
+  const stars = [
+    [110, 75, 0.85, 1.2], [270, 50, 0.9, 1.5], [490, 85, 0.8, 1.1], [530, 45, 0.92, 1.6],
+    [175, 150, 0.7, 1.1], [305, 245, 0.8, 1.4], [315, 290, 0.65, 1.2]
+  ]
+  drawStarTwinkles(ctx, stars)
+
+  // 3. 巨型柔暖满月
+  const orbX = 305
+  const orbY = 478
+  const orbRadius = 144
+
+  const glowGrad = safeCreateRadialGradient(ctx, orbX, orbY, orbRadius * 0.45, orbX, orbY, orbRadius * 1.65, 'rgba(255, 250, 235, 0.42)')
+  glowGrad.addColorStop(0, 'rgba(255, 250, 235, 0.42)')
+  glowGrad.addColorStop(0.55, 'rgba(240, 218, 190, 0.22)')
+  glowGrad.addColorStop(1, 'rgba(216, 179, 160, 0)')
+  ctx.fillStyle = glowGrad
+  ctx.beginPath()
+  ctx.arc(orbX, orbY, orbRadius * 1.65, 0, Math.PI * 2)
+  ctx.fill()
+
+  const orbGrad = safeCreateRadialGradient(ctx, orbX - 25, orbY - 30, 20, orbX, orbY, orbRadius, '#FFFDF6')
+  orbGrad.addColorStop(0, '#FFFDF6')
+  orbGrad.addColorStop(0.65, '#FEF2DC')
+  orbGrad.addColorStop(0.9, '#F4DCBA')
+  orbGrad.addColorStop(1, '#E6C69C')
+  ctx.fillStyle = orbGrad
+  ctx.beginPath()
+  ctx.arc(orbX, orbY, orbRadius, 0, Math.PI * 2)
+  ctx.fill()
+
+  // 4. 黛青海面与月光水纹
+  const seaY = 562
+  const seaGrad = safeCreateLinearGradient(ctx, 0, seaY, 0, h, '#53757C')
+  seaGrad.addColorStop(0, '#53757C')
+  seaGrad.addColorStop(0.18, '#70939A')
+  seaGrad.addColorStop(0.38, '#324E55')
+  seaGrad.addColorStop(1, '#131E21')
+  ctx.fillStyle = seaGrad
+  ctx.fillRect(0, seaY, w, h - seaY)
+
+  drawSunReflectionWaves(ctx, seaY, orbX, 'rgba(255, 250, 230, 0.45)')
+
+  // 5. 远山剪影 (黛青薄雾)
+  ctx.fillStyle = '#48686F'
+  ctx.beginPath()
+  ctx.moveTo(0, 562)
+  ctx.lineTo(85, 532)
+  ctx.lineTo(195, 548)
+  ctx.lineTo(265, 528)
+  ctx.lineTo(345, 562)
+  ctx.lineTo(0, 562)
+  ctx.fill()
+
+  ctx.beginPath()
+  ctx.moveTo(375, 562)
+  ctx.lineTo(465, 534)
+  ctx.lineTo(545, 518)
+  ctx.lineTo(600, 542)
+  ctx.lineTo(600, 562)
+  ctx.lineTo(375, 562)
+  ctx.fill()
+
+  // 右侧海岛与灯塔
+  drawLighthouse(ctx, 528, 525, '#1A292C')
+  ctx.fillStyle = '#1A292C'
+  ctx.beginPath()
+  ctx.moveTo(475, 562)
+  ctx.lineTo(530, 542)
+  ctx.lineTo(600, 554)
+  ctx.lineTo(600, 562)
+  ctx.lineTo(475, 562)
+  ctx.fill()
+
+  // 左下巨大礁石前台
+  ctx.fillStyle = '#142023'
+  ctx.beginPath()
+  ctx.moveTo(0, 588)
+  ctx.lineTo(65, 558)
+  ctx.lineTo(125, 608)
+  ctx.lineTo(245, 678)
+  ctx.lineTo(325, 748)
+  ctx.lineTo(600, 828)
+  ctx.lineTo(600, h)
+  ctx.lineTo(0, h)
+  ctx.closePath()
+  ctx.fill()
+
+  // 独坐礁石女子剪影
+  drawSolitaryWoman(ctx, 192, 662, '#FAF3EE', '#141D20')
+
+  // 左前景丰富白色雏菊群落（黄蕊白瓣，呼应参考图）
+  drawWhiteDaisies(ctx, 50, h - 170)
+  drawWhiteDaisies(ctx, 105, h - 140)
+
+  // 6. 排版体系
+  drawPosterHeader(
+    ctx,
+    w,
+    '风格档案',
+    'P E R S O N A L   V I B E   P R O F I L E',
+    ['在喧嚣的生活里', '我开始认真地看向自己', '那些细碎的喜好与感受', '拼凑出独一无二的轮廓'],
+    ['不必急着成为谁', '在时光里慢慢沉淀', '让热爱生根，让日常发光', '我正在一点点，成为自己'],
+    ['收集情绪', '也收藏生活的柔软'],
+    'A KINDER TODAY · A BRIGHTER TOMORROW',
+    data
+  )
+
+  drawRightColumn(ctx, w, orbY - orbRadius + 8, data)
+
+  drawCenterQuote(
+    ctx,
+    orbX,
+    orbY,
+    orbRadius,
+    seaY,
+    '在缓慢靠近自己的路上，',
+    '我也渐渐拥有了风格。',
+    'MEET YOUR QUIETER SELF',
+    data
+  )
+
+  drawBottomFooter(
+    ctx,
+    w,
+    h,
+    '心绪流动 · 生活自有微光',
+    'A SOFTER LIFE',
+    '温柔地',
+    '成为自己',
+    'BE GENTLE · BE YOU',
+    data,
+    theme
+  )
+}
+
+// -------------------------------------------------------------
+// 模版 3: 《心相诗笺》(Poem) - 墨夜孤月 · 纸鹤浮花
+// -------------------------------------------------------------
+function drawPoemPoster(
+  ctx: any,
+  data: MoxiangPosterData,
+  w: number,
+  h: number,
+  theme: MoxiangPosterTheme
+) {
+  // 1. 深黛夜空水天渐变 (深黛墨蓝 -> 苍蓝夜色 -> 远山晨昏杏金 -> 澄澈夜水)
+  const skyGrad = safeCreateLinearGradient(ctx, 0, 0, 0, h, '#12202C')
+  skyGrad.addColorStop(0, '#12202C')
+  skyGrad.addColorStop(0.28, '#1B3142')
+  skyGrad.addColorStop(0.50, '#2D4B60')
+  skyGrad.addColorStop(0.68, '#C9A98F')
+  skyGrad.addColorStop(0.76, '#182733')
+  skyGrad.addColorStop(1, '#0E171E')
+  ctx.fillStyle = skyGrad
+  ctx.fillRect(0, 0, w, h)
+
+  // 2. 蛾眉月 (右上角精致金钩) 与星轨
+  drawCrescentMoon(ctx, 410, 62, 11)
+  drawCelestialOrbit(ctx, 360, 108, 140, Math.PI * 1.84, 'rgba(235, 245, 255, 0.3)')
+
+  const stars = [
+    [115, 70, 0.85, 1.2], [275, 48, 0.9, 1.4], [485, 92, 0.75, 1.1], [525, 42, 0.92, 1.5],
+    [180, 155, 0.7, 1.0], [308, 250, 0.78, 1.3], [312, 295, 0.65, 1.2]
+  ]
+  drawStarTwinkles(ctx, stars)
+
+  // 3. 巨型明澈皎月
+  const orbX = 300
+  const orbY = 482
+  const orbRadius = 143
+
+  const glowGrad = safeCreateRadialGradient(ctx, orbX, orbY, orbRadius * 0.45, orbX, orbY, orbRadius * 1.65, 'rgba(255, 248, 230, 0.42)')
+  glowGrad.addColorStop(0, 'rgba(255, 248, 230, 0.42)')
+  glowGrad.addColorStop(0.55, 'rgba(240, 212, 180, 0.22)')
+  glowGrad.addColorStop(1, 'rgba(201, 169, 143, 0)')
+  ctx.fillStyle = glowGrad
+  ctx.beginPath()
+  ctx.arc(orbX, orbY, orbRadius * 1.65, 0, Math.PI * 2)
+  ctx.fill()
+
+  const orbGrad = safeCreateRadialGradient(ctx, orbX - 20, orbY - 25, 20, orbX, orbY, orbRadius, '#FFFDF5')
+  orbGrad.addColorStop(0, '#FFFDF5')
+  orbGrad.addColorStop(0.65, '#FDF2DC')
+  orbGrad.addColorStop(0.9, '#EAD1A6')
+  orbGrad.addColorStop(1, '#D8BA8A')
+  ctx.fillStyle = orbGrad
+  ctx.beginPath()
+  ctx.arc(orbX, orbY, orbRadius, 0, Math.PI * 2)
+  ctx.fill()
+
+  // 4. 水墨湖面与月影清辉
+  const seaY = 564
+  const seaGrad = safeCreateLinearGradient(ctx, 0, seaY, 0, h, '#466072')
+  seaGrad.addColorStop(0, '#466072')
+  seaGrad.addColorStop(0.18, '#617D90')
+  seaGrad.addColorStop(0.38, '#2B3F4D')
+  seaGrad.addColorStop(1, '#111A20')
+  ctx.fillStyle = seaGrad
+  ctx.fillRect(0, seaY, w, h - seaY)
+
+  drawSunReflectionWaves(ctx, seaY, orbX, 'rgba(255, 248, 225, 0.48)')
+
+  // 5. 新水墨层峦烟雨
+  ctx.fillStyle = '#3F5868'
+  ctx.beginPath()
+  ctx.moveTo(0, 564)
+  ctx.lineTo(85, 536)
+  ctx.lineTo(195, 552)
+  ctx.lineTo(265, 532)
+  ctx.lineTo(345, 564)
+  ctx.lineTo(0, 564)
+  ctx.fill()
+
+  ctx.beginPath()
+  ctx.moveTo(375, 564)
+  ctx.lineTo(465, 536)
+  ctx.lineTo(545, 520)
+  ctx.lineTo(600, 544)
+  ctx.lineTo(600, 564)
+  ctx.lineTo(375, 564)
+  ctx.fill()
+
+  // 右侧传统水榭亭台（暖窗灯影）
+  drawChinesePavilion(ctx, 518, 542)
+  ctx.fillStyle = '#1D2A33'
+  ctx.beginPath()
+  ctx.moveTo(470, 564)
+  ctx.lineTo(520, 550)
+  ctx.lineTo(600, 558)
+  ctx.lineTo(600, 564)
+  ctx.lineTo(470, 564)
+  ctx.fill()
+
+  // 水面漂浮千纸鹤与花瓣
+  const cranes = [
+    [85, 638, 1.4],
+    [435, 684, 1.6],
+    [468, 652, 1.3],
+    [528, 742, 1.8]
+  ]
+  drawOrigamiCranes(ctx, cranes)
+
+  // 漫天与水面零落飞花（粉嫩轻落）
+  const airPetals = [
+    [210, 48, 3.5], [405, 210, 4.0], [435, 260, 3.5], [170, 440, 4.2], [540, 710, 3.8]
+  ]
+  ctx.fillStyle = 'rgba(248, 196, 206, 0.85)'
+  for (let i = 0; i < airPetals.length; i++) {
+    const ap = airPetals[i]
+    ctx.beginPath()
+    ctx.arc(ap[0], ap[1], ap[2], 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  // 左下嶙峋水墨礁石近景
+  ctx.fillStyle = '#152028'
+  ctx.beginPath()
+  ctx.moveTo(0, 588)
+  ctx.lineTo(65, 558)
+  ctx.lineTo(125, 608)
+  ctx.lineTo(245, 678)
+  ctx.lineTo(325, 748)
+  ctx.lineTo(600, 828)
+  ctx.lineTo(600, h)
+  ctx.lineTo(0, h)
+  ctx.closePath()
+  ctx.fill()
+
+  // 独坐沉思女子剪影
+  drawSolitaryWoman(ctx, 175, 665, '#F4EDE4', '#131D24')
+
+  // 前景细碎粉樱花枝
+  drawPinkBlossoms(ctx, 50, h - 145)
+
+  // 6. 排版体系
+  drawPosterHeader(
+    ctx,
+    w,
+    '心相诗笺',
+    'P O E M   O F   T H E   I N N E R   S E L F',
+    ['在喧嚣的世界里', '我依然愿意倾听内心的潮汐', '让柔软成为一种力量'],
+    ['把零散的情绪', '写成生活的诗笺', '在平凡的日子里', '珍藏每一份温柔的光'],
+    ['在纷扰的世界里', '收集柔软的自己'],
+    'STILLNESS LIVES WITHIN',
+    data
+  )
+
+  drawRightColumn(ctx, w, orbY - orbRadius + 8, data)
+
+  drawCenterQuote(
+    ctx,
+    orbX,
+    orbY,
+    orbRadius,
+    seaY,
+    '真正的温柔，',
+    '是仍然保有自己的潮汐。',
+    'A POEM WRITTEN BY THE HEART',
+    data
+  )
+
+  drawBottomFooter(
+    ctx,
+    w,
+    h,
+    '向内生长 · 慢慢拥有风景',
+    'A CALMER LIGHT',
+    '把心事',
+    '写成诗',
+    'WRITE YOUR SOUL',
+    data,
+    theme
+  )
+}
+
+// -------------------------------------------------------------
+// 模版 4: 《能量图谱》(Relationship) - 落霞双星 · 灵魂共振
+// -------------------------------------------------------------
+function drawRelationshipPoster(
+  ctx: any,
+  data: MoxiangPosterData,
+  w: number,
+  h: number,
+  theme: MoxiangPosterTheme
+) {
+  // 1. 晚霞落日双星暮色 (蓝紫暮空 -> 绯霞粉紫 -> 熔金海面)
+  const skyGrad = safeCreateLinearGradient(ctx, 0, 0, 0, h, '#253554')
+  skyGrad.addColorStop(0, '#253554')
+  skyGrad.addColorStop(0.25, '#404E72')
+  skyGrad.addColorStop(0.50, '#98667D')
+  skyGrad.addColorStop(0.68, '#E68A91')
+  skyGrad.addColorStop(0.76, '#261B29')
+  skyGrad.addColorStop(1, '#170E1A')
+  ctx.fillStyle = skyGrad
+  ctx.fillRect(0, 0, w, h)
+
+  // 2. 双星交织光环与星轨
+  drawCelestialOrbit(ctx, 340, 110, 140, Math.PI * 1.8, 'rgba(255, 235, 215, 0.35)')
+  drawCelestialOrbit(ctx, 380, 230, 120, Math.PI * 0.9, 'rgba(255, 220, 190, 0.25)')
+
+  // 交轨处璀璨四角星
+  drawFourPointStar(ctx, 368, 335, 6, 'rgba(255, 250, 235, 0.95)')
+
+  const stars = [
+    [118, 75, 0.88, 1.3], [270, 52, 0.92, 1.5], [495, 88, 0.8, 1.2], [535, 40, 0.95, 1.7],
+    [185, 150, 0.7, 1.1], [305, 255, 0.75, 1.4]
+  ]
+  drawStarTwinkles(ctx, stars)
+
+  // 3. 并蒂双辉日轮（两颗星体共振辉映，象征灵魂交汇）
+  // 背后伴星轮 (偏左上方)
+  const orb1X = 265
+  const orb1Y = 425
+  const orb1R = 105
+  const orb1Grad = safeCreateRadialGradient(ctx, orb1X, orb1Y, 15, orb1X, orb1Y, orb1R, 'rgba(255, 245, 225, 0.38)')
+  orb1Grad.addColorStop(0, 'rgba(255, 245, 225, 0.38)')
+  orb1Grad.addColorStop(0.65, 'rgba(255, 220, 190, 0.18)')
+  orb1Grad.addColorStop(1, 'rgba(230, 138, 145, 0)')
+  ctx.fillStyle = orb1Grad
+  ctx.beginPath()
+  ctx.arc(orb1X, orb1Y, orb1R, 0, Math.PI * 2)
+  ctx.fill()
+
+  // 主日轮 (居中偏右下方)
+  const orbX = 325
+  const orbY = 495
+  const orbRadius = 138
+
+  const glowGrad = safeCreateRadialGradient(ctx, orbX, orbY, orbRadius * 0.45, orbX, orbY, orbRadius * 1.65, 'rgba(255, 245, 230, 0.45)')
+  glowGrad.addColorStop(0, 'rgba(255, 245, 230, 0.45)')
+  glowGrad.addColorStop(0.55, 'rgba(255, 215, 185, 0.22)')
+  glowGrad.addColorStop(1, 'rgba(230, 138, 145, 0)')
+  ctx.fillStyle = glowGrad
+  ctx.beginPath()
+  ctx.arc(orbX, orbY, orbRadius * 1.65, 0, Math.PI * 2)
+  ctx.fill()
+
+  const orbGrad = safeCreateRadialGradient(ctx, orbX - 20, orbY - 25, 20, orbX, orbY, orbRadius, '#FFFDF8')
+  orbGrad.addColorStop(0, '#FFFDF8')
+  orbGrad.addColorStop(0.65, '#FFE9DC')
+  orbGrad.addColorStop(0.9, '#FBC8B2')
+  orbGrad.addColorStop(1, '#F3A69A')
+  ctx.fillStyle = orbGrad
+  ctx.beginPath()
+  ctx.arc(orbX, orbY, orbRadius, 0, Math.PI * 2)
+  ctx.fill()
+
+  // 4. 落霞海面与漫天熔金微波
+  const seaY = 566
+  const seaGrad = safeCreateLinearGradient(ctx, 0, seaY, 0, h, '#965E77')
+  seaGrad.addColorStop(0, '#965E77')
+  seaGrad.addColorStop(0.18, '#C47A89')
+  seaGrad.addColorStop(0.38, '#573347')
+  seaGrad.addColorStop(1, '#180E1A')
+  ctx.fillStyle = seaGrad
+  ctx.fillRect(0, seaY, w, h - seaY)
+
+  drawSunReflectionWaves(ctx, seaY, orbX, 'rgba(255, 245, 220, 0.48)')
+
+  // 5. 远山剪影 (暮霞暖紫)
+  ctx.fillStyle = '#6E485D'
+  ctx.beginPath()
+  ctx.moveTo(0, 566)
+  ctx.lineTo(85, 538)
+  ctx.lineTo(195, 554)
+  ctx.lineTo(265, 534)
+  ctx.lineTo(345, 566)
+  ctx.lineTo(0, 566)
+  ctx.fill()
+
+  ctx.beginPath()
+  ctx.moveTo(375, 566)
+  ctx.lineTo(465, 538)
+  ctx.lineTo(545, 522)
+  ctx.lineTo(600, 546)
+  ctx.lineTo(600, 566)
+  ctx.lineTo(375, 566)
+  ctx.fill()
+
+  // 海面远方轻舟微帆
+  drawSailboat(ctx, 405, 574)
+
+  // 右侧小岛与灯塔
+  drawLighthouse(ctx, 545, 526, '#261B29')
+  ctx.fillStyle = '#261B29'
+  ctx.beginPath()
+  ctx.moveTo(490, 566)
+  ctx.lineTo(545, 544)
+  ctx.lineTo(600, 556)
+  ctx.lineTo(600, 566)
+  ctx.lineTo(490, 566)
+  ctx.fill()
+
+  // 左下巨大礁石前台
+  ctx.fillStyle = '#1B121E'
+  ctx.beginPath()
+  ctx.moveTo(0, 588)
+  ctx.lineTo(65, 558)
+  ctx.lineTo(125, 608)
+  ctx.lineTo(245, 678)
+  ctx.lineTo(325, 748)
+  ctx.lineTo(600, 828)
+  ctx.lineTo(600, h)
+  ctx.lineTo(0, h)
+  ctx.closePath()
+  ctx.fill()
+
+  // 礁石上并肩而坐的情侣剪影（相互依偎共赏落霞）
+  drawLovingCouple(ctx, 168, 660)
+
+  // 礁石丛浪漫粉红野花
+  drawPinkBlossoms(ctx, 45, h - 142)
+
+  // 6. 排版体系
+  drawPosterHeader(
+    ctx,
+    w,
+    '能量图谱',
+    'E M O T I O N A L   S I G N A L   M A P',
+    ['在不同的轨迹里相遇', '是宇宙写下的温柔', '差异不是距离', '而是让彼此更完整的光'],
+    ['两个独立的灵魂', '在理解与尊重中靠近', '把各自的星光', '汇成更温柔的宇宙'],
+    ['不同的你我', '让世界多了一种美丽的正向可能'],
+    'DIFFERENT HEARTS · A BRIGHTER WORLD',
+    data
+  )
+
+  drawRightColumn(ctx, w, orbY - orbRadius + 8, data)
+
+  drawCenterQuote(
+    ctx,
+    orbX,
+    orbY,
+    orbRadius,
+    seaY,
+    '好的关系，不是占有彼此，',
+    '而是一起被光照亮。',
+    'TWO SOULS, A WARMER LIGHT',
+    data
+  )
+
+  drawBottomFooter(
+    ctx,
+    w,
+    h,
+    '关系有光 · 也有回声',
+    'A BRIGHTER US',
+    '在理解里',
+    '靠近',
+    'STAY KIND · STAY TRUE',
+    data,
+    theme
+  )
+}
+
+/**
+ * 绘制墨相海报至指定 canvas
+ * canvasId: canvas 的 id 属性值
+ * component: 组件实例（微信小程序内必传）
+ * data: 脱敏海报数据
+ * themeKey: 主题键名 ('mood' | 'profile' | 'poem' | 'relationship' 等)
+ * canvasWidth: 画布宽（默认 600）
+ * canvasHeight: 画布高（默认 940）
+ */
+export async function drawMoxiangPoster(
+  canvasId: string,
+  component: any,
+  data: MoxiangPosterData,
+  themeKey: string,
+  canvasWidth: number = 600,
+  canvasHeight: number = 940
+): Promise<string> {
+  const context: any = await new Promise<any>((resolve, reject) => {
+    uni.createCanvasContextAsync({
+      id: canvasId,
+      component: component,
+      success: (context: any) => resolve(context),
+      fail: (err: any) => reject(err)
+    })
+  })
+  return new Promise((resolve, reject) => {
+    const ctx = context.getContext('2d')
+    if (ctx == null) {
+      reject(new Error('无法创建 Canvas 上下文'))
+      return
+    }
+
+    const canvas = ctx.canvas
+    canvas.width = canvasWidth * 2
+    canvas.height = canvasHeight * 2
+    ctx.scale(2, 2)
+
+    const theme = getThemeByKey(themeKey)
+
+    if (theme.key == 'mood') {
+      drawMoodPoster(ctx, data, canvasWidth, canvasHeight, theme)
+    } else if (theme.key == 'profile') {
+      drawProfilePoster(ctx, data, canvasWidth, canvasHeight, theme)
+    } else if (theme.key == 'poem') {
+      drawPoemPoster(ctx, data, canvasWidth, canvasHeight, theme)
+    } else if (theme.key == 'relationship') {
+      drawRelationshipPoster(ctx, data, canvasWidth, canvasHeight, theme)
+    } else {
+      drawMoodPoster(ctx, data, canvasWidth, canvasHeight, theme)
+    }
+
+    const exportParams: any = {
+      canvas: canvas,
+      x: 0,
+      y: 0,
+      width: canvas.width,
+      height: canvas.height,
+      destWidth: canvasWidth * 2,
+      destHeight: canvasHeight * 2,
+      fileType: 'png',
+      quality: 1,
+      success: (res: any) => {
+        const path = String(res.tempFilePath ?? '')
+        if (path == '') reject(new Error('海报导出路径为空'))
+        else resolve(path)
+      },
+      fail: (err: any) => {
+        reject(err)
+      }
+    }
+    // #ifdef MP-WEIXIN
+    const query = uni.createSelectorQuery()
+    const scopedQuery = component != null ? query.in(component) : query
+    scopedQuery.select('#' + canvasId).fields({ node: true, size: true }).exec((res: any) => {
+      if (res == null || res.length == 0 || res[0] == null || res[0].node == null) {
+        reject(new Error('无法获取海报 Canvas 节点'))
+        return
+      }
+      exportParams.canvas = res[0].node
+      uni.canvasToTempFilePath(exportParams)
+    })
+    // #endif
+    // #ifndef MP-WEIXIN
+    uni.canvasToTempFilePath(exportParams, component)
+    // #endif
+  })
+}
+
+/**
+ * 保存临时文件至系统相册，并处理拒绝授权拦截引导
+ */
+export function savePosterToPhotos(filePath: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (filePath == '') {
+      uni.showToast({ title: '海报生成中，请稍候', icon: 'none' })
+      resolve(false)
+      return
+    }
+    uni.saveImageToPhotosAlbum({
+      filePath: filePath,
+      success: () => {
+        uni.showToast({ title: '已保存至手机相册', icon: 'success' })
+        resolve(true)
+      },
+      fail: (err: any) => {
+        const errMsg = String(err?.errMsg ?? '')
+        if (errMsg.indexOf('auth') >= 0 || errMsg.indexOf('deny') >= 0 || errMsg.indexOf('denied') >= 0) {
+          uni.showModal({
+            title: '授权提示',
+            content: '需要保存相册权限才能将海报存入手机相册，请在设置中开启权限。',
+            confirmText: '去设置',
+            success: (modalRes: any) => {
+              if (modalRes.confirm) {
+                uni.openSetting()
+              }
+            }
+          })
+        } else {
+          uni.showToast({ title: '保存失败，可长按图片保存', icon: 'none' })
+        }
+        resolve(false)
+      }
+    })
+  })
+}

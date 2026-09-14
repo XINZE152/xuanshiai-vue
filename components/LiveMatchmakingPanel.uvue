@@ -1,0 +1,230 @@
+<template>
+  <view class="live-panel">
+    <view class="live-panel-head"><view><text class="live-kicker">直播相亲</text><text class="live-title">认真见面，按自己的节奏参与</text></view><view class="live-refresh" @click="loadSessions"><text>刷新</text></view></view>
+    <view class="live-notice"><text class="live-notice-title">当前为直播控制面</text><text class="live-notice-copy">场次、预约、签到和状态已接入后端；音视频混流、录制与回放仍未开放。</text></view>
+    <view v-if="errorText != ''" class="live-error"><text>{{ errorText }}</text><view class="live-retry" @click="loadSessions"><text>重试</text></view></view>
+    <view v-else-if="loading" class="live-empty"><text>正在读取场次...</text></view>
+    <view v-else-if="sessions.length == 0" class="live-empty"><text>暂无可预约场次</text><text class="live-empty-copy">新的场次开放后会显示在这里。</text></view>
+    <view v-for="item in sessions" :key="item.id" class="live-session" :class="{ selected: selectedId == item.id }" @click="selectSession(item)">
+      <view class="live-session-top"><text class="live-session-status">{{ statusLabel(item.status) }}</text><text class="live-session-time">{{ formatTime(item.scheduled_at) }}</text></view>
+      <text class="live-session-title">{{ item.title }}</text><text class="live-session-meta">{{ item.city_code || '线上场次' }} · {{ item.max_stage_seats }} 个舞台席位</text><text v-if="item.rules_text" class="live-session-rules">{{ item.rules_text }}</text>
+    </view>
+    <view v-if="selected != null" class="live-actions">
+      <view class="live-detail-line"><text>场次状态</text><text class="live-detail-value">{{ statusLabel(selected.status) }}</text></view>
+      <view class="live-detail-line"><text>状态版本</text><text class="live-detail-value">{{ selected.state_version }}</text></view>
+      <view v-if="registration != null" class="live-registration"><text>我的状态：{{ registrationLabel }}</text><text v-if="registration.device_check_passed">设备确认已完成</text></view>
+      <view class="live-action-row">
+        <view v-if="canReserve" class="live-action primary" :class="{ disabled: actionBusy }" @click="reserve"><text>预约场次</text></view>
+        <view v-if="canConfirmDevice" class="live-action" :class="{ disabled: actionBusy }" @click="confirmDevice"><text>确认设备可用</text></view>
+        <view v-if="canCheckIn" class="live-action primary" :class="{ disabled: actionBusy }" @click="checkIn"><text>签到</text></view>
+        <view v-if="canLeaveStage" class="live-action" :class="{ disabled: actionBusy }" @click="leaveStage"><text>主动离场</text></view>
+        <view v-if="canCancelReservation" class="live-action danger" :class="{ disabled: actionBusy }" @click="cancelReservation"><text>取消预约</text></view>
+      </view>
+      <text v-if="actionHint != ''" class="live-action-hint">{{ actionHint }}</text>
+      <text v-if="socketState != ''" class="live-socket-state">{{ socketState }}</text>
+    </view>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { getLiveSessions, getLiveSession, getMyLiveReservation, reserveLiveSession, cancelLiveReservation, submitLiveDeviceCheck, checkInLiveSession, leaveLiveStage, connectLiveEvents, liveStatusLabel, liveErrorMessage } from '@/api'
+import { getAccessToken } from '@/api/config.uts'
+const sessions = ref<any[]>([])
+const selected = ref<any | null>(null)
+const registration = ref<any | null>(null)
+const selectedId = ref(0)
+const loading = ref(false)
+const actionBusy = ref(false)
+const errorText = ref('')
+const socketState = ref('')
+const stageStatus = ref('')
+const lastVersion = ref(0)
+let socket: any = null
+let reconnectTimer: any = null
+let socketGeneration = 0
+let selectionSequence = 0
+let reconnectAttempts = 0
+let disposed = false
+const statusLabel = (status: string): string => liveStatusLabel(status)
+const formatTime = (value: any): string => value == null ? '时间待定' : ('' + value).replace('T', ' ').substring(0, 16)
+const registrationLabel = computed((): string => {
+  if (registration.value == null) return ''
+  const labels: any = { RESERVED: '已预约', CHECKED_IN: '已签到', CANCELLED: '已取消' }
+  const status = '' + registration.value.status
+  return labels[status] != null ? labels[status] : status
+})
+const canReserve = computed((): boolean => selected.value != null && (selected.value.status == 'SCHEDULED' || selected.value.status == 'CHECK_IN') && (registration.value == null || registration.value.status == 'CANCELLED'))
+const canConfirmDevice = computed((): boolean => registration.value != null && registration.value.status == 'RESERVED' && registration.value.device_check_passed != true)
+const canCheckIn = computed((): boolean => selected.value != null && selected.value.status == 'CHECK_IN' && registration.value != null && registration.value.status == 'RESERVED' && registration.value.device_check_passed == true)
+const canCancelReservation = computed((): boolean => registration.value != null && registration.value.status == 'RESERVED')
+const canLeaveStage = computed((): boolean => stageStatus.value == 'ON_STAGE')
+const actionHint = computed((): string => {
+  if (selected.value == null) return ''
+  if (selected.value.status == 'CLOSED') return '本场已结束'
+  if (registration.value != null && registration.value.status == 'CHECKED_IN' && stageStatus.value != 'ON_STAGE') return '已签到，请等待上台邀请'
+  if (registration.value != null && registration.value.status == 'RESERVED' && registration.value.device_check_passed == true && selected.value.status != 'CHECK_IN') return '设备已确认，请在签到开放后签到'
+  if (!canReserve.value && registration.value == null) return '当前阶段暂不可预约'
+  return ''
+})
+const loadSessions = async () => {
+  loading.value = true
+  errorText.value = ''
+  try {
+    const response = await getLiveSessions()
+    if (!response.success) { errorText.value = liveErrorMessage(response, '场次加载失败'); return }
+    const data = response.data != null ? response.data : {}
+    sessions.value = Array.isArray(data.items) ? data.items : []
+  } catch (e) {
+    errorText.value = '网络连接失败，请稍后重试。'
+  } finally {
+    loading.value = false
+  }
+}
+const updateSelectedInList = () => {
+  if (selected.value == null) return
+  for (let i = 0; i < sessions.value.length; i++) {
+    if (Number(sessions.value[i].id) == selectedId.value) sessions.value[i] = selected.value
+  }
+}
+const syncSelectedState = async (sequence: number, showError: boolean = false) => {
+  const sessionId = selectedId.value
+  if (sessionId <= 0) return
+  try {
+    const detailResponse = await getLiveSession(sessionId)
+    if (sequence != selectionSequence || sessionId != selectedId.value) return
+    if (detailResponse.success && detailResponse.data != null) {
+      selected.value = detailResponse.data
+      lastVersion.value = Number(selected.value.state_version != null ? selected.value.state_version : 0)
+      updateSelectedInList()
+    } else if (showError) {
+      uni.showToast({ title: liveErrorMessage(detailResponse, '场次详情加载失败'), icon: 'none' })
+    }
+    if (getAccessToken() == '') { registration.value = null; return }
+    const reservationResponse = await getMyLiveReservation(sessionId)
+    if (sequence != selectionSequence || sessionId != selectedId.value) return
+    if (reservationResponse.success && reservationResponse.data != null) registration.value = reservationResponse.data
+    else if (reservationResponse.code == 404) registration.value = null
+    else if (reservationResponse.code == 401) registration.value = null
+    else if (showError) uni.showToast({ title: liveErrorMessage(reservationResponse, '预约状态加载失败'), icon: 'none' })
+  } catch (e) {
+    if (showError && sequence == selectionSequence) uni.showToast({ title: '网络连接失败，请稍后重试', icon: 'none' })
+  }
+}
+const closeSocket = () => {
+  socketGeneration = socketGeneration + 1
+  if (reconnectTimer != null) { clearTimeout(reconnectTimer); reconnectTimer = null }
+  const current = socket
+  socket = null
+  if (current != null && current.close != null) current.close({})
+}
+const updateStageFromSnapshot = (snapshot: any) => {
+  if (snapshot == null || !Array.isArray(snapshot.seats) || registration.value == null) return
+  stageStatus.value = ''
+  for (let i = 0; i < snapshot.seats.length; i++) {
+    const seat = snapshot.seats[i]
+    if (Number(seat.user_id) == Number(registration.value.user_id)) { stageStatus.value = '' + seat.status; return }
+  }
+}
+const recoverSocket = async (generation: number) => {
+  const sequence = selectionSequence
+  await syncSelectedState(sequence, false)
+  if (disposed || generation != socketGeneration || sequence != selectionSequence || reconnectAttempts >= 3) return
+  const delays = [1000, 2000, 4000]
+  const delay = delays[reconnectAttempts]
+  reconnectAttempts = reconnectAttempts + 1
+  socketState.value = '实时连接已断开，正在尝试恢复（' + reconnectAttempts + '/3）'
+  reconnectTimer = setTimeout(() => { reconnectTimer = null; connectSocket() }, delay)
+}
+const handleSocketDown = (generation: number) => {
+  if (disposed || generation != socketGeneration || reconnectTimer != null) return
+  socket = null
+  socketState.value = reconnectAttempts >= 3 ? '实时状态暂不可用，已通过刷新同步' : '实时连接已断开，正在同步场次状态'
+  recoverSocket(generation)
+}
+const connectSocket = () => {
+  if (disposed || selectedId.value <= 0 || getAccessToken() == '' || registration.value == null || registration.value.status == 'CANCELLED') { socketState.value = ''; return }
+  if (socket != null && socket.close != null) socket.close({})
+  socketGeneration = socketGeneration + 1
+  const generation = socketGeneration
+  socketState.value = '正在连接场次状态...'
+  socket = connectLiveEvents(
+    selectedId.value,
+    (payload: any) => {
+      if (generation != socketGeneration || payload == null) return
+      if (payload.event_type == 'session.snapshot' && payload.payload != null && selected.value != null) {
+        const incomingVersion = Number(payload.version != null ? payload.version : 0)
+        if (incomingVersion > lastVersion.value) {
+          selected.value.status = payload.payload.status
+          selected.value.state_version = incomingVersion
+          lastVersion.value = incomingVersion
+          updateStageFromSnapshot(payload.payload)
+          updateSelectedInList()
+        }
+      }
+      if (payload.event_type != 'heartbeat') { reconnectAttempts = 0; socketState.value = '场次状态已同步' }
+    },
+    () => handleSocketDown(generation),
+    () => { if (generation == socketGeneration) socketState.value = '实时状态已连接' },
+    () => handleSocketDown(generation)
+  )
+  if (socket == null) socketState.value = ''
+}
+const selectSession = async (item: any) => {
+  closeSocket()
+  selectionSequence = selectionSequence + 1
+  const sequence = selectionSequence
+  selectedId.value = Number(item.id)
+  selected.value = item
+  registration.value = null
+  stageStatus.value = ''
+  lastVersion.value = Number(item.state_version != null ? item.state_version : 0)
+  reconnectAttempts = 0
+  await syncSelectedState(sequence, true)
+  if (sequence == selectionSequence) connectSocket()
+}
+const runAction = async (action: () => Promise<any>, successText: string) => {
+  if (actionBusy.value) return
+  actionBusy.value = true
+  try {
+    const response = await action()
+    if (!response.success) { uni.showToast({ title: liveErrorMessage(response), icon: 'none' }); return }
+    if (response.data != null && response.data.status == 'LEFT') stageStatus.value = 'LEFT'
+    await syncSelectedState(selectionSequence, false)
+    await loadSessions()
+    uni.showToast({ title: successText, icon: 'none' })
+    closeSocket()
+    reconnectAttempts = 0
+    connectSocket()
+  } catch (e) {
+    uni.showToast({ title: '网络连接失败，请稍后重试', icon: 'none' })
+  } finally {
+    actionBusy.value = false
+  }
+}
+const reserve = () => runAction(() => reserveLiveSession(selectedId.value), '预约成功')
+const cancelReservation = () => runAction(() => cancelLiveReservation(selectedId.value), '预约已取消')
+const confirmDevice = () => {
+  if (actionBusy.value) return
+  uni.showModal({
+    title: '确认设备可用',
+    content: '请确认摄像头、麦克风和当前网络可正常使用。本步骤记录你的确认，不会自动检测设备。',
+    confirmText: '确认可用',
+    success: (result: any) => { if (result.confirm) runAction(() => submitLiveDeviceCheck(selectedId.value, true), '设备状态已确认') }
+  })
+}
+const checkIn = () => runAction(() => checkInLiveSession(selectedId.value), '签到成功')
+const leaveStage = () => runAction(() => leaveLiveStage(selectedId.value), '已离开舞台')
+onMounted(() => { loadSessions() })
+onUnmounted(() => { disposed = true; closeSocket() })
+</script>
+
+<style scoped>
+.live-panel { display: flex; flex-direction: column; gap: 16rpx; }
+.live-panel-head, .live-session-top, .live-detail-line, .live-action-row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12rpx; }
+.live-kicker { display: block; color: var(--accent2, #5BAF80); font-size: 20rpx; font-weight: 800; }.live-title { display: block; margin-top: 6rpx; color: var(--ink, #1A1A1A); font-size: 29rpx; font-weight: 800; }
+.live-refresh, .live-retry { padding: 12rpx 18rpx; border-radius: 14rpx; background: var(--accent-bg, #E8F5EE); color: var(--accent2, #5BAF80); font-size: 20rpx; font-weight: 700; }
+.live-notice, .live-error, .live-empty, .live-session, .live-actions { padding: 20rpx; border-radius: 18rpx; background: var(--surface, #FFFFFF); border: 1px solid var(--line, #E8EDE6); }.live-notice { background: var(--accent-bg, #E8F5EE); border-color: transparent; }
+.live-notice-title, .live-notice-copy, .live-empty-copy, .live-session-meta, .live-session-rules, .live-action-hint, .live-socket-state { display: block; }.live-notice-title { color: var(--ink, #1A1A1A); font-size: 22rpx; font-weight: 800; }.live-notice-copy { margin-top: 6rpx; color: var(--ink2, #5A6B5C); font-size: 20rpx; line-height: 1.5; }.live-error { color: #B65F5F; font-size: 21rpx; }.live-empty { color: var(--muted, #A0B0A2); font-size: 22rpx; text-align: center; }.live-empty-copy { margin-top: 6rpx; font-size: 19rpx; }
+.live-session.selected { border-color: var(--accent2, #5BAF80); background: var(--accent-bg, #E8F5EE); }.live-session-status { color: var(--accent2, #5BAF80); font-size: 19rpx; font-weight: 800; }.live-session-time, .live-detail-line, .live-session-meta { color: var(--muted, #A0B0A2); font-size: 19rpx; }.live-session-title { display: block; margin-top: 12rpx; color: var(--ink, #1A1A1A); font-size: 27rpx; font-weight: 800; }.live-session-meta { margin-top: 8rpx; }.live-session-rules { margin-top: 10rpx; color: var(--ink2, #5A6B5C); font-size: 20rpx; line-height: 1.45; }
+.live-actions { display: flex; flex-direction: column; gap: 16rpx; }.live-detail-value { color: var(--ink, #1A1A1A); }.live-registration { display: flex; flex-direction: column; gap: 6rpx; color: var(--ink2, #5A6B5C); font-size: 20rpx; }.live-action-row { flex-wrap: wrap; justify-content: flex-start; }.live-action { min-height: 56rpx; padding: 0 18rpx; border-radius: 14rpx; background: var(--accent-bg, #E8F5EE); color: var(--accent2, #5BAF80); display: flex; align-items: center; justify-content: center; font-size: 20rpx; font-weight: 800; }.live-action.primary { background: var(--accent2, #5BAF80); color: #FFFFFF; }.live-action.danger { background: #FFF0F0; color: #B65F5F; }.live-action.disabled { opacity: 0.55; }.live-action-hint, .live-socket-state { color: var(--muted, #A0B0A2); font-size: 18rpx; }
+</style>

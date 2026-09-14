@@ -1,0 +1,53 @@
+/** 直播相亲 R0 控制面 API；不伪造尚未接入的媒体能力。 */
+import { request } from './request.uts'
+import { buildWsUrl, getAccessToken } from './config.uts'
+
+export const LIVE_STATUSES = [
+  'DRAFT', 'SCHEDULED', 'CHECK_IN', 'WARMUP', 'OPEN', 'INTRO',
+  'MATCHMAKER_QA', 'HEART_LIGHT', 'SELECT', 'GUIDED_EXCHANGE',
+  'DOUBLE_CONFIRM', 'APPLY_KNOW', 'CLOSED'
+]
+
+export function liveStatusLabel(status: string): string {
+  const labels: any = { DRAFT: '草稿', SCHEDULED: '待开始', CHECK_IN: '签到中', WARMUP: '暖场中', OPEN: '直播中', INTRO: '自我介绍', MATCHMAKER_QA: '红娘提问', HEART_LIGHT: '亮灯', SELECT: '选择中', GUIDED_EXCHANGE: '引导交流', DOUBLE_CONFIRM: '双方确认', APPLY_KNOW: '申请认识', CLOSED: '已结束' }
+  return labels[status] != null ? labels[status] : status
+}
+
+export function liveErrorMessage(response: any, fallback: string = '直播服务暂时不可用'): string {
+  if (response != null && response.message != null && ('' + response.message).trim() != '') return '' + response.message
+  if (response != null && response.code == 503) return '直播服务尚未配置完成，请稍后再试。'
+  if (response != null && response.code == 403) return '当前账号没有执行此操作的权限。'
+  if (response != null && response.code == 409) return '场次状态已变化，请刷新后重试。'
+  return fallback
+}
+
+export async function getLiveSessions(status: string = ''): Promise<any> { return request({ url: '/live/sessions', method: 'GET', data: status != '' ? { status } : {} }) }
+export async function getLiveSession(sessionId: number): Promise<any> { return request({ url: '/live/sessions/' + sessionId, method: 'GET' }) }
+export async function getMyLiveReservation(sessionId: number): Promise<any> { return request({ url: '/live/sessions/' + sessionId + '/reservation/me', method: 'GET' }) }
+export async function reserveLiveSession(sessionId: number): Promise<any> { return request({ url: '/live/sessions/' + sessionId + '/reservations', method: 'POST', data: {} }) }
+export async function cancelLiveReservation(sessionId: number): Promise<any> { return request({ url: '/live/sessions/' + sessionId + '/reservations', method: 'DELETE' }) }
+export async function submitLiveDeviceCheck(sessionId: number, passed: boolean): Promise<any> { return request({ url: '/live/sessions/' + sessionId + '/device-check', method: 'POST', data: { passed } }) }
+export async function checkInLiveSession(sessionId: number): Promise<any> { return request({ url: '/live/sessions/' + sessionId + '/check-in', method: 'POST', data: {} }) }
+export async function respondLiveInvitation(sessionId: number, invitationToken: string, decision: string): Promise<any> { return request({ url: '/live/sessions/' + sessionId + '/invitations/respond', method: 'POST', data: { invitation_token: invitationToken, decision } }) }
+export async function leaveLiveStage(sessionId: number): Promise<any> { return request({ url: '/live/sessions/' + sessionId + '/stage/leave', method: 'POST', data: {} }) }
+export function createLiveIdempotencyKey(): string { return 'live-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1000000000).toString(36) }
+export async function createLiveInteraction(sessionId: number, targetUserId: number, interactionType: string, key: string = ''): Promise<any> { const idempotencyKey = key.trim().length >= 8 ? key.trim() : createLiveIdempotencyKey(); return request({ url: '/live/sessions/' + sessionId + '/interactions', method: 'POST', data: { target_user_id: targetUserId, interaction_type: interactionType }, headers: { 'Idempotency-Key': idempotencyKey } }) }
+export async function reportLiveUser(sessionId: number, targetUserId: number, category: string, description: string = ''): Promise<any> { return request({ url: '/live/sessions/' + sessionId + '/reports', method: 'POST', data: { target_user_id: targetUserId, category, description: description.trim() != '' ? description.trim() : null } }) }
+export async function getLiveRtcTicket(sessionId: number): Promise<any> { return request({ url: '/live/sessions/' + sessionId + '/rtc-ticket', method: 'POST', data: {} }) }
+
+export function connectLiveEvents(
+  sessionId: number,
+  onMessage: (payload: any) => void,
+  onError: (() => void) | null = null,
+  onOpen: (() => void) | null = null,
+  onClose: (() => void) | null = null
+): any {
+  const token = getAccessToken()
+  if (token == '') return null
+  const socket = uni.connectSocket({ url: buildWsUrl('/live/sessions/' + sessionId + '/events', token), complete: () => {} })
+  socket.onMessage((event: any) => { try { onMessage(typeof event.data == 'string' ? JSON.parse(event.data) : event.data) } catch (e) {} })
+  socket.onError(() => { if (onError != null) onError() })
+  socket.onOpen(() => { if (onOpen != null) onOpen() })
+  socket.onClose(() => { if (onClose != null) onClose() })
+  return socket
+}

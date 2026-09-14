@@ -147,7 +147,8 @@ const emit = defineEmits<{
 	close: []
 }>();
 
-const windowHeight = uni.getSystemInfoSync().windowHeight != null ? uni.getSystemInfoSync().windowHeight : 667
+const windowInfo = uni.getWindowInfo()
+const windowHeight = windowInfo.windowHeight != null ? windowInfo.windowHeight : 667
 
 /* 小窗高度（百分比），拖拽在 28% ~ 97% 之间连续变化，松手吸附档位 */
 const HEIGHT_STOPS: number[] = [48, 72, 94]
@@ -304,9 +305,6 @@ watch(() => props.visible, (newValue: boolean) => {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-}
-
-.close-btn text {
 	font-size: 20px;
 	color: var(--muted);
 }

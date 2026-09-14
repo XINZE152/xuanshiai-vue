@@ -152,11 +152,12 @@ const extractionLabel = computed((): string => {
 
 <style scoped>
 .mx-progress {
-	margin: 0 12px;
-	background: var(--surface);
-	border: 1px solid var(--line);
-	border-radius: 14px;
-	padding: 10px 14px;
+	margin: 8px 14px 4px;
+	background: #FFFFFF;
+	border: 1px solid #E8E2D8;
+	border-radius: 12px;
+	padding: 8px 14px;
+	box-shadow: 0 2px 8px rgba(35, 32, 30, 0.05);
 }
 .mx-progress-toggle {
 	display: flex;
@@ -174,22 +175,23 @@ const extractionLabel = computed((): string => {
 .mx-progress-toggle-title {
 	font-size: 13px;
 	font-weight: 700;
-	color: var(--ink);
+	color: #23201E;
 }
 .mx-progress-toggle-value {
 	font-size: 13px;
 	font-weight: 700;
-	color: var(--accent2);
+	color: #9C5B42;
 }
 .mx-progress-toggle-action {
 	font-size: 11px;
-	color: var(--accent2);
+	color: #9C5B42;
+	font-weight: 600;
 	padding: 4px 0 4px 12px;
 }
 .mx-progress-collapsed-track {
 	height: 4px;
 	border-radius: 999px;
-	background: rgba(211, 217, 216, 0.45);
+	background: #F0EAE1;
 	margin-top: 5px;
 	overflow: hidden;
 }
@@ -203,13 +205,13 @@ const extractionLabel = computed((): string => {
 .mx-progress-title {
 	font-size: 14px;
 	font-weight: 700;
-	color: var(--ink);
+	color: #23201E;
 }
 .mx-progress-note {
 	margin-top: 4px;
-	font-size: 10px;
+	font-size: 11px;
 	line-height: 1.5;
-	color: var(--muted);
+	color: #807B75;
 }
 .mx-progress-top {
 	display: flex;
@@ -226,29 +228,28 @@ const extractionLabel = computed((): string => {
 .mx-progress-num {
 	font-size: 20px;
 	font-weight: 700;
-	color: var(--accent2);
-	font-family: var(--serif, serif);
+	color: #9C5B42;
 }
 .mx-progress-unit {
 	font-size: 11px;
-	color: var(--muted);
+	color: #807B75;
 }
 .mx-progress-label {
 	font-size: 11px;
-	color: var(--ink2);
+	color: #524C46;
 	margin-top: 2px;
 }
 .mx-progress-track {
 	height: 6px;
 	border-radius: 999px;
-	background: rgba(211, 217, 216, 0.45);
+	background: #F0EAE1;
 	margin-top: 8px;
 	overflow: hidden;
 }
 .mx-progress-fill {
 	height: 6px;
 	border-radius: 999px;
-	background: var(--accent2);
+	background: #9C5B42;
 	transition-property: width;
 	transition-duration: 0.2s;
 }
@@ -259,7 +260,7 @@ const extractionLabel = computed((): string => {
 	display: block;
 	margin-top: 5px;
 	font-size: 10px;
-	color: var(--muted);
+	color: #807B75;
 	text-align: center;
 }
 .mx-progress-dims {
@@ -283,30 +284,30 @@ const extractionLabel = computed((): string => {
 }
 .mx-progress-dim-name {
 	font-size: 12px;
-	color: var(--ink2);
+	color: #524C46;
 }
 .mx-progress-dim-num {
 	font-size: 12px;
-	color: var(--accent2);
+	color: #9C5B42;
 	font-weight: 700;
 }
 .mx-progress-dim-track {
 	height: 4px;
 	border-radius: 999px;
-	background: rgba(211, 217, 216, 0.45);
+	background: #F0EAE1;
 	margin-top: 3px;
 	overflow: hidden;
 }
 .mx-progress-dim-fill {
 	height: 4px;
 	border-radius: 999px;
-	background: var(--accent2);
+	background: #9C5B42;
 	transition-property: width;
 	transition-duration: 0.2s;
 }
 .mx-progress-dim-meta {
 	font-size: 10px;
-	color: var(--muted);
+	color: #807B75;
 	margin-top: 2px;
 }
 </style>

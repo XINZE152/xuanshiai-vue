@@ -1,0 +1,41 @@
+// 墨相特质在个人资料页的展示契约：状态门禁 + 依恋风格文案映射。
+//
+// 【状态门禁】后端 get_profile 只装配 confirmed / published 的叙事层，但前端
+// 有几处会直接调 getPortraitNarrative 兜底（自己的详细主页与「我的」页）。那条
+// 接口按设计透传原始 status 交由前端驱动确认 UI，字段内容本身不设门禁——若前端
+// 直接取用就会把「AI 已生成、用户尚未确认」的心性称号印上资料页。这里集中一份
+// 门禁，供这些兜底路径过滤，与后端 app/services/profile.py 的
+// _MOXIANG_NARRATIVE_VISIBLE_STATUSES 保持一致。
+//
+// 【文案映射】依恋风格此前在【我的】页与【详细主页】各实现一份，文案不一致
+// （「安全型」/「安全型依恋」），且详细主页对未知编码会回落原样展示，把后端枚举码
+// 漏给用户。现统一到此处，与后端 app/services/ai/providers.py 的 style_map 及
+// PRODUCT.md「情感气质透视」的四型口径对齐：secure / anxious / avoidant / fearful。
+// 后端装配前已把该值规整为四码之一，未命中会整块丢弃 emotional_insight，故未知
+// 编码属防御分支：宁可隐藏也不外漏裸码。
+
+/** 可对外展示的叙事层状态：confirmed 为用户确认后的当前值，published 为历史行兼容值。 */
+const NARRATIVE_VISIBLE_STATUSES: string[] = ['confirmed', 'published']
+
+/**
+ * 叙事层响应是否可作为资料页展示依据。
+ * pending / pending_confirmation（AI 已生成、用户尚未确认）一律返回 false，
+ * 沿用 PRODUCT.md「用户确认后才作为正式画像叙事」的既有纪律。
+ */
+export function narrativeBadgeVisible(payload: any): boolean {
+	if (payload == null || typeof payload != 'object') return false
+	return NARRATIVE_VISIBLE_STATUSES.indexOf('' + payload.status) >= 0
+}
+
+const ATTACHMENT_STYLE_LABELS: Map<string, string> = new Map()
+ATTACHMENT_STYLE_LABELS.set('secure', '安全型')
+ATTACHMENT_STYLE_LABELS.set('anxious', '焦虑型')
+ATTACHMENT_STYLE_LABELS.set('avoidant', '回避型')
+ATTACHMENT_STYLE_LABELS.set('fearful', '恐惧回避型')
+
+/** 依恋风格编码 → 中文四型标签；未知/空值返回空串（由调用方隐藏该微标）。 */
+export function attachmentStyleLabel(raw: any): string {
+	if (raw == null) return ''
+	const hit = ATTACHMENT_STYLE_LABELS.get('' + raw)
+	return hit != null ? hit : ''
+}
