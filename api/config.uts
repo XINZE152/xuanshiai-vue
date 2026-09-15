@@ -1,7 +1,6 @@
 ﻿/** API configuration for the deployed FastAPI service. */
 
-// 临时：后端 xhztest.xyz API 超时未恢复，先开 mock 保证本地可用；后端恢复后改回 false（勿提交此改动）
-export const USE_MOCK = true
+export const USE_MOCK = false
 export const API_BASE_URL = 'https://xhztest.xyz'
 export const ROLE_APPLICATION_USE_MOCK = false
 export const PAPER_PLANE_CHANCE_USE_MOCK = true
