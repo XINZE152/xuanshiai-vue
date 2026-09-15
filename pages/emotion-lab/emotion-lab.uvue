@@ -107,7 +107,7 @@
 					</view>
 
 					<view v-else class="match-list">
-						<view class="match-card" v-for="item in matches" :key="item.id" @click="openMatchProfile(item)">
+						<view class="match-card" v-for="item in matches" :key="item.id" @click="openMatchProfile(item)" hover-class="match-card-active" hover-stay-time="150">
 							<view class="match-top">
 								<view class="match-user">
 									<XsaAvatar :name="item.name" size="medium"></XsaAvatar>
@@ -1333,12 +1333,14 @@
 
 	const openMatchProfile = (item: any) => {
 		const userId = item != null && item.userId != null ? '' + item.userId : ''
-		if (userId == '') {
+		const fallbackId = item != null && item.id != null ? '' + item.id : ''
+		const targetId = userId != '' ? userId : fallbackId
+		if (targetId == '') {
 			uni.showToast({ title: '对方主页暂未开放', icon: 'none' })
 			return
 		}
 		uni.navigateTo({
-			url: '/pagesSub/userExtra/user/detail?userId=' + encodeURIComponent(userId),
+			url: '/pagesSub/userExtra/user/detail?userId=' + encodeURIComponent(targetId),
 			fail: () => {
 				uni.showToast({ title: '对方主页暂未开放', icon: 'none' })
 			}
@@ -1578,6 +1580,10 @@
 		gap: 12px;
 		align-items: stretch;
 		background: #FFFFFF;
+	}
+
+	.match-card-active {
+		background: #F4F9F6;
 	}
 
 	.avatar-row {

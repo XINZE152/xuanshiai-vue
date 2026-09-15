@@ -7,11 +7,14 @@
 		<view class="card-body">
 			<view class="card-name-row">
 				<text class="card-name">{{ data.name }}</text>
-				<view v-if="showRating" class="card-rate">
-					<text>★ {{ rateText }}</text>
-				</view>
 			</view>
 			<text class="card-copy">{{ cardCopy }}</text>
+
+			<view class="card-tags" v-if="data.tags != null && data.tags.length > 0">
+				<view v-for="(tag, index) in data.tags.slice(0, 2)" :key="index" class="card-tag">
+					<text>{{ tag }}</text>
+				</view>
+			</view>
 
 			<view v-if="showMetrics" class="card-meta">
 				<view class="meta-item">
@@ -24,21 +27,10 @@
 				</view>
 			</view>
 
-			<view class="card-tags" v-if="data.tags != null && data.tags.length > 0">
-				<view v-for="(tag, index) in data.tags.slice(0, 2)" :key="index" class="card-tag">
-					<text>{{ tag }}</text>
-				</view>
-			</view>
-
 			<view class="card-footer">
 				<view v-if="data.certification || data.badge" class="card-certification">
 					<text class="certification-mark">✓</text>
 					<text>已认证</text>
-				</view>
-				<view class="card-price" v-if="showPrice">
-					<text v-if="hasPrice" class="price-symbol">¥</text>
-					<text class="price-value">{{ priceText }}</text>
-					<text v-if="hasPrice" class="price-unit">{{ unitText }}</text>
 				</view>
 				<view class="card-button" @click.stop="handleContact">
 					<text>{{ actionText }}</text>
@@ -54,19 +46,13 @@ import MatchmakerAvatar from '@/components/MatchmakerAvatar.uvue';
 interface Props {
 		data: any;
 		actionText?: string;
-		unitText?: string;
-		showPrice?: boolean;
 		showMetrics?: boolean;
-		showRating?: boolean;
 		largeText?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
 		actionText: '联系她',
-		unitText: '/次',
-		showPrice: true,
 		showMetrics: true,
-		showRating: true,
 		largeText: false
 });
 
@@ -74,21 +60,6 @@ const emit = defineEmits<{
 	detail: [item: any];
 	contact: [item: any];
 }>();
-
-const rateText = computed(() => {
-	if (props.data == null || props.data.rating == null) return '4.8';
-	const rating = Number(props.data.rating);
-	return isNaN(rating) ? '4.8' : rating.toFixed(1);
-});
-
-const priceText = computed(() => {
-	if (props.data == null || props.data.price == null) return '套餐定价';
-	return String(props.data.price);
-});
-
-const hasPrice = computed(() => {
-	return props.data != null && props.data.price != null;
-});
 
 const cardCopy = computed(() => {
 	if (props.data == null) return '';
@@ -149,19 +120,6 @@ const handleContact = () => {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-
-	.card-rate {
-		height: 38rpx;
-		padding: 0 10rpx;
-		border-radius: 999rpx;
-		background: var(--warm);
-		color: var(--brown);
-		display: flex;
-		align-items: center;
-		font-size: 18rpx;
-		font-weight: 800;
-		flex-shrink: 0;
 	}
 
 	.card-copy {
@@ -234,36 +192,6 @@ const handleContact = () => {
 		margin-top: 6rpx;
 	}
 
-	.card-price {
-		min-width: 0;
-		max-width: 48%;
-		display: flex;
-		flex-direction: row;
-		align-items: baseline;
-		gap: 4rpx;
-		color: var(--brown);
-		flex-shrink: 0;
-	}
-
-	.price-symbol {
-		font-size: 22rpx;
-		font-weight: 800;
-	}
-
-	.price-value {
-		font-size: 26rpx;
-		line-height: 1.2;
-		font-weight: 800;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.price-unit {
-		font-size: 20rpx;
-		color: var(--muted);
-	}
-
 	.card-button {
 		height: 56rpx;
 		padding: 0 22rpx;
@@ -334,16 +262,12 @@ const handleContact = () => {
 		line-height: 1.55;
 	}
 
-	.matchmaker-card.large-text .card-rate,
 	.matchmaker-card.large-text .card-tag text,
-	.matchmaker-card.large-text .meta-label,
-	.matchmaker-card.large-text .price-unit,
-	.matchmaker-card.large-text .price-symbol {
+	.matchmaker-card.large-text .meta-label {
 		font-size: 14px;
 	}
 
-	.matchmaker-card.large-text .meta-value,
-	.matchmaker-card.large-text .price-value {
+	.matchmaker-card.large-text .meta-value {
 		font-size: 16px;
 	}
 

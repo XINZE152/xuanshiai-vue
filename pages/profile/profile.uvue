@@ -4,7 +4,7 @@
 		<view class="nav-bar" :style="{ paddingTop: (statusBarHeight + 12) + 'px', paddingRight: (menuButtonSpacing + 8) + 'px' }">
 			<view class="nav-right">
 				<view class="nav-icon-btn role-switch-btn" @tap="onSwitchToParent" aria-label="切换到父母端" title="切换到父母端">
-					<text class="ic ic-sys ic-shuaxin nav-icon role-switch-icon"></text>
+					<image class="nav-icon-img role-switch-icon" src="/static/icons/switch-parents.png" mode="aspectFit"></image>
 				</view>
 				<view class="nav-icon-btn" @tap="onSettings">
 					<text class="ic ic-me ic-shezhi nav-icon"></text>
@@ -68,9 +68,6 @@
 			<!-- AI 专区（墨相师为唯一画像建构入口） -->
 			<view class="ai-zone">
 				<view class="ai-zone-head">
-					<view class="ai-zone-spark">
-						<text class="ic ic-home ic-star ai-zone-spark-icon"></text>
-					</view>
 					<text class="ai-zone-title">宣誓爱 AI</text>
 				</view>
 				<text class="ai-zone-sub">用对话认识自己与期待的关系，也可以管理你的 AI 分身。</text>
@@ -86,7 +83,7 @@
 				<!-- 主入口：与知遇聊聊(轻奢灵动AI卡) -->
 				<view class="zone-master" @tap="onMoxiangMaster">
 					<view class="zone-master-figure">
-						<text class="ic ic-home ic-star zone-master-icon"></text>
+						<image class="zone-master-img" src="/pagesSub/profileExtra/static/ai-chat-icon.png" mode="aspectFill"></image>
 					</view>
 					<view class="zone-master-text">
 						<view class="zone-master-title-row">
@@ -99,8 +96,8 @@
 				</view>
 				<!-- 次入口：我的画像(低权重线框归档卡) -->
 				<view class="zone-master zone-master-archive" @tap="onMoxiangArchive">
-					<view class="zone-master-figure zone-master-figure-archive">
-						<text class="zone-master-seal zone-master-seal-archive">档</text>
+					<view class="zone-master-figure">
+						<image class="zone-master-img" src="/pagesSub/profileExtra/static/ai-portrait-icon.png" mode="aspectFill"></image>
 					</view>
 					<view class="zone-master-text">
 						<text class="zone-master-name">我的画像</text>
@@ -126,7 +123,8 @@
 			<view class="menu-card">
 				<view class="menu-row" v-for="item in mainMenuItems" :key="item.label" @tap="handleMenuItem(item)">
 					<view class="menu-icon-wrap" :style="{ backgroundColor: item.iconBg }">
-						<text :class="item.iconClass + ' menu-icon'"></text>
+						<image v-if="item.iconSrc != ''" class="menu-icon-img" :src="item.iconSrc" mode="aspectFit"></image>
+						<text v-else :class="item.iconClass + ' menu-icon'"></text>
 					</view>
 					<text class="menu-label">{{ item.label }}</text>
 					<view v-if="item.badge" class="menu-badge">
@@ -393,6 +391,13 @@ const onMyRegistration = () => {
 	})
 }
 
+const onMyDate = () => {
+	uni.navigateTo({
+		url: '/pagesSub/profileExtra/my-date-service',
+		fail: () => { uni.showToast({ title: '页面打开失败，请重试', icon: 'none' }) }
+	})
+}
+
 const onCertification = () => {
 	uni.navigateTo({ url: '/pagesSub/profileExtra/certification' })
 }
@@ -472,15 +477,17 @@ const onEmotionLab = () => {
 	uni.navigateTo({ url: '/pages/emotion-lab/emotion-lab' })
 }
 
+// iconSrc 非空时用 SVG 图片图标（优先），否则用 iconClass 字体图标
 const mainMenuItems = [
-	{ iconClass: 'ic ic-vip ic-renwu', iconBg: '#EDE4F0', label: '我的任务', badge: 'NEW', action: onMyTasks },
-	{ iconClass: 'ic ic-me ic-dongtai', iconBg: '#E4EDE8', label: '我的动态', action: onMyMoments },
-	{ iconClass: 'ic ic-home ic-star', iconBg: '#E4EDE8', label: '情感实验室', action: onEmotionLab },
-	{ iconClass: 'ic ic-home ic-heart', iconBg: '#FDE8EC', label: '我的海报', action: onMyPoster },
-	{ iconClass: 'ic ic-social ic-huodong', iconBg: '#FEF3E4', label: '我的报名', action: onMyRegistration },
-	{ iconClass: 'ic ic-sys ic-shiming', iconBg: '#FEF3E4', label: '诚信认证', action: onCertification },
-	{ iconClass: 'ic ic-sys ic-fenxiang', iconBg: '#FEF3E4', label: '推荐给好友', action: onInviteFriend },
-	{ iconClass: 'ic ic-me ic-shezhi', iconBg: '#FEF3E4', label: '设置', action: onMenuSettings },
+	{ iconClass: 'ic ic-vip ic-renwu', iconSrc: '', iconBg: '#EDE4F0', label: '我的任务', badge: 'NEW', action: onMyTasks },
+	{ iconClass: 'ic ic-me ic-dongtai', iconSrc: '', iconBg: '#E4EDE8', label: '我的动态', action: onMyMoments },
+	{ iconClass: '', iconSrc: '/static/icons/flask.svg', iconBg: '#E4EDE8', label: '情感实验室', action: onEmotionLab },
+	{ iconClass: 'ic ic-home ic-heart', iconSrc: '', iconBg: '#FDE8EC', label: '我的海报', action: onMyPoster },
+	{ iconClass: 'ic ic-social ic-huodong', iconSrc: '', iconBg: '#FEF3E4', label: '我的报名', action: onMyRegistration },
+	{ iconClass: 'ic ic-social ic-peidui', iconSrc: '', iconBg: '#FDE8EC', label: '我的约会', action: onMyDate },
+	{ iconClass: 'ic ic-sys ic-shiming', iconSrc: '', iconBg: '#FEF3E4', label: '诚信认证', action: onCertification },
+	{ iconClass: 'ic ic-sys ic-fenxiang', iconSrc: '', iconBg: '#FEF3E4', label: '推荐给好友', action: onInviteFriend },
+	{ iconClass: 'ic ic-me ic-shezhi', iconSrc: '', iconBg: '#FEF3E4', label: '设置', action: onMenuSettings },
 ]
 
 const bottomMenuItems = [
@@ -557,12 +564,21 @@ page {
 	font-size: 16px;
 }
 
+/* 顶部导航栏 SVG 图标：与字体图标视觉大小对齐 */
+.nav-icon-img {
+	width: 18px;
+	height: 18px;
+	flex-shrink: 0;
+}
+
 .role-switch-btn {
 	background-color: #E4EDE8;
 }
 
 .role-switch-icon {
 	color: var(--profile-accent);
+	width: 15px;
+	height: 15px;
 }
 
 /* ==================== 滚动内容区 ==================== */
@@ -886,21 +902,6 @@ page {
 	gap: 8px;
 }
 
-.ai-zone-spark {
-	width: 26px;
-	height: 26px;
-	border-radius: 9px;
-	background-color: var(--profile-dark);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.ai-zone-spark-icon {
-	font-size: 13px;
-	color: var(--profile-rose);
-}
-
 .ai-zone-title {
 	font-size: 16px;
 	font-weight: 700;
@@ -967,17 +968,6 @@ page {
 	gap: 12px;
 }
 
-/* 次入口：低权重线框归档卡 */
-.zone-master-archive {
-	margin-top: 8px;
-	height: 56px;
-	background-image: none;
-	background-color: rgba(255, 255, 255, 0.7);
-	border: 1px solid #D8D2C7;
-	box-shadow: none;
-	border-radius: 14px;
-}
-
 .zone-master-figure {
 	width: 46px;
 	height: 46px;
@@ -990,23 +980,10 @@ page {
 	box-shadow: 0 4px 10px rgba(185, 138, 126, 0.22);
 }
 
-.zone-master-icon {
-	font-size: 22px;
-	color: #B98A7E;
-}
-
-.zone-master-figure-archive {
-	width: 32px;
-	height: 32px;
-	border-radius: 8px;
-	background-color: #EFE9E0;
-	box-shadow: none;
-}
-
-.zone-master-seal-archive {
-	font-size: 13px;
-	color: #807B75;
-	font-weight: 600;
+.zone-master-img {
+	width: 46px;
+	height: 46px;
+	border-radius: 14px;
 }
 
 .zone-master-text {
@@ -1135,6 +1112,13 @@ page {
 .menu-icon {
 	font-size: 18px;
 	color: var(--profile-text);
+}
+
+/* 图片型菜单图标（SVG）：光学尺寸对齐字体图标的墨迹大小（≈17px 高） */
+.menu-icon-img {
+	width: 23px;
+	height: 23px;
+	flex-shrink: 0;
 }
 
 .menu-text-col {

@@ -51,7 +51,7 @@
 		if (getAccessToken() != 'mock_debug_access_token_xsa') return false
 
 		try {
-			uni.setStorageSync('xsa_user_id', 1)
+			uni.setStorageSync('xsa_user_id', 9001)
 			uni.setStorageSync('xsa_login_agreed', true)
 			uni.setStorageSync('xsa_skip_welcome_once', true)
 		} catch (e) {

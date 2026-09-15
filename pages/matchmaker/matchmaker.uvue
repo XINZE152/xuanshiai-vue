@@ -1,27 +1,26 @@
 <template>
 	<view class="matchmaker-page">
 		<view class="page-shell">
-			<view v-if="currentTabValue !== 'ai'" class="page-head">
+			<scroll-view class="page-scroller" scroll-y enhanced :show-scrollbar="false">
+				<view v-if="currentTabValue !== 'ai'" class="page-head" :class="{ 'page-head-merged': currentTabValue === 'service' }">
 				<image class="page-head-art" src="/static/generated/matchmaker-hero-calligraphy.webp" mode="aspectFill"></image>
-				<text class="page-kicker">牵线</text>
 				<text class="page-desc">服务红娘负责匹配推进，私人定制负责长期陪跑，AI 红娘负责梳理线索与破冰建议。</text>
-			</view>
 
-			<view v-if="currentTabValue !== 'ai'" class="page-tabs">
-				<view class="matchmaker-tab-bar">
-					<view
-						v-for="(tab, index) in tabs"
-						:key="tab"
-						class="matchmaker-tab"
-						:class="{ active: currentTabIndex === index }"
-						@click="handleTabChange(index)"
-					>
-						<text>{{ tab }}</text>
+					<view class="page-tabs">
+						<view class="matchmaker-tab-bar">
+							<view
+								v-for="(tab, index) in tabs"
+								:key="tab"
+								class="matchmaker-tab"
+								:class="{ active: currentTabIndex === index }"
+								@click="handleTabChange(index)"
+							>
+								<text>{{ tab }}</text>
+							</view>
+						</view>
 					</view>
 				</view>
-			</view>
 
-			<scroll-view class="page-scroller" scroll-y enhanced :show-scrollbar="false">
 				<view class="page-content" :class="{ 'service-page-content': currentTabValue === 'service', 'ai-page-content': currentTabValue === 'ai' }">
 					<view class="error-card" v-if="loadError.length > 0">
 						<text class="error-title">部分内容加载失败</text>
@@ -36,7 +35,7 @@
 						<view class="service-showcase">
 							<view class="section-header service-showcase-header">
 								<view>
-									<text class="section-title">服务红娘</text>
+									<text class="section-title section-title-hand">服务红娘</text>
 									<text class="section-desc">专业顾问会先理解你的关系目标，再决定如何帮你更稳地认识一个人。</text>
 								</view>
 							</view>
@@ -203,6 +202,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		getVolunteerMatchmakers,
 		getCustomPlans
 	} from '@/api'
+	import { mockServiceMatchmakers, mockVolunteerMatchmakers, mockCustomPlans } from '@/mock/matchmaker'
 
 	const tabs = ['服务红娘', '私人定制', 'AI红娘']
 	const tabValues = ['service', 'custom', 'ai']
@@ -245,9 +245,9 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	])
 	const nextAiMessageId = ref(3)
 
-	const serviceMatchmakers = ref<any[]>([])
-	const rankList = ref<any[]>([])
-	const customPlans = ref<any[]>([])
+	const serviceMatchmakers = ref<any[]>(mockServiceMatchmakers as any[])
+	const rankList = ref<any[]>(mockVolunteerMatchmakers as any[])
+	const customPlans = ref<any[]>(mockCustomPlans as any[])
 	const selectedCustomPlanId = ref(0)
 
 	const currentTabValue = computed(() => {
@@ -300,45 +300,37 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	const loadServiceMatchmakers = async () => {
 		try {
 			const res = await getServiceMatchmakers()
-			if (res.success && res.data != null) {
-				serviceMatchmakers.value = res.data as any[]
-			} else if (loadError.value.length == 0) {
-				loadError.value = '网络连接不可用，请检查网络后重新加载。'
+			const data = res?.data
+			// 仅当接口返回有效非空数组时覆盖；否则保留页面内置虚拟数据（离线 / mock 预览）
+			if (res.success && Array.isArray(data) && data.length > 0) {
+				serviceMatchmakers.value = data as any[]
 			}
 		} catch (e) {
-			if (loadError.value.length == 0) {
-				loadError.value = '服务红娘数据加载失败。'
-			}
+			// 接口异常时保留虚拟数据，不覆盖
 		}
 	}
 
 	const loadMatchmakerRanking = async () => {
 		try {
 			const res = await getVolunteerMatchmakers()
-			if (res.success && res.data != null) {
-				rankList.value = res.data as any[]
-			} else if (loadError.value.length == 0) {
-				loadError.value = '红娘排行榜加载失败，请稍后重试。'
+			const data = res?.data
+			if (res.success && Array.isArray(data) && data.length > 0) {
+				rankList.value = data as any[]
 			}
 		} catch (e) {
-			if (loadError.value.length == 0) {
-				loadError.value = '红娘排行榜加载失败，请稍后重试。'
-			}
+			// 保留虚拟数据
 		}
 	}
 
 	const loadCustomContent = async () => {
 		try {
 			const planRes = await getCustomPlans()
-			if (planRes.success && planRes.data != null) {
-				customPlans.value = planRes.data as any[]
-			} else if (loadError.value.length == 0) {
-				loadError.value = '网络连接不可用，请检查网络后重新加载。'
+			const data = planRes?.data
+			if (planRes.success && Array.isArray(data) && data.length > 0) {
+				customPlans.value = data as any[]
 			}
 		} catch (e) {
-			if (loadError.value.length == 0) {
-				loadError.value = '私人定制内容加载失败。'
-			}
+			// 保留虚拟数据
 		}
 	}
 
@@ -482,7 +474,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 
 	.page-head {
 		margin: 20rpx 28rpx 0;
-		padding: 0 30rpx 54rpx;
+		padding: 0 30rpx 0;
 		display: flex;
 		flex-direction: column;
 		gap: 12rpx;
@@ -490,6 +482,12 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		border-radius: 24rpx;
 		background: var(--match-paper);
 		box-shadow: 0 10rpx 24rpx rgba(91, 175, 128, 0.08);
+	}
+
+	.page-head-merged {
+		border-radius: 24rpx 24rpx 0 0;
+		border-bottom: none;
+		box-shadow: none;
 	}
 
 	.page-head-art {
@@ -500,23 +498,16 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		border-radius: 24rpx 24rpx 0 0;
 	}
 
-	.page-kicker {
-		font-size: 20rpx;
-		font-weight: 800;
-		letter-spacing: 0.08em;
-		color: var(--accent2);
-	}
-
 	.page-title {
-		font-size: 42rpx;
+		font-size: 46rpx;
 		line-height: 1.3;
-		font-family: var(--serif);
+		font-family: var(--sans);
 		font-weight: 700;
 		color: var(--ink);
 	}
 
 	.page-desc {
-		font-size: 21rpx;
+		font-size: 23rpx;
 		line-height: 1.55;
 		color: var(--muted);
 	}
@@ -524,8 +515,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	.page-tabs {
 		position: relative;
 		z-index: 2;
-		margin-top: -38rpx;
-		padding: 0 46rpx 18rpx;
+		padding: 0 16rpx 18rpx;
 	}
 
 	.matchmaker-tab-bar {
@@ -547,13 +537,14 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		width: 33.3333%;
 		min-width: 0;
 		flex-shrink: 1;
-		height: 64rpx;
+		height: 76rpx;
 		border-radius: 999rpx;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 22rpx;
-		font-weight: 700;
+		font-size: 27rpx;
+		font-weight: 800;
+		letter-spacing: 0.5rpx;
 		color: var(--muted);
 	}
 
@@ -575,6 +566,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.service-page-content {
+		padding-top: 0;
 		padding-bottom: calc(env(safe-area-inset-bottom) + 144rpx);
 	}
 
@@ -592,13 +584,13 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.error-title {
-		font-size: 28rpx;
+		font-size: 32rpx;
 		font-weight: 800;
 		color: var(--ink);
 	}
 
 	.error-desc {
-		font-size: 22rpx;
+		font-size: 24rpx;
 		line-height: 1.55;
 		color: var(--ink2);
 	}
@@ -612,7 +604,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		background: var(--surface);
 		display: flex;
 		align-items: center;
-		font-size: 20rpx;
+		font-size: 22rpx;
 		font-weight: 800;
 		color: var(--accent2);
 	}
@@ -636,14 +628,14 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.summary-value {
-		font-size: 30rpx;
+		font-size: 34rpx;
 		line-height: 1.2;
 		font-weight: 800;
 		color: var(--ink);
 	}
 
 	.summary-label {
-		font-size: 18rpx;
+		font-size: 20rpx;
 		line-height: 1.45;
 		color: var(--muted);
 	}
@@ -684,17 +676,17 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		gap: 12rpx;
 	}
 
-	.custom-home-kicker { font-size: 20rpx; font-weight: 800; letter-spacing: .08em; color: var(--accent2); }
-	.custom-home-title { font-size: 40rpx; line-height: 1.3; font-family: var(--serif); font-weight: 700; color: var(--ink); }
-	.custom-home-desc { font-size: 22rpx; line-height: 1.6; color: var(--muted); }
+	.custom-home-kicker { font-size: 22rpx; font-weight: 800; letter-spacing: .08em; color: var(--accent2); }
+	.custom-home-title { font-size: 44rpx; line-height: 1.3; font-family: var(--sans); font-weight: 700; color: var(--ink); }
+	.custom-home-desc { font-size: 24rpx; line-height: 1.6; color: var(--muted); }
 	.custom-home-values { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12rpx; }
 	.custom-home-value { min-height: 188rpx; padding: 18rpx 14rpx; border-radius: 16rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 10rpx; }
-	.custom-home-mark { width: 44rpx; height: 44rpx; border-radius: 50%; background: var(--accent-bg); color: var(--accent2); display: flex; align-items: center; justify-content: center; font-size: 22rpx; font-weight: 800; }
-	.custom-home-value-title { font-size: 24rpx; font-weight: 800; color: var(--ink); }.custom-home-value-copy { font-size: 18rpx; line-height: 1.5; color: var(--muted); }
-	.custom-home-services { display: grid; grid-template-columns: 1fr 1fr; gap: 12rpx; }.custom-home-service { min-height: 144rpx; padding: 18rpx; border-radius: 16rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 7rpx; }.custom-home-service-index { font-size: 18rpx; color: var(--accent2); font-weight: 800; }.custom-home-service-title { font-size: 25rpx; font-weight: 800; color: var(--ink); }.custom-home-service-copy { font-size: 19rpx; line-height: 1.45; color: var(--muted); }
-	.custom-home-process-scroll, .custom-home-plan-scroll { width: 100%; margin: 0 -32rpx; padding: 0 32rpx; }.custom-home-process-list, .custom-home-plan-list { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: flex-start; gap: 14rpx; }.custom-home-process { width: 128rpx; flex-shrink: 0; display: flex; flex-direction: column; gap: 8rpx; }.custom-home-process-mark { width: 50rpx; height: 50rpx; border-radius: 50%; background: var(--accent); color: var(--paper); display: flex; align-items: center; justify-content: center; font-size: 18rpx; font-weight: 800; }.custom-home-process-title { font-size: 23rpx; font-weight: 800; color: var(--ink); }.custom-home-process-copy { font-size: 18rpx; color: var(--muted); }
+	.custom-home-mark { width: 44rpx; height: 44rpx; border-radius: 50%; background: var(--accent-bg); color: var(--accent2); display: flex; align-items: center; justify-content: center; font-size: 24rpx; font-weight: 800; }
+	.custom-home-value-title { font-size: 26rpx; font-weight: 800; color: var(--ink); }.custom-home-value-copy { font-size: 20rpx; line-height: 1.5; color: var(--muted); }
+	.custom-home-services { display: grid; grid-template-columns: 1fr 1fr; gap: 12rpx; }.custom-home-service { min-height: 144rpx; padding: 18rpx; border-radius: 16rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 7rpx; }.custom-home-service-index { font-size: 20rpx; color: var(--accent2); font-weight: 800; }.custom-home-service-title { font-size: 29rpx; font-weight: 800; color: var(--ink); }.custom-home-service-copy { font-size: 21rpx; line-height: 1.45; color: var(--muted); }
+	.custom-home-process-scroll, .custom-home-plan-scroll { width: 100%; margin: 0 -32rpx; padding: 0 32rpx; }.custom-home-process-list, .custom-home-plan-list { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: flex-start; gap: 14rpx; }.custom-home-process { width: 128rpx; flex-shrink: 0; display: flex; flex-direction: column; gap: 8rpx; }.custom-home-process-mark { width: 50rpx; height: 50rpx; border-radius: 50%; background: var(--accent); color: var(--paper); display: flex; align-items: center; justify-content: center; font-size: 20rpx; font-weight: 800; }.custom-home-process-title { font-size: 25rpx; font-weight: 800; color: var(--ink); }.custom-home-process-copy { font-size: 20rpx; color: var(--muted); }
 	.custom-home-plan-list { box-sizing: border-box; }
-	.custom-home-plan { position: relative; width: 300rpx; min-height: 220rpx; flex-shrink: 0; padding: 22rpx; border-radius: 16rpx; background: var(--surface); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 9rpx; box-sizing: border-box; transition: 0.2s; }.custom-home-plan.selected { border-color: var(--accent); background: linear-gradient(145deg, var(--paper) 0%, var(--match-mist) 100%); box-shadow: var(--match-shadow); transform: translateY(-3rpx); }.custom-home-plan-title-row { display: flex; flex-direction: row; align-items: center; gap: 8rpx; min-height: 34rpx; padding-right: 46rpx; }.custom-home-plan-name { font-size: 28rpx; font-family: var(--serif); font-weight: 700; color: var(--ink); white-space: nowrap; }.custom-home-plan-recommend { padding: 3rpx 8rpx; border: 1px solid var(--accent-bg); border-radius: 999rpx; background: var(--match-mist); color: var(--accent2); font-size: 16rpx; font-weight: 800; line-height: 1.25; white-space: nowrap; }.custom-home-plan-selected-badge { position: absolute; top: 12rpx; right: 12rpx; padding: 6rpx 11rpx; border-radius: 999rpx; background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%); box-shadow: var(--shadow-sm); color: var(--paper); font-size: 17rpx; font-weight: 800; line-height: 1.2; }.custom-home-plan-price { font-size: 40rpx; color: var(--brown); font-weight: 800; }.custom-home-plan.selected .custom-home-plan-price { color: var(--accent2); }.custom-home-plan-duration { font-size: 18rpx; color: var(--muted); }.custom-home-plan-feature { font-size: 21rpx; color: var(--accent2); font-weight: 800; }.custom-home-plan-copy { font-size: 18rpx; line-height: 1.45; color: var(--muted); }
+	.custom-home-plan { position: relative; width: 300rpx; min-height: 220rpx; flex-shrink: 0; padding: 22rpx; border-radius: 16rpx; background: var(--surface); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 9rpx; box-sizing: border-box; transition: 0.2s; }.custom-home-plan.selected { border-color: var(--accent); background: linear-gradient(145deg, var(--paper) 0%, var(--match-mist) 100%); box-shadow: var(--match-shadow); transform: translateY(-3rpx); }.custom-home-plan-title-row { display: flex; flex-direction: row; align-items: center; gap: 8rpx; min-height: 34rpx; padding-right: 46rpx; }.custom-home-plan-name { font-size: 32rpx; font-family: var(--sans); font-weight: 700; color: var(--ink); white-space: nowrap; }.custom-home-plan-recommend { padding: 3rpx 8rpx; border: 1px solid var(--accent-bg); border-radius: 999rpx; background: var(--match-mist); color: var(--accent2); font-size: 18rpx; font-weight: 800; line-height: 1.25; white-space: nowrap; }.custom-home-plan-selected-badge { position: absolute; top: 12rpx; right: 12rpx; padding: 6rpx 11rpx; border-radius: 999rpx; background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%); box-shadow: var(--shadow-sm); color: var(--paper); font-size: 19rpx; font-weight: 800; line-height: 1.2; }.custom-home-plan-price { font-size: 44rpx; color: var(--brown); font-weight: 800; }.custom-home-plan.selected .custom-home-plan-price { color: var(--accent2); }.custom-home-plan-duration { font-size: 20rpx; color: var(--muted); }.custom-home-plan-feature { font-size: 23rpx; color: var(--accent2); font-weight: 800; }.custom-home-plan-copy { font-size: 20rpx; line-height: 1.45; color: var(--muted); }
 
 	.plan-entry-card {
 		padding: 28rpx;
@@ -717,14 +709,14 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.plan-entry-title {
-		font-size: 30rpx;
-		font-family: var(--serif);
+		font-size: 34rpx;
+		font-family: var(--sans);
 		font-weight: 700;
 		color: var(--ink);
 	}
 
 	.plan-entry-desc {
-		font-size: 22rpx;
+		font-size: 24rpx;
 		line-height: 1.5;
 		color: var(--muted);
 	}
@@ -741,7 +733,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.plan-entry-arrow text {
-		font-size: 36rpx;
+		font-size: 40rpx;
 		font-weight: 700;
 		color: var(--accent2);
 	}
@@ -759,33 +751,42 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 
 	.section-title {
 		display: block;
-		font-size: 34rpx;
+		font-size: 38rpx;
 		line-height: 1.2;
-		font-family: var(--serif);
-		font-weight: 700;
+		font-family: "Kaiti SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+		font-weight: 600;
 		color: var(--match-deep);
+	}
+
+	/* 服务红娘标题：与红娘昵称互换字体后改手写楷体融合栈，与红娘排行榜标题统一 */
+	.section-title-hand {
+		font-family: "Kaiti SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+		font-size: 32rpx;
+		font-weight: 700;
+		color: var(--ink);
 	}
 
 	.section-desc {
 		display: block;
 		margin-top: 8rpx;
-		font-size: 20rpx;
+		font-size: 22rpx;
 		line-height: 1.55;
 		color: var(--muted);
 	}
 
 	.section-link {
 		flex-shrink: 0;
-		font-size: 22rpx;
+		font-size: 24rpx;
 		font-weight: 800;
 		color: var(--match-coral);
 	}
 
 	.service-showcase {
 		padding: 26rpx 0 24rpx;
-		border-radius: 24rpx;
+		border-radius: 0 0 24rpx 24rpx;
 		background: var(--match-paper);
 		border: 1px solid var(--match-line);
+		border-top: none;
 		box-shadow: 0 8rpx 22rpx rgba(91, 175, 128, 0.07);
 		overflow: hidden;
 	}
@@ -831,15 +832,15 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.notice-title {
-		font-size: 27rpx;
-		font-weight: 800;
-		color: var(--match-deep);
+		font-size: 20rpx;
+		font-weight: 500;
+		color: #999999;
 	}
 
 	.notice-text {
-		font-size: 21rpx;
-		line-height: 1.6;
-		color: var(--ink2);
+		font-size: 20rpx;
+		line-height: 1.5;
+		color: #999999;
 	}
 
 	.feature-card {
@@ -854,22 +855,22 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.feature-kicker {
-		font-size: 20rpx;
+		font-size: 22rpx;
 		font-weight: 800;
 		letter-spacing: 0.08em;
 		color: var(--soft);
 	}
 
 	.feature-title {
-		font-size: 38rpx;
+		font-size: 42rpx;
 		line-height: 1.35;
-		font-family: var(--serif);
+		font-family: var(--sans);
 		font-weight: 700;
 		color: var(--paper);
 	}
 
 	.feature-desc {
-		font-size: 22rpx;
+		font-size: 24rpx;
 		line-height: 1.65;
 		color: rgba(250, 252, 252, 0.78);
 	}
@@ -899,20 +900,20 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		color: var(--paper);
 		display: flex;
 		align-items: center;
-		font-size: 18rpx;
+		font-size: 20rpx;
 		font-weight: 800;
 	}
 
 	.ai-title {
-		font-size: 38rpx;
+		font-size: 42rpx;
 		line-height: 1.36;
-		font-family: var(--serif);
+		font-family: var(--sans);
 		font-weight: 700;
 		color: var(--paper);
 	}
 
 	.ai-desc {
-		font-size: 22rpx;
+		font-size: 24rpx;
 		line-height: 1.65;
 		color: rgba(250, 252, 252, 0.76);
 	}
@@ -939,13 +940,13 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 18rpx;
+		font-size: 20rpx;
 		font-weight: 800;
 		flex-shrink: 0;
 	}
 
 	.flow-copy {
-		font-size: 22rpx;
+		font-size: 24rpx;
 		line-height: 1.6;
 		color: rgba(250, 252, 252, 0.82);
 	}
@@ -964,7 +965,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		background: var(--surface);
 		display: flex;
 		align-items: center;
-		font-size: 22rpx;
+		font-size: 24rpx;
 		font-weight: 700;
 		color: var(--ink2);
 	}
@@ -986,13 +987,13 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.prompt-preview-title {
-		font-size: 20rpx;
+		font-size: 22rpx;
 		font-weight: 800;
 		color: var(--accent2);
 	}
 
 	.prompt-preview-text {
-		font-size: 24rpx;
+		font-size: 26rpx;
 		line-height: 1.6;
 		color: var(--ink);
 	}
@@ -1035,9 +1036,9 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.ai-name {
-		font-size: 32rpx;
+		font-size: 36rpx;
 		line-height: 1.2;
-		font-family: var(--serif);
+		font-family: var(--sans);
 		font-weight: 700;
 		color: var(--ink);
 	}
@@ -1050,19 +1051,19 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		color: var(--accent2);
 		display: flex;
 		align-items: center;
-		font-size: 20rpx;
+		font-size: 22rpx;
 		font-weight: 800;
 		flex-shrink: 0;
 	}
 
 	.ai-meta {
-		font-size: 22rpx;
+		font-size: 24rpx;
 		line-height: 1.5;
 		color: var(--muted);
 	}
 
 	.ai-copy {
-		font-size: 22rpx;
+		font-size: 24rpx;
 		line-height: 1.6;
 		color: var(--ink2);
 	}
@@ -1113,9 +1114,9 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	.ai-nav-title {
 		flex: 1;
 		min-width: 0;
-		font-size: 34rpx;
+		font-size: 38rpx;
 		line-height: 1.2;
-		font-family: var(--serif);
+		font-family: var(--sans);
 		font-weight: 700;
 		color: var(--ink);
 		text-align: center;
@@ -1123,7 +1124,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 
 	.ai-clear {
 		flex-shrink: 0;
-		font-size: 22rpx;
+		font-size: 24rpx;
 		font-weight: 700;
 		color: var(--accent2);
 	}
@@ -1156,15 +1157,15 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.ai-profile-name {
-		font-size: 30rpx;
+		font-size: 34rpx;
 		line-height: 1.2;
-		font-family: var(--serif);
+		font-family: var(--sans);
 		font-weight: 700;
 		color: var(--ink);
 	}
 
 	.ai-profile-subtitle {
-		font-size: 21rpx;
+		font-size: 23rpx;
 		line-height: 1.5;
 		color: var(--muted);
 	}
@@ -1179,7 +1180,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		flex-direction: row;
 		align-items: center;
 		gap: 8rpx;
-		font-size: 20rpx;
+		font-size: 22rpx;
 		font-weight: 700;
 		flex-shrink: 0;
 	}
@@ -1201,7 +1202,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		max-width: 86%;
 		padding: 18rpx 20rpx;
 		border-radius: 20rpx;
-		font-size: 24rpx;
+		font-size: 26rpx;
 		line-height: 1.6;
 		word-break: break-word;
 	}
@@ -1255,7 +1256,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 
 	.quick-question-title text {
 		flex-shrink: 0;
-		font-size: 21rpx;
+		font-size: 23rpx;
 		font-weight: 800;
 		color: var(--accent2);
 	}
@@ -1275,7 +1276,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 22rpx;
+		font-size: 24rpx;
 		font-weight: 700;
 		color: var(--ink2);
 	}
@@ -1315,7 +1316,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 24rpx;
+		font-size: 26rpx;
 		font-weight: 800;
 		color: var(--accent2);
 	}
@@ -1331,11 +1332,12 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.join-entry-label {
-		font-size: 20rpx;
-		font-weight: 700;
+		font-size: 25rpx;
+		font-weight: 600;
 		color: var(--match-deep);
 		text-align: center;
 		line-height: 1.35;
+		letter-spacing: 0.5rpx;
 	}
 
 	.custom-apply-safe {
@@ -1357,7 +1359,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 28rpx;
+		font-size: 32rpx;
 		font-weight: 800;
 		box-shadow: var(--shadow-md);
 	}
@@ -1393,7 +1395,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		flex: 1;
 		min-width: 0;
 		height: 100%;
-		font-size: 24rpx;
+		font-size: 26rpx;
 		color: var(--ink);
 	}
 
@@ -1406,7 +1408,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 25rpx;
+		font-size: 29rpx;
 		font-weight: 800;
 	}
 

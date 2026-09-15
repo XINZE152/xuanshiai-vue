@@ -1,17 +1,56 @@
 import { request } from './request.uts'
 
 export async function getMembershipStatus() {
-	return request({ url: '/users/me/membership', method: 'GET' })
+	return request({
+		url: '/users/me/membership',
+		method: 'GET',
+		mockData: {
+			is_vip: true,
+			isVip: true,
+			level: 2,
+			vip_level: 2,
+			package_name: '年度会员',
+			expire_at: '2027-01-01',
+			expireAt: '2027-01-01'
+		}
+	})
 }
 
 export async function createMembershipOrder(packageCode: string, idempotencyKey: string) {
-	return request({ url: '/membership/orders', method: 'POST', data: { package_code: packageCode }, headers: { 'Idempotency-Key': idempotencyKey } })
+	return request({
+		url: '/membership/orders',
+		method: 'POST',
+		data: { package_code: packageCode },
+		headers: { 'Idempotency-Key': idempotencyKey },
+		mockData: {
+			success: true,
+			order_no: 'MOCK' + (Date.now()),
+			package_code: packageCode,
+			status: 'pending',
+			amount: 68
+		}
+	})
 }
 
 export async function getMembershipOrder(orderNo: string) {
-	return request({ url: '/membership/orders/' + encodeURIComponent(orderNo), method: 'GET' })
+	return request({
+		url: '/membership/orders/' + encodeURIComponent(orderNo),
+		method: 'GET',
+		mockData: {
+			order_no: orderNo,
+			package_code: 'yearly',
+			status: 'paid',
+			amount: 498,
+			paid_at: '2026-09-10 17:00:00'
+		}
+	})
 }
 
 export async function testPayOrder(orderNo: string) {
-	return request({ url: '/payments/test/pay', method: 'POST', data: { order_no: orderNo, success: true } })
+	return request({
+		url: '/payments/test/pay',
+		method: 'POST',
+		data: { order_no: orderNo, success: true },
+		mockData: { success: true, paid: true, order_no: orderNo }
+	})
 }

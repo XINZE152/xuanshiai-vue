@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- 切换到父母端：按参考图完全照搬，圆圈内双向箭头 -->
+  <g fill="none" stroke="#1A1A24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="9.5"/>
+    <!-- 上箭头：向右，箭头头部收短 -->
+    <polyline points="5,8.5 15,8.5 13,6.5"/>
+    <polyline points="15,8.5 13,10.5"/>
+    <!-- 下箭头：向左，箭头头部收短 -->
+    <polyline points="19,15.5 9,15.5 11,13.5"/>
+    <polyline points="9,15.5 11,17.5"/>
+  </g>
+</svg>

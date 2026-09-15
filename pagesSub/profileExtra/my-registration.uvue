@@ -367,9 +367,11 @@ const viewDetail = (item: ActivityItem) => {
 }
 
 .status-stamp text {
-	font-size: 20rpx;
+	/* 字体对齐首页：PingFang 黑体、22rpx/600、无宽字距 */
+	font-family: var(--sans);
+	font-size: 22rpx;
 	font-weight: 600;
-	letter-spacing: 4rpx;
+	letter-spacing: 1rpx;
 	color: currentColor;
 }
 
@@ -397,9 +399,11 @@ const viewDetail = (item: ActivityItem) => {
 }
 
 .fee-label {
+	/* 字体对齐首页：PingFang 黑体、20rpx、无字距 */
+	font-family: var(--sans);
 	color: var(--muted);
 	font-size: 20rpx;
-	letter-spacing: 2rpx;
+	letter-spacing: 0;
 	margin-right: 12rpx;
 }
 
@@ -425,9 +429,11 @@ const viewDetail = (item: ActivityItem) => {
 }
 
 .detail-link text {
+	/* 字体对齐首页：PingFang 黑体、24rpx、无字距 */
+	font-family: var(--sans);
 	color: var(--ink2);
 	font-size: 24rpx;
-	letter-spacing: 4rpx;
+	letter-spacing: 0;
 }
 
 .detail-arrow {

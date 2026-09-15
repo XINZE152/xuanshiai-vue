@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- 方案 A：双向箭头（交换/切换） -->
+  <path d="M4 8 L8 4 L8 7 L16 7 L16 4 L20 8 L16 12 L16 9 L8 9 L8 12 Z" fill="none" stroke="#2C2C2C" stroke-width="1.90" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M20 16 L16 20 L16 17 L8 17 L8 20 L4 16 L8 12 L8 15 L16 15 L16 12 Z" fill="none" stroke="#2C2C2C" stroke-width="1.90" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

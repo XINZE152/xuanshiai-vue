@@ -10,243 +10,393 @@
 			action-text="重试"
 			@action="load"
 		/>
-		<scroll-view class="scroll" scroll-y v-if="activity != null">
-			<image class="cover" :src="activity.cover" mode="aspectFill"></image>
-			<view class="body">
-				<text class="kicker">{{ activity.kicker }}</text>
+		<scroll-view class="scroll" scroll-y v-else>
+			<!-- 封面（灰绿纯色块 + 左下角标签） -->
+			<view class="cover">
+				<text class="cover-label">{{ coverLabel }}</text>
+			</view>
+
+			<!-- 标题与简介 -->
+			<view class="card title-card">
 				<text class="title">{{ activity.title }}</text>
-				<text class="desc">{{ activity.description }}</text>
-				<view class="info">
-					<text class="row">时间：{{ activity.date }} {{ activity.time }}</text>
-					<text class="row">地点：{{ activity.location }}</text>
-					<text class="row">名额：{{ activity.participantCount }}/{{ activity.maxParticipants }}</text>
-					<text class="row">费用：{{ activity.price > 0 ? ('¥' + activity.price) : '免费' }}</text>
+				<text class="intro">{{ activity.description }}</text>
+			</view>
+
+			<!-- 活动信息 -->
+			<view class="card info-card">
+				<view class="info-row">
+					<text class="k">时间</text>
+					<text class="v">{{ timeText }}</text>
 				</view>
-				<view class="tags">
-					<text class="tag" v-for="(t, i) in activity.tags" :key="i">{{ t }}</text>
+				<view class="info-row">
+					<text class="k">地点</text>
+					<text class="v">{{ activity.location }}</text>
 				</view>
-				<view class="safety" v-if="activity.safetyNotes != null">
-					<text class="s-title">安全说明</text>
-					<text class="s-item" v-for="(n, i) in activity.safetyNotes" :key="i">· {{ n }}</text>
+				<view class="info-row">
+					<text class="k">名额</text>
+					<text class="v">{{ quotaText }}</text>
 				</view>
-				<view class="organizer" v-if="activity.organizer != null">
-					<image class="o-avatar" :src="activity.organizer.avatar" mode="aspectFill"></image>
+				<view class="info-row">
+					<text class="k">费用</text>
+					<text class="v" :class="{ price: feeEmphasis }">{{ feeText }}</text>
+				</view>
+			</view>
+
+			<!-- 标签模块 -->
+			<view class="card tags-card" v-if="activity.tags != null && activity.tags.length > 0">
+				<text class="k">标签</text>
+				<view class="pills">
+					<text class="pill" v-for="(t, i) in activity.tags" :key="i">{{ t }}</text>
+				</view>
+			</view>
+
+			<!-- 安全说明 -->
+			<view class="card safety-card" v-if="activity.safetyNotes != null && activity.safetyNotes.length > 0">
+				<view class="sec-title">
+					<view class="bar"></view>
+					<text>安全说明</text>
+				</view>
+				<view class="safe-item" v-for="(n, i) in activity.safetyNotes" :key="i">
+					<text class="dot">・</text>
+					<text class="safe-text">{{ n }}</text>
+				</view>
+			</view>
+
+			<!-- 主办方 -->
+			<view class="card org-card" v-if="activity.organizer != null">
+				<view class="org">
+					<view class="avatar"><text>{{ orgInitial }}</text></view>
 					<view class="o-meta">
 						<text class="o-name">{{ activity.organizer.name }}</text>
 						<text class="o-desc" v-if="activity.organizer.description != null && activity.organizer.description != ''">{{ activity.organizer.description }}</text>
 					</view>
 				</view>
 			</view>
+
 			<view class="pad"></view>
 		</scroll-view>
+
 		<view class="footer" v-if="activity != null">
-			<button class="btn" :disabled="btnDisabled" @click="handleSignup">{{ btnLabel }}</button>
+			<view class="btn" :class="{ disabled: btnDisabled }" @click="handleSignup">
+				<text>{{ btnLabel }}</text>
+			</view>
 		</view>
 	</view>
 </template>
 
 <script setup lang="uts">
-	import { getActivityDetail, signupActivity } from '@/api'
-	import XsaEmpty from '@/components/XsaEmpty.uvue'
-	import { guardRealName } from '@/utils/realNameGate.uts'
+import { getActivityDetail, signupActivity } from '@/api'
+import XsaEmpty from '@/components/XsaEmpty.uvue'
+import { guardRealName } from '@/utils/realNameGate.uts'
 
-	const id = ref(0)
-	const activity = ref(null)
-	const submitting = ref(false)
-	const activityLoading = ref(false)
-	const activityError = ref(false)
+const id = ref(0)
+const activity = ref(null)
+const submitting = ref(false)
+const activityLoading = ref(false)
+const activityError = ref(false)
 
-	onLoad((q: any) => {
-		id.value = q != null && q.id != null ? parseInt('' + q.id) : 0
-		load()
-	})
+onLoad((q: any) => {
+	id.value = q != null && q.id != null ? parseInt('' + q.id) : 0
+	load()
+})
 
-	const load = async () => {
-		activityLoading.value = true
-		activityError.value = false
-		if (id.value <= 0) {
-			activityLoading.value = false
-			return
-		}
-		try {
-			const res = await getActivityDetail(id.value)
-			if (res.success && res.data != null) activity.value = res.data
-			else activityError.value = true
-		} catch (e) {
-			activityError.value = true
-		} finally {
-			activityLoading.value = false
-		}
+const load = async () => {
+	activityLoading.value = true
+	activityError.value = false
+	if (id.value <= 0) {
+		activityLoading.value = false
+		return
 	}
+	try {
+		const res = await getActivityDetail(id.value)
+		if (res.success && res.data != null) activity.value = res.data
+		else activityError.value = true
+	} catch (e) {
+		activityError.value = true
+	} finally {
+		activityLoading.value = false
+	}
+}
 
-	const btnLabel = computed(() => {
-		if (activity.value == null) return '报名'
-		if (activity.value.status == 'ended') return '活动已结束'
-		if (activity.value.myStatus == 'pending') return '审核中'
-		if (activity.value.myStatus == 'joined') return '已报名'
-		return '实名后报名'
-	})
+const coverLabel = computed(() => {
+	if (activity.value != null && activity.value.kicker != null && activity.value.kicker != '') return activity.value.kicker
+	return 'OFFLINE・08/02'
+})
+const timeText = computed(() => {
+	if (activity.value == null) return ''
+	return (activity.value.date != null ? activity.value.date : '') + ' ' + (activity.value.time != null ? activity.value.time : '')
+})
+const quotaText = computed(() => {
+	if (activity.value == null) return ''
+	return activity.value.participantCount + '/' + activity.value.maxParticipants
+})
+const feeEmphasis = computed(() => activity.value != null && activity.value.price > 0)
+const feeText = computed(() => {
+	if (activity.value == null) return ''
+	return activity.value.price > 0 ? ('¥' + activity.value.price) : '免费'
+})
+const orgInitial = computed(() => {
+	const o = activity.value != null ? activity.value.organizer : null
+	if (o != null && o.name != null && o.name != '') return o.name.substring(0, 1)
+	return '主'
+})
 
-	const btnDisabled = computed(() => {
-		if (activity.value == null || submitting.value) return true
-		if (activity.value.status == 'ended') return true
-		if (activity.value.myStatus == 'pending' || activity.value.myStatus == 'joined') return true
-		return false
-	})
+const btnLabel = computed(() => {
+	if (activity.value == null) return '报名'
+	if (activity.value.status == 'ended') return '活动已结束'
+	if (activity.value.myStatus == 'pending') return '审核中'
+	if (activity.value.myStatus == 'joined') return '已报名'
+	return '实名后报名'
+})
 
-	const handleSignup = async () => {
-		if (btnDisabled.value) return
-		const ok = await guardRealName('activitySignup')
-		if (!ok) return
-		submitting.value = true
-		try {
-			const res = await signupActivity(id.value)
-			if (res.success) {
-				if (activity.value != null) {
-					activity.value.myStatus = res.data.myStatus
-					activity.value.participantCount += 1
-				}
-				uni.showToast({
-					title: res.data.message != null ? res.data.message : '报名已提交',
-					icon: 'none'
-				})
+const btnDisabled = computed(() => {
+	if (activity.value == null || submitting.value) return true
+	if (activity.value.status == 'ended') return true
+	if (activity.value.myStatus == 'pending' || activity.value.myStatus == 'joined') return true
+	return false
+})
+
+const handleSignup = async () => {
+	if (btnDisabled.value) return
+	const ok = await guardRealName('activitySignup')
+	if (!ok) return
+	submitting.value = true
+	try {
+		const res = await signupActivity(id.value)
+		if (res.success) {
+			if (activity.value != null) {
+				activity.value.myStatus = res.data.myStatus
+				activity.value.participantCount += 1
 			}
-		} catch (e) {
-			uni.showToast({ title: '报名失败', icon: 'none' })
-		} finally {
-			submitting.value = false
+			uni.showToast({
+				title: res.data.message != null ? res.data.message : '报名已提交',
+				icon: 'none'
+			})
 		}
+	} catch (e) {
+		uni.showToast({ title: '报名失败', icon: 'none' })
+	} finally {
+		submitting.value = false
 	}
+}
 </script>
 
 <style scoped>
-	.page {
-		height: 100vh;
-		background: var(--canvas);
-		display: flex;
-		flex-direction: column;
-	}
-	.scroll {
-		flex: 1;
-		height: 0;
-	}
-	.cover {
-		width: 100%;
-		height: 200px;
-	}
-	.body {
-		padding: 16px;
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-	.kicker {
-		font-size: 11px;
-		font-weight: 800;
-		color: var(--accent);
-	}
-	.title {
-		font-size: 24px;
-		font-family: var(--serif);
-		font-weight: 700;
-		color: var(--ink);
-	}
-	.desc {
-		font-size: 14px;
-		line-height: 1.6;
-		color: var(--ink);
-	}
-	.info {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		padding: 12px;
-		background: var(--surface);
-		border-radius: 10px;
-		border: 1px solid var(--line);
-	}
-	.row {
-		font-size: 13px;
-		color: var(--ink);
-	}
-	.tags {
-		display: flex;
-		flex-direction: row;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
-	.tag {
-		font-size: 11px;
-		font-weight: 700;
-		padding: 4px 8px;
-		background: var(--soft);
-		color: var(--accent);
-		border-radius: 999px;
-	}
-	.safety {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		padding: 12px;
-		background: var(--soft);
-		border-radius: 10px;
-	}
-	.s-title {
-		font-size: 13px;
-		font-weight: 700;
-		color: var(--ink);
-		margin-bottom: 2px;
-	}
-	.s-item {
-		font-size: 12px;
-		color: var(--muted);
-		line-height: 1.5;
-	}
-	.organizer {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: 10px;
-	}
-	.o-avatar {
-		width: 36px;
-		height: 36px;
-		border-radius: 50%;
-	}
-	.o-meta {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		flex: 1;
-	}
-	.o-name {
-		font-size: 13px;
-		font-weight: 600;
-	}
-	.o-desc {
-		font-size: 12px;
-		color: var(--muted);
-		line-height: 1.4;
-	}
-	.footer {
-		padding: 12px 16px;
-		padding-bottom: calc(12px + env(safe-area-inset-bottom));
-		background: var(--surface);
-		border-top: 1px solid var(--line);
-	}
-	.btn {
-		height: 46px;
-		background: var(--sage);
-		color: var(--paper);
-		border-radius: 999px;
-		font-size: 15px;
-		font-weight: 700;
-		border: none;
-	}
-	.btn[disabled] {
-		opacity: 0.55;
-	}
-	.pad {
-		height: 24px;
-	}
+.page {
+	height: 100vh;
+	background: #F8F9F8;
+	display: flex;
+	flex-direction: column;
+	font-family: var(--sans);
+}
+.state {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.text-muted {
+	color: #888888;
+	font-size: 14px;
+}
+.scroll {
+	flex: 1;
+	height: 0;
+}
+.cover {
+	margin: 12px 16px 0;
+	height: 188px;
+	border-radius: 18px;
+	background: #6A9490;
+	position: relative;
+	overflow: hidden;
+}
+.cover-label {
+	position: absolute;
+	left: 14px;
+	bottom: 14px;
+	background: rgba(255, 255, 255, 0.92);
+	color: #6A9490;
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.4px;
+	padding: 5px 11px;
+	border-radius: 10px;
+}
+
+.card {
+	margin: 14px 16px 0;
+	background: #FFFFFF;
+	border: 1px solid #ECECEC;
+	border-radius: 18px;
+	box-shadow: 0 2px 10px rgba(30, 40, 35, 0.04);
+	padding: 20px 18px;
+}
+.title-card .title {
+	font-size: 22px;
+	font-weight: 700;
+	color: #222222;
+	line-height: 1.45;
+	letter-spacing: 0.3px;
+}
+.title-card .intro {
+	margin-top: 12px;
+	font-size: 14px;
+	font-weight: 400;
+	color: #555555;
+	line-height: 1.7;
+}
+
+.info-row {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	padding: 13px 0;
+}
+.info-row + .info-row {
+	border-top: 1px solid #ECECEC;
+}
+.info-row .k {
+	flex: none;
+	width: 54px;
+	font-size: 13px;
+	font-weight: 400;
+	color: #888888;
+	padding-top: 2px;
+}
+.info-row .v {
+	flex: 1;
+	font-size: 14px;
+	font-weight: 400;
+	color: #222222;
+}
+.info-row .v.price {
+	font-weight: 500;
+	color: #6A9490;
+	font-size: 15px;
+}
+
+.tags-card {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+}
+.tags-card .k {
+	font-size: 13px;
+	font-weight: 400;
+	color: #888888;
+}
+.tags-card .pills {
+	display: flex;
+	flex-direction: row;
+	gap: 10px;
+}
+.pill {
+	background: #6A9490;
+	color: #FFFFFF;
+	font-size: 12px;
+	font-weight: 400;
+	padding: 7px 16px;
+	border-radius: 999px;
+}
+
+.sec-title {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 9px;
+	font-size: 15px;
+	font-weight: 500;
+	color: #222222;
+	margin-bottom: 14px;
+}
+.sec-title .bar {
+	width: 4px;
+	height: 15px;
+	border-radius: 3px;
+	background: #6A9490;
+	opacity: 0.55;
+}
+.safe-item {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 7px 0;
+}
+.safe-item .dot {
+	color: #6A9490;
+	font-weight: 700;
+	font-size: 13px;
+}
+.safe-item .safe-text {
+	font-size: 13px;
+	font-weight: 400;
+	color: #555555;
+	line-height: 1.6;
+}
+
+.org {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 14px;
+}
+.avatar {
+	width: 46px;
+	height: 46px;
+	border-radius: 50%;
+	background: #EDEDED;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 18px;
+	font-weight: 500;
+	color: #9A9A9A;
+}
+.o-meta {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+}
+.o-name {
+	font-size: 15px;
+	font-weight: 500;
+	color: #222222;
+}
+.o-desc {
+	margin-top: 4px;
+	font-size: 12px;
+	font-weight: 300;
+	color: #888888;
+	line-height: 1.4;
+}
+
+.pad {
+	height: 24px;
+}
+
+.footer {
+	padding: 12px 16px;
+	padding-bottom: calc(12px + env(safe-area-inset-bottom));
+	background: #F8F9F8;
+	border-top: 1px solid #ECECEC;
+}
+.btn {
+	height: 48px;
+	border-radius: 14px;
+	background: #E0E0E0;
+	color: #555555;
+	font-size: 15px;
+	font-weight: 500;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.btn.disabled {
+	background: #ECECEC;
+	color: #888888;
+	opacity: 0.7;
+}
 </style>

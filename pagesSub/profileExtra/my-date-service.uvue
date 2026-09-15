@@ -1,0 +1,463 @@
+<template>
+	<view class="page">
+		<view class="nav" :style="{ paddingTop: statusBarHeight + 'px' }">
+			<view class="nav-back" @tap="goBack"><text>‹</text></view>
+			<text class="nav-title">我的约会</text>
+		</view>
+
+		<scroll-view scroll-y class="scroll" show-scrollbar="false">
+			<!-- Hero：浅底 + 柔光斑 + 双头像叠压 + 心形，不用重色块 -->
+			<view class="hero">
+				<view class="glow"></view>
+				<view class="glow2"></view>
+				<view class="chip">
+					<view class="chip-dot"></view>
+					<text>OFFLINE DATE · 线下约见</text>
+				</view>
+				<text class="hero-title">百聊不如一见</text>
+				<text class="hero-sub">直接与心仪对象见面，快速脱单</text>
+				<view class="deco">
+					<view class="ava ava-a"></view>
+					<view class="ava ava-b"><view class="ava-b-inner"></view></view>
+					<image class="heart" src="/static/icons/date-heart.svg" mode="aspectFit"></image>
+				</view>
+			</view>
+
+			<view class="body">
+				<!-- 服务说明卡 -->
+				<view class="card">
+					<view class="card-hd">
+						<view class="hd-dot"></view>
+						<text>线下约会服务说明</text>
+					</view>
+					<view class="steps">
+						<view v-for="(s, i) in steps" :key="s.no" class="step">
+							<view v-if="i > 0" class="step-line"></view>
+							<view class="step-no"><text>{{ s.no }}</text></view>
+							<text class="step-name">{{ s.name }}</text>
+							<view class="step-desc">
+								<text v-for="(ln, j) in s.lines" :key="j">{{ ln }}</text>
+							</view>
+						</view>
+					</view>
+					<text class="note">线下约见是我们的线下高端 1 对 1 服务。在这里可以查看到你所有的约会记录，对每次约会进行反馈。</text>
+				</view>
+
+				<!-- 未开通引导卡 -->
+				<view class="card soft">
+					<view class="face">
+						<image class="face-img" src="/static/icons/date-face.svg" mode="aspectFit"></image>
+					</view>
+					<text class="headline">您未开通线下约会服务</text>
+					<view class="qr-card">
+						<image class="qr-img" src="/static/icons/date-qr.svg" mode="aspectFit"></image>
+						<text class="qr-tip">扫码联系您的红娘</text>
+					</view>
+					<view class="cta" @tap="onFindMatchmaker"><text>找红娘安排见面</text></view>
+					<text class="foot">让Ta直接出现在你面前</text>
+				</view>
+
+				<view class="bottom-space"></view>
+			</view>
+		</scroll-view>
+	</view>
+</template>
+
+<script setup lang="uts">
+type StepItem = {
+	no: string
+	name: string
+	lines: string[]
+}
+
+const systemInfo = uni.getSystemInfoSync()
+const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
+
+const steps: StepItem[] = [
+	{ no: '1', name: '需求匹配', lines: ['红娘按你的', '择偶要求牵线'] },
+	{ no: '2', name: '线下约见', lines: ['安排与心仪', '嘉宾初见面'] },
+	{ no: '3', name: '约会反馈', lines: ['写反馈并为', '红娘服务打分'] }
+]
+
+const goBack = () => { uni.navigateBack() }
+const onFindMatchmaker = () => {
+	uni.showToast({ title: '已为您联系红娘', icon: 'none' })
+}
+</script>
+
+<style scoped>
+/* 方向 C · 蜜桃气泡：主色 #EE6C86 → #FFA6B2（见 my-date-redesign-v2.html） */
+.page {
+	height: 100vh;
+	display: flex;
+	flex-direction: column;
+	background-color: var(--bg);
+	font-family: var(--sans);
+	--bg: #FFF8F7;
+	--surface: #FFFFFF;
+	--brand: #EE6C86;
+	--brand2: #FFA6B2;
+	--brand-soft: #FFE9ED;
+	--text: #2B1620;
+	--text2: #8B7378;
+	--hero1: #FFF4F5;
+	--hero2: #FFEBEE;
+	--glow: #FFD3DB;
+	--line: #FBE7EB;
+}
+
+/* ==================== 自定义导航 ==================== */
+.nav {
+	position: relative;
+	z-index: 5;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	box-sizing: border-box;
+	height: 180rpx;
+	padding-left: 12rpx;
+	background-color: #FFFFFF;
+	border-bottom: 1rpx solid rgba(60, 20, 30, .05);
+}
+
+.nav-back {
+	width: 44rpx;
+	height: 48rpx;
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+}
+
+.nav-back text {
+	font-size: 44rpx;
+	font-weight: 400;
+	color: #1A1A1A;
+	line-height: 1;
+	margin-top: -4rpx;
+}
+
+.nav-title {
+	position: absolute;
+	left: 60rpx;
+	right: 10rpx;
+	text-align: center;
+	font-size: 36rpx;
+	font-weight: 500;
+	color: #1A1A1A;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	pointer-events: none;
+}
+
+/* ==================== 滚动区 ==================== */
+.scroll {
+	flex: 1;
+	min-height: 0;
+}
+
+.body {
+	padding: 0 28rpx;
+}
+
+.bottom-space {
+	height: 48rpx;
+}
+
+/* ==================== Hero ==================== */
+.hero {
+	position: relative;
+	overflow: hidden;
+	padding: 48rpx 40rpx 44rpx;
+	background: linear-gradient(160deg, var(--hero1) 0%, var(--hero2) 100%);
+}
+
+.glow {
+	position: absolute;
+	width: 300rpx;
+	height: 300rpx;
+	border-radius: 150rpx;
+	right: -92rpx;
+	top: -116rpx;
+	background-color: var(--glow);
+	opacity: .45;
+}
+
+.glow2 {
+	position: absolute;
+	width: 148rpx;
+	height: 148rpx;
+	border-radius: 74rpx;
+	right: 112rpx;
+	bottom: -68rpx;
+	background-color: var(--glow);
+	opacity: .28;
+}
+
+.chip {
+	position: relative;
+	z-index: 2;
+	display: inline-flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 10rpx;
+	margin-top: 8rpx;
+	padding: 8rpx 18rpx 8rpx 14rpx;
+	border-radius: 40rpx;
+	background-color: var(--surface);
+	color: var(--brand);
+	font-size: 20rpx;
+	font-weight: 700;
+	letter-spacing: 2rpx;
+	box-shadow: 0 4rpx 12rpx rgba(60, 20, 30, .06);
+}
+
+.chip-dot {
+	width: 10rpx;
+	height: 10rpx;
+	border-radius: 5rpx;
+	background-color: var(--brand);
+}
+
+.hero-title {
+	position: relative;
+	z-index: 2;
+	display: block;
+	margin: 24rpx 0 14rpx;
+	font-size: 50rpx;
+	font-weight: 700;
+	letter-spacing: 2rpx;
+	color: var(--text);
+}
+
+.hero-sub {
+	position: relative;
+	z-index: 2;
+	display: block;
+	font-size: 25rpx;
+	color: var(--text2);
+	letter-spacing: 1rpx;
+}
+
+.deco {
+	position: absolute;
+	right: 32rpx;
+	top: 92rpx;
+	z-index: 2;
+	width: 168rpx;
+	height: 168rpx;
+}
+
+.ava {
+	position: absolute;
+	border-radius: 50%;
+	box-shadow: 0 8rpx 20rpx rgba(60, 20, 30, .12);
+}
+
+.ava-a {
+	width: 104rpx;
+	height: 104rpx;
+	right: 52rpx;
+	top: 0;
+	background: linear-gradient(140deg, var(--brand) 0%, var(--brand2) 100%);
+}
+
+.ava-b {
+	width: 88rpx;
+	height: 88rpx;
+	right: 0;
+	top: 44rpx;
+	background-color: var(--surface);
+}
+
+.ava-b-inner {
+	position: absolute;
+	top: 6rpx;
+	right: 6rpx;
+	bottom: 6rpx;
+	left: 6rpx;
+	border-radius: 50%;
+	background-color: var(--brand-soft);
+}
+
+.heart {
+	position: absolute;
+	left: 4rpx;
+	top: 8rpx;
+	width: 44rpx;
+	height: 44rpx;
+}
+
+/* ==================== 卡片 ==================== */
+.card {
+	background-color: var(--surface);
+	border-radius: 44rpx;
+	padding: 34rpx 32rpx;
+	margin-top: 24rpx;
+	box-shadow: 0 10rpx 32rpx rgba(60, 20, 30, .05);
+}
+
+.card-hd {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 14rpx;
+	font-size: 29rpx;
+	font-weight: 700;
+	color: var(--text);
+}
+
+.hd-dot {
+	width: 12rpx;
+	height: 12rpx;
+	border-radius: 4rpx;
+	background-color: var(--brand);
+}
+
+/* ---- 三步骤 ---- */
+.steps {
+	display: flex;
+	flex-direction: row;
+	margin: 30rpx 0 26rpx;
+}
+
+.step {
+	flex: 1;
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+
+.step-line {
+	position: absolute;
+	left: -14%;
+	top: 25rpx;
+	width: 28%;
+	height: 0;
+	border-top: 2rpx dashed var(--line);
+}
+
+.step-no {
+	width: 52rpx;
+	height: 52rpx;
+	border-radius: 26rpx;
+	background-color: var(--brand-soft);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.step-no text {
+	color: var(--brand);
+	font-size: 24rpx;
+	font-weight: 700;
+}
+
+.step-name {
+	margin-top: 14rpx;
+	font-size: 24rpx;
+	font-weight: 700;
+	color: var(--text);
+}
+
+.step-desc {
+	margin-top: 6rpx;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+
+.step-desc text {
+	font-size: 20rpx;
+	color: var(--text2);
+	line-height: 1.5;
+}
+
+.note {
+	display: block;
+	font-size: 23rpx;
+	line-height: 1.85;
+	color: var(--text2);
+	text-align: justify;
+}
+
+/* ---- 未开通卡 ---- */
+.card.soft {
+	text-align: center;
+	padding: 44rpx 32rpx 36rpx;
+}
+
+.face {
+	width: 120rpx;
+	height: 120rpx;
+	border-radius: 60rpx;
+	margin: 0 auto 26rpx;
+	background-color: var(--brand-soft);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.face-img {
+	width: 64rpx;
+	height: 64rpx;
+}
+
+.headline {
+	display: block;
+	font-size: 33rpx;
+	font-weight: 700;
+	color: var(--text);
+	letter-spacing: 1rpx;
+}
+
+.qr-card {
+	margin: 30rpx auto 26rpx;
+	width: 336rpx;
+	padding: 22rpx 22rpx 16rpx;
+	border-radius: 32rpx;
+	background-color: var(--surface);
+	border: 1px solid var(--line);
+	box-shadow: 0 6rpx 20rpx rgba(60, 20, 30, .05);
+}
+
+.qr-img {
+	width: 292rpx;
+	height: 292rpx;
+	display: block;
+	margin: 0 auto;
+}
+
+.qr-tip {
+	display: block;
+	margin-top: 10rpx;
+	font-size: 21rpx;
+	color: var(--text2);
+}
+
+.cta {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 84rpx;
+	border-radius: 42rpx;
+	background: linear-gradient(120deg, var(--brand) 0%, var(--brand2) 100%);
+	color: #FFFFFF;
+	font-size: 28rpx;
+	font-weight: 700;
+	letter-spacing: 2rpx;
+	box-shadow: 0 12rpx 32rpx rgba(238, 108, 134, .25);
+	margin-top: 8rpx;
+}
+
+.foot {
+	display: block;
+	margin-top: 22rpx;
+	font-size: 23rpx;
+	color: var(--text2);
+}
+
+</style>

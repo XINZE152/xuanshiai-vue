@@ -65,7 +65,11 @@
 			<!-- 位置 -->
 			<view class="option-item" @click="chooseLocation">
 				<view class="option-left">
-					<text class="option-icon">📍</text>
+					<view class="option-icon icon-location">
+						<view class="loc-pin">
+							<view class="loc-hole"></view>
+						</view>
+					</view>
 					<text class="option-label">添加位置</text>
 				</view>
 				<view class="option-right">
@@ -102,7 +106,13 @@
 			<!-- 可见范围 -->
 			<view class="option-item" @click="selectVisibility">
 				<view class="option-left">
-					<text class="option-icon">👁️</text>
+					<view class="option-icon icon-eye">
+						<view class="eye-oval">
+							<view class="eye-ball">
+								<view class="eye-shine"></view>
+							</view>
+						</view>
+					</view>
 					<text class="option-label">谁可以看</text>
 				</view>
 				<view class="option-right">
@@ -1108,12 +1118,68 @@ const handleCancel = () => {
 }
 
 .option-icon {
+	width: 20px;
+	height: 20px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+	color: var(--muted);
 	font-size: 20px;
 }
 
 .option-label {
 	font-size: 15px;
 	color: var(--ink);
+}
+
+.icon-location .loc-pin {
+	width: 15px;
+	height: 15px;
+	background: var(--muted);
+	border-radius: 50% 50% 50% 0;
+	transform: rotate(-45deg);
+	position: relative;
+}
+
+.icon-location .loc-hole {
+	position: absolute;
+	width: 5px;
+	height: 5px;
+	background: #FFFFFF;
+	border-radius: 50%;
+	top: 4px;
+	left: 4px;
+}
+
+.icon-eye .eye-oval {
+	width: 18px;
+	height: 11px;
+	border: 2.5px solid var(--muted);
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+}
+
+.icon-eye .eye-ball {
+	width: 7px;
+	height: 7px;
+	background: var(--muted);
+	border-radius: 50%;
+	position: relative;
+}
+
+.icon-eye .eye-shine {
+	position: absolute;
+	width: 2.5px;
+	height: 2.5px;
+	background: #FFFFFF;
+	border-radius: 50%;
+	top: 1px;
+	right: 1.5px;
 }
 
 .option-right {

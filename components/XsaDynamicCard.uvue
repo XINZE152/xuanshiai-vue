@@ -7,17 +7,15 @@
 					<view class="name-row">
 						<view class="name-left">
 							<text class="name">{{ dynamic.user.name }}</text>
-							<text class="gender-icon text-muted" v-if="genderIcon !== ''">{{ genderIcon }}</text>
+							<text class="gender-icon" :class="genderClass" v-if="genderIcon !== ''">{{ genderIcon }}</text>
+							<text class="relation-tag inline" :class="tagTone(rt)" v-for="(rt, ri) in relationList" :key="ri">{{ rt }}</text>
 						</view>
 					</view>
 					<view class="meta-row" v-if="metaLine !== ''">
 						<text class="meta-text">{{ metaLine }}</text>
 					</view>
-					<view class="relation-row" v-if="relationList.length > 0">
-						<text class="relation-tag" v-for="(rt, ri) in relationList" :key="ri">{{ rt }}</text>
-					</view>
 					<view class="tag-row" v-if="tagList.length > 0">
-						<text class="mini-tag" v-for="(tag, i) in tagList" :key="i">{{ tag }}</text>
+						<text class="mini-tag" :class="tagTone(tag)" v-for="(tag, i) in tagList" :key="i">{{ tag }}</text>
 					</view>
 				</view>
 			<button
@@ -71,24 +69,8 @@
 					<text class="topic-label">{{ topicLabel }}</text>
 				</view>
 
-				<!-- 点赞摘要：后端返回头像时展示，缺少头像时仍保留数量信息。 -->
-				<view class="like-summary" v-if="likeCount > 0" @click.stop="handleLike">
-					<view class="like-avatars" v-if="likeAvatarList.length > 0">
-						<image
-							class="like-avatar"
-							v-for="(av, ai) in likeAvatarList"
-							:key="ai"
-							:src="av"
-							mode="aspectFill"
-							:style="{ marginLeft: ai == 0 ? '0' : '-8px', zIndex: 10 - ai }"
-						></image>
-					</view>
-					<text class="like-summary-text text-muted">等{{ likeCount }}人赞过</text>
-				</view>
-
-			<view class="location-time-row" v-if="dynamic.location || timeText !== ''">
+		<view class="location-time-row" v-if="dynamic.location || timeText !== ''">
 				<view class="location" v-if="dynamic.location">
-					<text class="icon">📍</text>
 					<text class="text text-muted">{{ dynamic.location }}</text>
 				</view>
 				<text class="time time-bottom text-muted" v-if="timeText !== ''">{{ timeText }}</text>
@@ -221,12 +203,21 @@ const commentCount = computed((): number => {
 	return props.dynamic.commentCount != null ? props.dynamic.commentCount : 0
 })
 
-const genderIcon = computed((): string => {
+	const genderIcon = computed((): string => {
 		const g = props.dynamic.user != null ? props.dynamic.user.gender : null
 		if (g == null || g === '') return ''
 		const s = ('' + g).toLowerCase()
 		if (s == '男' || s == 'male' || s == 'm') return '♂'
 		if (s == '女' || s == 'female' || s == 'f') return '♀'
+		return ''
+	})
+
+	const genderClass = computed((): string => {
+		const g = props.dynamic.user != null ? props.dynamic.user.gender : null
+		if (g == null || g === '') return ''
+		const s = ('' + g).toLowerCase()
+		if (s == '男' || s == 'male' || s == 'm') return 'male'
+		if (s == '女' || s == 'female' || s == 'f') return 'female'
 		return ''
 	})
 
@@ -270,6 +261,22 @@ const genderIcon = computed((): string => {
 		}
 		return '相关话题'
 	})
+
+	// 按标签语义匹配莫兰迪低饱和色调：关系→蓝 认证→绿 情感→粉 兴趣→橙
+	const tagTone = (text: string): string => {
+		const t = ('' + text).toLowerCase()
+		if (t.indexOf('同城') >= 0 || t.indexOf('校友') >= 0 || t.indexOf('同校') >= 0 || t.indexOf('同乡') >= 0 || t.indexOf('同省') >= 0) {
+			return 'blue'
+		}
+		if (t.indexOf('认真关系') >= 0 || t.indexOf('脱单') >= 0 || t.indexOf('恋爱') >= 0 || t.indexOf('奔现') >= 0) {
+			return 'pink'
+		}
+		const orangeKw = ['晚霞', '速写', '城市周末', '周末', '旅行', '摄影', '读书', '美食', '运动', '音乐', '电影', '宠物', '健身', '咖啡', '手作', '展览', '看展', '插画', '绘画', '徒步', '露营', '剧本杀', '猫', '狗']
+		for (let i = 0; i < orangeKw.length; i++) {
+			if (t.indexOf(orangeKw[i]) >= 0) return 'orange'
+		}
+		return 'green'
+	}
 
 	const hasVideo = computed((): boolean => {
 		if (props.dynamic.mediaType == 'video') return true
@@ -425,16 +432,17 @@ const handleOpen = () => {
 .card-header {
 	display: flex;
 	flex-direction: row;
-	align-items: center;
+	align-items: flex-start;
 	gap: 12px;
 	padding: 12px 16px;
 }
 
 .avatar {
-	width: 40px;
-	height: 40px;
+	width: 48px;
+	height: 48px;
 	border-radius: 50%;
 	flex-shrink: 0;
+	margin-top: 3px;
 }
 
 .user-info {
@@ -445,11 +453,10 @@ const handleOpen = () => {
 	min-width: 0;
 }
 
-.name-row {
+	.name-row {
 		display: flex;
 		flex-direction: row;
-		align-items: baseline;
-		justify-content: space-between;
+		align-items: center;
 		gap: 8px;
 	}
 
@@ -457,6 +464,7 @@ const handleOpen = () => {
 		display: flex;
 		flex-direction: row;
 		align-items: center;
+		gap: 6px;
 		min-width: 0;
 	}
 
@@ -468,7 +476,15 @@ const handleOpen = () => {
 
 	.gender-icon {
 		font-size: 12px;
-		margin-left: 4px;
+		color: var(--muted);
+	}
+
+	.gender-icon.male {
+		color: #6A9ECF;
+	}
+
+	.gender-icon.female {
+		color: #D98C9E;
 	}
 
 	.time {
@@ -486,20 +502,31 @@ const handleOpen = () => {
 		color: var(--accent);
 	}
 
-	.relation-row {
-		display: flex;
-		flex-direction: row;
-		flex-wrap: wrap;
-		gap: 6px;
-		margin-top: 4px;
-	}
-
 	.relation-tag {
 		font-size: 10px;
-		color: var(--accent2);
-		background: var(--accent-bg);
+		color: #5A7D72;
+		background: #E8F1ED;
 		padding: 2px 8px;
 		border-radius: 999px;
+	}
+
+	.relation-tag.blue {
+		color: #5C7A95;
+		background: #DCE6EF;
+	}
+
+	.relation-tag.pink {
+		color: #B57A8C;
+		background: #F8E6EC;
+	}
+
+	.relation-tag.orange {
+		color: #A98A4E;
+		background: #F8EEDD;
+	}
+
+	.relation-tag.inline {
+		flex-shrink: 0;
 	}
 
 	.tag-row {
@@ -507,14 +534,15 @@ const handleOpen = () => {
 		flex-direction: row;
 		flex-wrap: wrap;
 		gap: 4px;
+		margin-top: 4px;
 	}
 
 .mini-tag {
 	font-size: 10px;
 	padding: 2px 6px;
 	border-radius: 4px;
-	background: var(--soft);
-	color: var(--accent2);
+	background: #F5EDE6;
+	color: #8F7566;
 }
 
 .follow-btn {
@@ -647,47 +675,19 @@ const handleOpen = () => {
 	margin-bottom: 8px;
 	padding: 4px 8px;
 	border-radius: 6px;
-	background: var(--accent-bg);
+	background: #EDE8F5;
 }
 
 .topic-hash {
-	color: var(--accent);
+	color: #7A6A9A;
 	font-weight: 800;
 	font-size: 12px;
 }
 
 .topic-label {
 	font-size: 12px;
-	color: var(--accent2);
+	color: #6B5D87;
 	font-weight: 600;
-}
-
-.like-summary {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 8px;
-	padding-top: 4px;
-	margin-bottom: 4px;
-}
-
-.like-avatars {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	padding-left: 0;
-}
-
-.like-avatar {
-	width: 22px;
-	height: 22px;
-	border-radius: 50%;
-	border: 2px solid var(--surface);
-	background: var(--soft);
-}
-
-.like-summary-text {
-	font-size: 12px;
 }
 
 .location {

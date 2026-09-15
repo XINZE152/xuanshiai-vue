@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- 方案 B：两人 + 互换箭头（身份切换） -->
+  <circle cx="7.5" cy="6" r="2.4" fill="none" stroke="#2C2C2C" stroke-width="1.90"/>
+  <path d="M4.5 13.5 C4.5 11.4 5.7 10 7.5 10 C9.3 10 10.5 11.4 10.5 13.5" fill="none" stroke="#2C2C2C" stroke-width="1.90" stroke-linecap="round"/>
+  <circle cx="16.5" cy="6" r="2.4" fill="none" stroke="#2C2C2C" stroke-width="1.90"/>
+  <path d="M13.5 13.5 C13.5 11.4 14.7 10 16.5 10 C18.3 10 19.5 11.4 19.5 13.5" fill="none" stroke="#2C2C2C" stroke-width="1.90" stroke-linecap="round"/>
+  <path d="M10.8 5.4 L13.2 5.4" fill="none" stroke="#2C2C2C" stroke-width="1.90" stroke-linecap="round"/>
+  <path d="M9.6 6 L10.8 5.4 L9.9 4.2" fill="none" stroke="#2C2C2C" stroke-width="1.90" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M14.4 6 L13.2 5.4 L14.1 4.2" fill="none" stroke="#2C2C2C" stroke-width="1.90" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>
