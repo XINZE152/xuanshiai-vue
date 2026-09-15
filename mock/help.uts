@@ -9,7 +9,7 @@ export const mockHelpQuickActions = [
 export const mockHelpCategories = [
   {
     id: 'common',
-    title: '常见问题',
+    title: '热门',
     icon: '?',
     items: [
       { id: 'common-1', question: '喜欢、小纸条后可以取消吗', prompt: '喜欢、小纸条后可以取消吗' },

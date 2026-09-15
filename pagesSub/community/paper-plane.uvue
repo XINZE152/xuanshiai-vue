@@ -34,10 +34,10 @@
 					<text class="hero-identity-edit">✎</text>
 				</view>
 			</view>
-			<view class="hero-mark">
-				<text class="hero-plane">✈</text>
-				<text class="hero-spark">✦</text>
-			</view>
+		<view class="hero-mark">
+			<text class="hero-plane">✈</text>
+			<text class="hero-spark">✦</text>
+		</view>
 		</view>
 
 		<view class="quota-bar">

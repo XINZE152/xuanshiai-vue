@@ -751,6 +751,7 @@ export function discardEmotionLabSessionData(sessionId: string): any {
 const MOCK_MATCH_ROWS: any[] = [
   {
     id: 'match-linzhiwei',
+    userId: 'u-linzhiwei',
     name: '林知微',
     age: 27,
     city: '杭州',
@@ -762,6 +763,7 @@ const MOCK_MATCH_ROWS: any[] = [
   },
   {
     id: 'match-chenyu',
+    userId: 'u-chenyu',
     name: '陈屿',
     age: 28,
     city: '上海',
@@ -773,6 +775,7 @@ const MOCK_MATCH_ROWS: any[] = [
   },
   {
     id: 'match-suxiao',
+    userId: 'u-suxiao',
     name: '苏晓',
     age: 26,
     city: '南京',

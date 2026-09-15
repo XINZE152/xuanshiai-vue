@@ -84,7 +84,15 @@
 								<text class="plane-banner-plane plane-banner-plane-blue">✈</text>
 								<text class="plane-banner-plane plane-banner-plane-pink">✈</text>
 							</view>
-							<text class="feature-kicker">{{ b.kicker != null ? b.kicker : bannerKicker(b.type) }}</text>
+							<view v-if="b.type === 'activity'" class="activity-banner-art">
+								<view class="activity-banner-circle"></view>
+								<view class="activity-banner-triangle"></view>
+								<view class="activity-banner-dot"></view>
+							</view>
+							<view class="feature-kicker-wrap">
+								<view class="feature-kicker-dot"></view>
+								<text class="feature-kicker">{{ b.kicker != null ? b.kicker : bannerKicker(b.type) }}</text>
+							</view>
 							<text class="feature-title">{{ b.title }}</text>
 							<text class="feature-desc">{{ b.description }}</text>
 							<view class="feature-btn">
@@ -487,7 +495,27 @@ const cityArg = isValidCity(cityName.value) ? cityName.value : ''
 		try {
 			const res = await getCommunityBanners()
 			if (res.success && res.data != null) {
-				banners.value = res.data as any[]
+				// 每个 type 只保留一个 entry：热门话题 / 纸飞机 / 线下活动 各出现一次，
+				// 避免后端返回重复 topic 时在 banner 轮播里出现两块「热门话题」。
+				const list = res.data as any[]
+				const seen: Record<string, boolean> = {}
+				const result: any[] = []
+				const order = ['topic', 'plane', 'activity']
+				for (const t of order) {
+					const found = list.find((b: any) => b != null && b.type === t && !seen[t])
+					if (found != null) {
+						result.push(found)
+						seen[t] = true
+					}
+				}
+				// 其他未预见的 type 原样补齐，不重复
+				for (const b of list) {
+					if (b != null && !seen[b.type]) {
+						result.push(b)
+						seen[b.type] = true
+					}
+				}
+				banners.value = result
 			}
 		} catch (e) {}
 	}
@@ -877,7 +905,7 @@ const switchCity = () => {
 		align-items: flex-end;
 		gap: 18px;
 		padding: 0 14px;
-		background: var(--surface-overlay);
+		background: var(--surface);
 		border-bottom: 1px solid var(--line);
 	}
 
@@ -953,15 +981,16 @@ const switchCity = () => {
 		flex-wrap: wrap;
 		gap: 8px;
 		padding: 10px 14px 6px;
-		background: var(--canvas);
+		background: var(--surface);
+		border-bottom: 1px solid var(--line);
 	}
 
 	.filter-chip {
 		height: 28px;
 		padding: 0 12px;
 		border-radius: 999px;
-		border: 1px solid var(--line);
-		background: var(--surface);
+		border: 1px solid transparent;
+		background: var(--canvas);
 		display: flex;
 		flex-direction: row;
 		align-items: center;
@@ -969,17 +998,17 @@ const switchCity = () => {
 
 	.filter-chip text {
 		font-size: 12px;
-		color: var(--muted);
+		color: #9A9A9A;
 		font-weight: 600;
 	}
 
 	.filter-chip.active {
-		border-color: var(--accent);
-		background: var(--soft);
+		border-color: #E8F1ED;
+		background: #E8F1ED;
 	}
 
 	.filter-chip.active text {
-		color: var(--accent2);
+		color: #5A7D72;
 		font-weight: 700;
 	}
 
@@ -1183,9 +1212,9 @@ const switchCity = () => {
 			position: relative;
 			overflow: hidden;
 			gap: 8px;
-			background: var(--accent-bg);
-			border: 1px solid var(--accent);
-			box-shadow: var(--shadow-sm);
+			background: #E8E0F5;
+			border: 1px solid #D6CAE8;
+			box-shadow: 0 4px 14px rgba(74, 62, 140, 0.06);
 		}
 
 		.feature.type-plane .feature-kicker,
@@ -1197,13 +1226,13 @@ const switchCity = () => {
 		}
 
 		.feature.type-plane .feature-kicker {
-			color: var(--accent2);
+			color: #5A3E8C;
 			line-height: 1.4;
 		}
 
 		.feature.type-plane .feature-desc {
 			max-width: 56%;
-			color: var(--accent2);
+			color: #5A3E8C;
 			line-height: 1.65;
 		}
 
@@ -1211,15 +1240,16 @@ const switchCity = () => {
 			max-width: 62%;
 			font-size: 22px;
 			line-height: 1.35;
-			color: var(--accent2);
+			color: #5A3E8C;
 		}
 
 		.feature.type-plane .feature-btn {
-			background: var(--paper);
+			background: #FFFFFF;
+			border: 1px solid #D6CAE8;
 		}
 
 		.feature.type-plane .feature-btn text {
-			color: var(--accent2);
+			color: #5A3E8C;
 		}
 
 		.plane-banner-art {
@@ -1236,7 +1266,7 @@ const switchCity = () => {
 			width: 146px;
 			height: 156px;
 			border-radius: 20px 0 0 0;
-			background: var(--accent);
+			background: #9B7FD8;
 			opacity: 0.22;
 			transform: rotate(-14deg);
 		}
@@ -1251,8 +1281,8 @@ const switchCity = () => {
 			right: 27px;
 			top: 60px;
 			font-size: 58px;
-			color: var(--sage);
-			opacity: 0.78;
+			color: #7450C8;
+			opacity: 0.86;
 			transform: rotate(-18deg);
 		}
 
@@ -1260,8 +1290,8 @@ const switchCity = () => {
 			right: 94px;
 			top: 26px;
 			font-size: 22px;
-			color: var(--soft);
-			opacity: 0.76;
+			color: #A48BD6;
+			opacity: 0.78;
 			transform: rotate(12deg);
 		}
 
@@ -1269,13 +1299,113 @@ const switchCity = () => {
 			right: 12px;
 			bottom: 18px;
 			font-size: 19px;
-			color: var(--soft);
-			opacity: 0.76;
+			color: #C4B4E8;
+			opacity: 0.78;
 			transform: rotate(-8deg);
 		}
 
 		.feature.type-activity {
-			background: var(--navy);
+			position: relative;
+			overflow: hidden;
+			background: #F5F0E8;
+			border: 1px solid #EADDCB;
+			border-radius: 14px;
+			box-shadow: 0 4px 14px rgba(120, 92, 60, 0.06);
+			gap: 8px;
+		}
+
+		.feature.type-activity .feature-kicker,
+		.feature.type-activity .feature-title,
+		.feature.type-activity .feature-desc,
+		.feature.type-activity .feature-btn {
+			position: relative;
+			z-index: 1;
+		}
+
+		.feature.type-activity .feature-kicker-wrap {
+			position: relative;
+			z-index: 1;
+			align-self: flex-start;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			gap: 5px;
+			background: rgba(255, 251, 245, 0.88);
+			padding: 4px 8px;
+			border-radius: 999px;
+		}
+
+		.feature.type-activity .feature-kicker-dot {
+			width: 5px;
+			height: 5px;
+			border-radius: 50%;
+			background: #C2956B;
+		}
+
+		.feature.type-activity .feature-kicker {
+			font-size: 9px;
+			font-weight: 700;
+			letter-spacing: 0.06em;
+			color: #9A7B5E;
+			line-height: 1;
+		}
+
+		.feature.type-activity .feature-title {
+			color: #3A2E22;
+			font-family: var(--sans);
+		}
+
+		.feature.type-activity .feature-desc {
+			color: #8F7A66;
+			max-width: 58%;
+		}
+
+		.feature.type-activity .feature-btn {
+			background: #FFFFFF;
+			border: 1px solid #E0CBB2;
+		}
+
+		.feature.type-activity .feature-btn text {
+			color: #9A7B5E;
+		}
+
+		.activity-banner-art {
+			position: absolute;
+			inset: 0;
+			overflow: hidden;
+			pointer-events: none;
+		}
+
+		.activity-banner-circle {
+			position: absolute;
+			right: -24px;
+			top: 18px;
+			width: 92px;
+			height: 92px;
+			border-radius: 50%;
+			background: rgba(226, 196, 163, 0.62);
+		}
+
+		.activity-banner-triangle {
+			position: absolute;
+			right: 34px;
+			bottom: -28px;
+			width: 0;
+			height: 0;
+			border-left: 44px solid transparent;
+			border-right: 44px solid transparent;
+			border-bottom: 76px solid rgba(214, 184, 150, 0.54);
+			transform: rotate(-12deg);
+		}
+
+		.activity-banner-dot {
+			position: absolute;
+			right: 78px;
+			bottom: 42px;
+			width: 14px;
+			height: 14px;
+			border-radius: 50%;
+			background: rgba(255, 251, 245, 0.78);
 		}
 
 		.feature-kicker {

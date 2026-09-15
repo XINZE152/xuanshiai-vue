@@ -221,7 +221,7 @@ onUnmounted(() => { disposed = true; closeSocket() })
 <style scoped>
 .live-panel { display: flex; flex-direction: column; gap: 16rpx; }
 .live-panel-head, .live-session-top, .live-detail-line, .live-action-row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12rpx; }
-.live-kicker { display: block; color: var(--accent2, #5BAF80); font-size: 20rpx; font-weight: 800; }.live-title { display: block; margin-top: 6rpx; color: var(--ink, #1A1A1A); font-size: 29rpx; font-weight: 800; }
+.live-kicker { display: block; color: var(--accent2, #5BAF80); font-size: 22rpx; font-weight: 700; }.live-title { display: block; margin-top: 6rpx; color: var(--ink, #1A1A1A); font-size: 28rpx; font-weight: 700; letter-spacing: 0.3rpx; }
 .live-refresh, .live-retry { padding: 12rpx 18rpx; border-radius: 14rpx; background: var(--accent-bg, #E8F5EE); color: var(--accent2, #5BAF80); font-size: 20rpx; font-weight: 700; }
 .live-notice, .live-error, .live-empty, .live-session, .live-actions { padding: 20rpx; border-radius: 18rpx; background: var(--surface, #FFFFFF); border: 1px solid var(--line, #E8EDE6); }.live-notice { background: var(--accent-bg, #E8F5EE); border-color: transparent; }
 .live-notice-title, .live-notice-copy, .live-empty-copy, .live-session-meta, .live-session-rules, .live-action-hint, .live-socket-state { display: block; }.live-notice-title { color: var(--ink, #1A1A1A); font-size: 22rpx; font-weight: 800; }.live-notice-copy { margin-top: 6rpx; color: var(--ink2, #5A6B5C); font-size: 20rpx; line-height: 1.5; }.live-error { color: #B65F5F; font-size: 21rpx; }.live-empty { color: var(--muted, #A0B0A2); font-size: 22rpx; text-align: center; }.live-empty-copy { margin-top: 6rpx; font-size: 19rpx; }

@@ -613,7 +613,9 @@ onMounted(async () => {
 			if (!isNaN(candidateViewerId) && candidateViewerId > 0) viewerId = candidateViewerId
 		}
 	} catch (e) {}
-	isOwnProfile.value = options.own === 'true' || options.own === true || isPreview.value || (viewerId > 0 && viewerId == parsed)
+	// guest=1：明确以「访客资料」打开（推荐/广场卡片入口），即使 userId 与登录账号相同也不按本人主页处理
+	const guestForced = options.guest === 'true' || options.guest === true
+	isOwnProfile.value = !guestForced && (options.own === 'true' || options.own === true || isPreview.value || (viewerId > 0 && viewerId == parsed))
 	console.log('[user detail] options', options, 'parsed', parsed, 'viewerId', viewerId, 'isOwnProfile', isOwnProfile.value)
 	user.value.id = parsed
 	applyUserId.value = parsed

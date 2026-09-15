@@ -68,9 +68,6 @@
 			<!-- AI 专区（墨相师为唯一画像建构入口） -->
 			<view class="ai-zone">
 				<view class="ai-zone-head">
-					<view class="ai-zone-spark">
-						<text class="ic ic-home ic-star ai-zone-spark-icon"></text>
-					</view>
 					<text class="ai-zone-title">宣誓爱 AI</text>
 				</view>
 				<text class="ai-zone-sub">用对话认识自己与期待的关系，也可以管理你的 AI 分身。</text>
@@ -86,7 +83,7 @@
 				<!-- 主入口：与知遇聊聊(轻奢灵动AI卡) -->
 				<view class="zone-master" @tap="onMoxiangMaster">
 					<view class="zone-master-figure">
-						<text class="ic ic-home ic-star zone-master-icon"></text>
+						<image class="zone-master-img" src="/pagesSub/profileExtra/static/ai-chat-icon.png" mode="aspectFill"></image>
 					</view>
 					<view class="zone-master-text">
 						<view class="zone-master-title-row">
@@ -99,8 +96,8 @@
 				</view>
 				<!-- 次入口：我的画像(低权重线框归档卡) -->
 				<view class="zone-master zone-master-archive" @tap="onMoxiangArchive">
-					<view class="zone-master-figure zone-master-figure-archive">
-						<text class="zone-master-seal zone-master-seal-archive">档</text>
+					<view class="zone-master-figure">
+						<image class="zone-master-img" src="/pagesSub/profileExtra/static/ai-portrait-icon.png" mode="aspectFill"></image>
 					</view>
 					<view class="zone-master-text">
 						<text class="zone-master-name">我的画像</text>
@@ -905,21 +902,6 @@ page {
 	gap: 8px;
 }
 
-.ai-zone-spark {
-	width: 26px;
-	height: 26px;
-	border-radius: 9px;
-	background-color: var(--profile-dark);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.ai-zone-spark-icon {
-	font-size: 13px;
-	color: var(--profile-rose);
-}
-
 .ai-zone-title {
 	font-size: 16px;
 	font-weight: 700;
@@ -986,17 +968,6 @@ page {
 	gap: 12px;
 }
 
-/* 次入口：低权重线框归档卡 */
-.zone-master-archive {
-	margin-top: 8px;
-	height: 56px;
-	background-image: none;
-	background-color: rgba(255, 255, 255, 0.7);
-	border: 1px solid #D8D2C7;
-	box-shadow: none;
-	border-radius: 14px;
-}
-
 .zone-master-figure {
 	width: 46px;
 	height: 46px;
@@ -1009,23 +980,10 @@ page {
 	box-shadow: 0 4px 10px rgba(185, 138, 126, 0.22);
 }
 
-.zone-master-icon {
-	font-size: 22px;
-	color: #B98A7E;
-}
-
-.zone-master-figure-archive {
-	width: 32px;
-	height: 32px;
-	border-radius: 8px;
-	background-color: #EFE9E0;
-	box-shadow: none;
-}
-
-.zone-master-seal-archive {
-	font-size: 13px;
-	color: #807B75;
-	font-weight: 600;
+.zone-master-img {
+	width: 46px;
+	height: 46px;
+	border-radius: 14px;
 }
 
 .zone-master-text {
