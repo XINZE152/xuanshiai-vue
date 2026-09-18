@@ -1,11 +1,15 @@
 <template>
 	<scroll-view scroll-y class="management-center" :show-scrollbar="false">
 		<view class="center-content">
-			<view class="welcome-section">
-				<view class="account-avatar"><text>人</text></view>
+			<view class="welcome-section" :class="{ 'is-lit': welcomeLit }" @touchstart="welcomeLit = true" @touchend="welcomeLit = false" @touchcancel="welcomeLit = false">
+				<view class="welcome-aurora"></view>
+				<view class="welcome-glow"></view>
+				<view class="welcome-glow welcome-glow-b"></view>
+				<view class="welcome-avatar"><text>人</text></view>
 				<view class="welcome-copy">
-					<text class="welcome-title">{{ greeting }}，{{ displayName }}</text>
-					<text class="welcome-subtitle">牵线搭桥，成就美好姻缘！</text>
+					<view class="welcome-eyebrow"><text class="welcome-eyebrow-dot"></text><text class="welcome-eyebrow-text">{{ greeting }}</text></view>
+					<view class="welcome-title-row" :class="{ 'is-bounce': introBounce }"><text class="welcome-title">{{ displayName }}</text><view class="welcome-lockup"><text class="welcome-title-sep">·</text><text class="welcome-brand">XUANSHI</text></view></view>
+					<text class="welcome-subtitle">牵线搭桥，成就美好姻缘</text>
 				</view>
 				<view class="role-badge" @click="emit('identity')"><text>{{ roleName }}</text></view>
 			</view>
@@ -54,6 +58,8 @@
 </template>
 
 <script setup lang="uts">
+import { ref, onMounted } from 'vue'
+
 interface Props {
 	snapshot: any;
 }
@@ -75,6 +81,17 @@ const identity = computed(() => {
 const greeting = computed(() => identity.value.greeting || '你好')
 const displayName = computed(() => identity.value.name || '服务红娘')
 const roleName = computed(() => identity.value.roleName || '服务红娘')
+
+// 按压时点亮光斑（小程序无 :hover，用 touch 模拟 meoo 的虚化发光）
+const welcomeLit = ref(false)
+
+// 标题「灵动跳动」：仅进入页面时弹跳一次（meoo bounce 手法）
+const introBounce = ref(false)
+onMounted(() => {
+	// 下一帧再触发，确保首帧渲染后再起跳，避免动画被吞
+	setTimeout(() => { introBounce.value = true }, 120)
+	setTimeout(() => { introBounce.value = false }, 1500)
+})
 
 const defaultMetrics = [
 	{ key: 'pending_review', label: '资料待审', value: '0', action: '资料待审', valuePrefix: '', badge: '' },
@@ -143,12 +160,30 @@ const navigationItems = [
 <style scoped>
 .management-center { flex: 1; height: 0; background: var(--canvas); }
 .center-content { padding: 32rpx 28rpx calc(env(safe-area-inset-bottom) + 46rpx); display: flex; flex-direction: column; gap: 22rpx; }
-.welcome-section { min-height: 126rpx; padding: 8rpx 4rpx; display: flex; flex-direction: row; align-items: center; gap: 18rpx; }
-.account-avatar { width: 88rpx; height: 88rpx; border-radius: 50%; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 31rpx; font-weight: 800; flex-shrink: 0; }
-.welcome-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7rpx; }
-.welcome-title { color: var(--ink); font-size: 34rpx; line-height: 1.25; font-weight: 800; }
-.welcome-subtitle { color: var(--muted); font-size: 23rpx; line-height: 1.45; }
-.role-badge { padding: 12rpx 16rpx; border-radius: 999rpx; background: var(--accent2); color: var(--paper); font-size: 21rpx; font-weight: 800; white-space: nowrap; }
+.welcome-section { position: relative; overflow: hidden; padding: 30rpx 28rpx; border-radius: 26rpx; background: linear-gradient(120deg, #005A4E 0%, #0A7A69 58%, #17A08A 100%); box-shadow: var(--shadow-md); display: flex; flex-direction: row; align-items: center; gap: 20rpx; transition: transform .32s cubic-bezier(.22, .61, .36, 1), box-shadow .32s ease; }
+.welcome-section.is-lit { transform: scale(1.015); box-shadow: 0 12px 36px rgba(0, 74, 66, 0.28); }
+/* 极光扫光：hover/touch 时淡入的柔光带（meoo radial-gradient + blur 手法） */
+.welcome-aurora { position: absolute; top: -60%; left: -30%; width: 120%; height: 220%; background: radial-gradient(60% 60% at 30% 40%, rgba(255, 217, 160, 0.28) 0%, rgba(255, 255, 255, 0.0) 70%); opacity: 0; transition: opacity .4s ease; pointer-events: none; }
+.welcome-section.is-lit .welcome-aurora { opacity: 1; }
+.welcome-glow { position: absolute; top: -90rpx; right: -70rpx; width: 260rpx; height: 260rpx; border-radius: 50%; background: rgba(255, 255, 255, 0.10); transition: opacity .4s ease, transform .6s ease; }
+.welcome-glow-b { top: auto; bottom: -140rpx; right: 40rpx; width: 320rpx; height: 320rpx; background: radial-gradient(circle, rgba(255, 201, 166, 0.35) 0%, rgba(255, 201, 166, 0) 70%); }
+.welcome-section.is-lit .welcome-glow { opacity: 1; transform: scale(1.22); }
+.welcome-section.is-lit .welcome-glow-b { opacity: 1; transform: scale(1.12); }
+.welcome-avatar { position: relative; width: 96rpx; height: 96rpx; border-radius: 50%; background: rgba(255, 255, 255, 0.16); border: 2rpx solid rgba(255, 255, 255, 0.36); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform .4s cubic-bezier(.22, .61, .36, 1); }
+.welcome-section.is-lit .welcome-avatar { transform: scale(1.06); }
+.welcome-avatar text { color: #FFFFFF; font-size: 34rpx; font-weight: 800; }
+.welcome-copy { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8rpx; }
+.welcome-eyebrow { display: flex; flex-direction: row; align-items: center; gap: 10rpx; }
+.welcome-eyebrow-dot { width: 12rpx; height: 12rpx; border-radius: 50%; background: #FFC9A6; }
+.welcome-eyebrow-text { color: rgba(255, 255, 255, 0.74); font-size: 21rpx; letter-spacing: 4rpx; }
+.welcome-title-row { display: flex; flex-direction: row; align-items: baseline; flex-wrap: wrap; }
+.welcome-title-row.is-bounce { animation: welcome-bounce .9s cubic-bezier(.28, .84, .42, 1) 2; }
+.welcome-lockup { display: flex; flex-direction: row; align-items: baseline; }
+.welcome-title { color: transparent; background: linear-gradient(100deg, #FFFFFF 0%, #FFD9A0 32%, #FFF7E6 50%, #FFD9A0 68%, #FFFFFF 100%); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; font-family: var(--serif); font-size: 46rpx; line-height: 1.16; font-weight: 700; letter-spacing: 1rpx; animation: welcome-shimmer 3.2s linear infinite; }
+.welcome-title-sep { margin: 0 10rpx; color: rgba(255, 255, 255, 0.5); font-family: var(--serif); font-size: 34rpx; }
+.welcome-brand { color: #FFD9A0; font-size: 23rpx; font-weight: 800; letter-spacing: 6rpx; }
+.welcome-subtitle { color: rgba(255, 255, 255, 0.78); font-size: 23rpx; line-height: 1.45; letter-spacing: 2rpx; }
+.role-badge { position: relative; padding: 12rpx 20rpx; border-radius: 999rpx; background: rgba(255, 255, 255, 0.18); border: 2rpx solid rgba(255, 255, 255, 0.42); color: #FFFFFF; font-size: 21rpx; font-weight: 800; white-space: nowrap; }
 .store-brief { overflow: hidden; border-radius: 20rpx; background: var(--surface); box-shadow: var(--shadow-sm); }
 .brief-heading { padding: 22rpx 26rpx; background: var(--accent2); display: flex; flex-direction: row; align-items: center; gap: 16rpx; }
 .brief-title { color: var(--paper); font-size: 27rpx; font-weight: 800; }
@@ -181,4 +216,9 @@ const navigationItems = [
 .tone-four { background: var(--match-paper); color: var(--accent2); }
 .tone-five { background: var(--sage); color: var(--ink); }
 .metric-item:active, .brief-copy:active, .quick-action:active, .promotion-action:active, .function-item:active, .logout-action:active { opacity: 0.78; transform: scale(0.98); }
+/* meoo 式流光艺术字：光带扫过文字 */
+@keyframes welcome-shimmer { 0% { background-position: 200% center; } 100% { background-position: -200% center; } }
+/* meoo 式灵动弹跳：进入时上下弹两下 */
+@keyframes welcome-bounce { 0% { transform: translateY(0); } 25% { transform: translateY(-16rpx); } 50% { transform: translateY(0); } 75% { transform: translateY(-7rpx); } 100% { transform: translateY(0); } }
+
 </style>

@@ -26,14 +26,16 @@
         </view>
         <view v-else-if="members.length == 0" class="state-card"><text>{{ emptyText }}</text></view>
 
-          <view v-for="member in members" :key="member.user_id" class="mcard" :id="'mcard-' + member.user_id">
+          <view v-for="member in members" :key="member.user_id" class="mcard" :id="'mcard-' + member.user_id" @tap="openMemberProfile(member)">
           <view class="mcard-top">
             <view class="mcard-ark"><text class="mcard-ark-glyph">◈</text><text>公开档案</text></view>
             <text class="mcard-no">编号：G{{ member.user_id }}</text>
-            <view class="mcard-status" :class="'st-' + member.review_status.toLowerCase()" @tap="openReview(member)">
+            <text class="mcard-vip" v-if="isVipMember(member)"><text>VIP</text></text>
+            <view class="mcard-status" :class="'st-' + member.review_status.toLowerCase()" @tap.stop="openReview(member)">
               <text>{{ reviewLabel(member.review_status) }}</text>
               <text class="mcard-status-dot">●</text>
             </view>
+            <view class="mcard-profile-entry" @tap.stop="openMemberProfile(member)"><text>会员主页 ›</text></view>
           </view>
 
           <view class="mcard-body">
@@ -48,12 +50,12 @@
                 <view class="realname-tag" :class="member.realname_status == 2 ? 'ok' : ''"><text>{{ member.realname_status == 2 ? '已实名' : '未实名' }}</text></view>
               </view>
               <text class="mcard-meta">{{ memberMeta(member) }}</text>
-              <view class="mcard-owner" @tap="openAssign(member)">
+              <view class="mcard-owner" @tap.stop="openAssign(member)">
                 <text class="mcard-owner-glyph">❥</text>
                 <text class="mcard-owner-label">跟进服务：</text>
                 <text class="mcard-owner-value">{{ member.matchmaker_name || '待分派' }}</text>
               </view>
-              <view class="mcard-reg">
+              <view v-if="member.created_at != null && String(member.created_at).length > 0" class="mcard-reg">
                 <text class="mcard-reg-glyph">◷</text>
                 <text>登记：{{ formatTime(member.created_at) }}</text>
               </view>
@@ -64,10 +66,10 @@
 
           <view class="mcard-actions">
             <view :id="'more-trigger-' + member.user_id" class="act-more" @tap.stop="toggleMenu(member, $event)"><text>更多</text></view>
-            <view class="act" @tap="openContact(member)"><text>联系</text></view>
-            <view class="act" @tap="openFollowUps(member)"><text>跟进({{ member.followCount || 0 }})</text></view>
-            <view class="act" @tap="copyProfile(member)"><text>复制资料</text></view>
-            <view class="act" @tap="onEditProfile(member)"><text>编辑资料</text></view>
+            <view class="act" @tap.stop="openContact(member)"><text>联系</text></view>
+            <view class="act" @tap.stop="openFollowUps(member)"><text>跟进({{ member.followCount || 0 }})</text></view>
+            <view class="act" @tap.stop="copyProfile(member)"><text>复制资料</text></view>
+            <view class="act" @tap.stop="onEditProfile(member)"><text>编辑资料</text></view>
           </view>
 
         </view>
@@ -265,9 +267,23 @@
           <view class="panel-submit" @tap="submitAbandon"><text>确定提交</text></view>
         </view>
 
-        <view v-else-if="sheet == 'contact' && selected != null" class="panel-body">
-          <text class="panel-copy">本次查看已记录到服务审计日志。</text>
-          <text class="contact-value">{{ contactPhone || '该会员未绑定手机号' }}</text>
+        <view v-else-if="sheet == 'review' && selected != null" class="panel-body">
+          <view class="review-fee-row">
+            <text class="review-fee-label">审核费：</text>
+            <text class="review-fee-value">免审核费</text>
+            <text class="review-fee-time">{{ formatTime(selected.created_at) }}</text>
+          </view>
+          <view class="review-status-row">
+            <view v-for="option in reviewOptions" :key="option.value" class="review-chip" :class="{ picked: reviewStatus == option.value }" @tap="pickReviewStatus(option.value)">
+              <text>{{ option.label }}</text>
+            </view>
+          </view>
+          <view v-if="reviewStatus == 'REJECTED'" class="review-reject-area">
+            <textarea class="review-reason" maxlength="30" placeholder="请输入审核不通过原因，限30个字" :value="reviewReason" @input="onReviewReason" />
+            <text class="review-template-title">从模板选择：</text>
+            <view v-for="(tpl, index) in reviewReasonTemplates" :key="index" class="review-template" @tap="applyReviewTemplate(tpl)"><text>{{ tpl }}</text></view>
+          </view>
+          <view class="panel-submit review-submit" @tap="submitReview"><text>提交</text></view>
         </view>
 
         <view v-else-if="sheet == 'followups' && selected != null" class="panel-body">
@@ -293,6 +309,8 @@
         </view>
       </view>
     </view>
+
+    <!-- 查看联系方式弹窗由父页面（become-matchmaker）统一渲染，这里只上抛会员，避免重复实现弹层。 -->
   </view>
 </template>
 
@@ -301,7 +319,6 @@ import {
   assignMatchmakerMemberMatchmaker,
   createMatchmakerWorkspaceMember,
   createMatchmakerMemberFollowUp,
-  getMatchmakerMemberContact,
   getMatchmakerMemberFollowUps,
   getMatchmakerMemberMatchCandidates,
   getMatchmakerMemberMatchHistory,
@@ -309,6 +326,7 @@ import {
   getMatchmakerMemberNote,
   getMatchmakerReviewMembers,
   getMatchmakerWorkspaceProfile,
+  getDiscoveryPlaza,
   updateMatchmakerMemberNote,
   updateMatchmakerReviewMember
 } from '@/api'
@@ -318,6 +336,7 @@ interface Props {
   initialTab?: string;
 }
 const props = defineProps<Props>()
+const emit = defineEmits<{ servedCount: [count: number], contact: [member: any] }>()
 
 const tabs = [
   { key: '', label: '全部' },
@@ -380,9 +399,24 @@ const assignLoading = ref(false)
 const assignTarget = ref(0)
 const abandonReason = ref('')
 const pendingAbandon = ref(false)
-const contactPhone = ref('')
 const followUps = ref<any[]>([])
 const followContent = ref('')
+
+const reviewStatus = ref('')
+const reviewReason = ref('')
+const reviewSubmitting = ref(false)
+const reviewOptions = [
+  { value: 'PENDING', label: '待审核' },
+  { value: 'PASSED', label: '审核通过' },
+  { value: 'REJECTED', label: '审核不通过' },
+  { value: 'STORE_VERIFIED', label: '已到店核验' }
+]
+const reviewReasonTemplates = [
+  '照片不符合要求，请上传真人照片',
+  '部分资料不真实，请修改后再次提交审核',
+  '未实名认证，请完成实名认证后再次提交审核',
+  '没有支付资料审核费'
+]
 
 const modal = ref('')
 const menuForId = ref(0)
@@ -436,8 +470,8 @@ const emptyText = computed(() => {
 const sheetTitle = computed(() => {
   if (sheet.value == 'note') return '红娘说'
   if (sheet.value == 'abandonReason') return '放弃原因'
-  if (sheet.value == 'contact') return '联系信息'
   if (sheet.value == 'followups') return '服务跟进'
+  if (sheet.value == 'review') return '审核状态'
   return ''
 })
 
@@ -492,14 +526,20 @@ const educationLabel = (code: number): string => {
 const memberMeta = (member: any): string => {
   const parts: string[] = []
   parts.push(marriedText(member.is_married))
-  const age = ageText(member.birthday)
+  let age = ageText(member.birthday)
+  if (age.length == 0 && member.age != null && Number(member.age) > 0) age = String(Number(member.age)) + '岁'
   if (age.length > 0) parts.push(age)
   if (member.education != null && String(member.education).length > 0) parts.push(String(member.education))
   else if (member.job != null && String(member.job).length > 0) parts.push(String(member.job))
   if (member.height != null) parts.push(String(member.height) + 'cm')
   return parts.join(' · ')
 }
-const reviewLabel = (status: string): string => status == 'PASSED' ? '已通过' : (status == 'REJECTED' ? '已弃海' : '待审核')
+const reviewLabel = (status: string): string => status == 'PASSED' ? '已通过' : (status == 'REJECTED' ? '弃海' : '待审核')
+const isVipMember = (member: any): boolean => {
+  if (member == null) return false
+  const value = member.is_vip
+  return value === true || value == 1
+}
 const matchStatusLabel = (status: any): string => {
   const value = Number(status)
   if (value == 1) return '双方同意'
@@ -555,23 +595,116 @@ const submitEntry = async () => {
 }
 
 /* ---------- 列表加载 ---------- */
+// 「我服务的」数量以列表真实数据为准，会员数据或本人身份每次刷新后回传给门店数据简报。
+const emitServedCount = () => {
+  if (selfUserId.value == 0) return
+  const count = (rawMembers.value as any[]).filter((item: any): boolean => Number(item.matchmaker_id) == selfUserId.value).length
+  emit('servedCount', count)
+}
+
+// 学历编码 → 展示文案（与首页会员专区保持一致）
+const eduText = (code: any): string => {
+  const labels: string[] = ['', '博士', '硕士', '本科', '大专', '高中', '中专', '初中', '小学']
+  const value = code != null ? Number(code) : 0
+  return value > 0 && value < labels.length ? labels[value] : ''
+}
+
+// 把首页广场卡片映射成资料待审卡片所需的字段；extra 为红娘工作台数据（分派/审核状态）补充。
+const memberFromPlaza = (user: any, extra: any): any => {
+  const raw = user.raw != null ? user.raw : {}
+  const certTags: string[] = Array.isArray(user.certificationTags) ? user.certificationTags as string[] : []
+  const mapped: any = {
+    user_id: Number(user.id || 0),
+    nickname: user.name,
+    avatar: user.avatar,
+    gender: Number(user.gender || 0),
+    age: user.age != null ? Number(user.age) : null,
+    birthday: raw.birthday != null ? '' + raw.birthday : null,
+    is_married: raw.is_married,
+    education: eduText(raw.education_level),
+    job: user.job,
+    height: user.height,
+    income: user.income,
+    residence: user.city,
+    hometown: user.hometown,
+    realname_status: certTags.indexOf('实名认证') >= 0 ? 2 : 0,
+    review_status: 'PASSED',
+    review_reason: null,
+    matchmaker_id: 0,
+    matchmaker_name: '',
+    created_at: '',
+    followCount: 0,
+    introCount: 0,
+    is_vip: true,
+    online_status: user.online === true,
+    source: 'plaza'
+  }
+  if (extra != null) {
+    if (extra.review_status != null) mapped.review_status = String(extra.review_status)
+    if (extra.review_reason != null) mapped.review_reason = extra.review_reason
+    if (extra.matchmaker_id != null) mapped.matchmaker_id = Number(extra.matchmaker_id)
+    if (extra.matchmaker_name != null) mapped.matchmaker_name = String(extra.matchmaker_name)
+    if (extra.created_at != null) mapped.created_at = String(extra.created_at)
+  }
+  return mapped
+}
+
 const loadMembers = async () => {
   loading.value = true
   errorMessage.value = ''
   try {
-    const data: any = { page: 1, page_size: 100 }
-    if (activeTab.value == 'PENDING' || activeTab.value == 'REJECTED') data['review_status'] = activeTab.value
-    if (keyword.value.trim().length > 0) data['search'] = keyword.value.trim()
-    const result = await getMatchmakerReviewMembers(data)
-    if (!result.success || result.data == null) {
-      rawMembers.value = []
-      errorMessage.value = result.message || '资料数据加载失败'
-      members.value = []
+    const tab = activeTab.value
+    if (tab == 'mine' || tab == 'REJECTED') {
+      // 「我的」「弃海」按红娘工作台数据展示
+      const data: any = { page: 1, page_size: 100 }
+      if (tab == 'REJECTED') data['review_status'] = 'REJECTED'
+      if (keyword.value.trim().length > 0) data['search'] = keyword.value.trim()
+      const result = await getMatchmakerReviewMembers(data)
+      if (!result.success || result.data == null) {
+        rawMembers.value = []
+        members.value = []
+        errorMessage.value = result.message || '资料数据加载失败'
+        return
+      }
+      rawMembers.value = Array.isArray(result.data.items) ? result.data.items : []
+      applyMemberFilter()
+      emitServedCount()
       return
     }
-    const raw = Array.isArray(result.data.items) ? result.data.items : []
-    rawMembers.value = raw
+    // 全部 / 待审 / 线上VIP / 线下VIP：与首页「会员专区」同源，展示广场 VIP 会员
+    const workbenchRes = await getMatchmakerReviewMembers({ page: 1, page_size: 100 })
+    const extras: any = {}
+    if (workbenchRes.success && workbenchRes.data != null && Array.isArray(workbenchRes.data.items)) {
+      const rows = workbenchRes.data.items as any[]
+      for (let i = 0; i < rows.length; i++) extras[String(Number(rows[i].user_id))] = rows[i]
+    }
+    const plazaRes = await getDiscoveryPlaza({ page: 1, page_size: 20 })
+    if (!plazaRes.success || plazaRes.data == null) {
+      rawMembers.value = []
+      members.value = []
+      errorMessage.value = plazaRes.message || '会员数据加载失败'
+      return
+    }
+    const plazaItems = Array.isArray(plazaRes.data.items) ? plazaRes.data.items as any[] : []
+    const list: any[] = []
+    const kw = keyword.value.trim()
+    for (let i = 0; i < plazaItems.length; i++) {
+      const user = plazaItems[i]
+      if (user == null) continue
+      if (!(user.isVip === true || user.is_vip === true)) continue
+      if (tab == 'vip_online' && user.online !== true) continue
+      if (tab == 'vip_offline' && user.online === true) continue
+      const uid = Number(user.id || 0)
+      if (kw.length > 0) {
+        const nameHit = user.name != null && String(user.name).indexOf(kw) >= 0
+        const idHit = String(uid).indexOf(kw) >= 0
+        if (!nameHit && !idHit) continue
+      }
+      list.push(memberFromPlaza(user, extras[String(uid)]))
+    }
+    rawMembers.value = list
     applyMemberFilter()
+    emitServedCount()
   } catch (error) {
     rawMembers.value = []
     members.value = []
@@ -733,10 +866,6 @@ const confirmMemberFilter = () => {
 
 const selectTab = (key: string) => {
   activeTab.value = key
-  if (key == 'vip_online' || key == 'vip_offline') {
-    members.value = []
-    return
-  }
   loadMembers()
 }
 
@@ -746,6 +875,7 @@ const loadSelfProfile = async () => {
     if (result.success && result.data != null && result.data.user_id != null) {
       selfUserId.value = Number(result.data.user_id)
       if (activeTab.value == 'mine') applyMemberFilter()
+      emitServedCount()
     }
   } catch (e) {
   }
@@ -959,18 +1089,52 @@ const submitAbandon = async () => {
   loadMembers()
 }
 
-/* ---------- 联系 / 跟进（保留原真实接口） ---------- */
-const openContact = async (member: any) => {
+/* ---------- 审核状态 ---------- */
+const openReview = (member: any) => {
   closeMenu()
   selected.value = member
-  contactPhone.value = ''
-  sheet.value = 'contact'
-  const result = await getMatchmakerMemberContact(String(member.user_id))
-  if (result.success && result.data != null) contactPhone.value = result.data.phone != null ? String(result.data.phone) : ''
-  else {
-    notify(result.message || '联系信息加载失败')
-    closeSheet()
+  reviewReason.value = ''
+  reviewStatus.value = member.review_status == 'PASSED' ? 'PASSED' : (member.review_status == 'REJECTED' ? 'REJECTED' : 'PENDING')
+  sheet.value = 'review'
+}
+const pickReviewStatus = (value: string) => { reviewStatus.value = value }
+const onReviewReason = (event: any) => { reviewReason.value = event.detail.value }
+const applyReviewTemplate = (tpl: string) => { reviewReason.value = tpl }
+const submitReview = async () => {
+  if (selected.value == null || reviewSubmitting.value) return
+  if (reviewStatus.value == 'PENDING' || reviewStatus.value == '') {
+    notify('请选择审核结果')
+    return
   }
+  // 已到店核验由线下到店流程产生；后端公开资料审核仅支持通过/不通过。
+  if (reviewStatus.value == 'STORE_VERIFIED') {
+    notify('已到店核验需到店操作，暂不支持在线设置')
+    return
+  }
+  const reason = reviewReason.value.trim()
+  if (reviewStatus.value == 'REJECTED' && reason.length == 0) {
+    notify('请填写审核不通过原因')
+    return
+  }
+  reviewSubmitting.value = true
+  try {
+    const result = await updateMatchmakerReviewMember(String(selected.value.user_id), { status: reviewStatus.value, reason: reason })
+    if (!result.success) {
+      notify(result.message || '审核结果提交失败')
+      return
+    }
+    notify('审核结果已提交')
+    closeSheet()
+    loadMembers()
+  } finally { reviewSubmitting.value = false }
+}
+
+/* ---------- 联系 / 跟进（联系弹窗由父页面统一渲染） ---------- */
+const openContact = (member: any) => {
+  closeMenu()
+  selected.value = member
+  // 会员编号校验与弹窗渲染都在父页面（become-matchmaker）统一处理。
+  emit('contact', member)
 }
 const openFollowUps = async (member: any) => {
   closeMenu()
@@ -1023,7 +1187,28 @@ const copyProfile = (member: any) => {
 }
 const onEditProfile = (member: any) => {
   closeMenu()
-  notify('会员资料编辑开放后可直接修改')
+  const id = Number(member.user_id)
+  if (id <= 0) {
+    notify('会员编号无效')
+    return
+  }
+  uni.navigateTo({
+    url: '/pagesSub/userExtra/user/edit?memberId=' + id + '&matchmakerView=1',
+    fail: () => notify('打开会员资料编辑失败')
+  })
+}
+/* 点击会员卡片直接进入会员主页（用户详情页） */
+const openMemberProfile = (member: any) => {
+  closeMenu()
+  const id = Number(member.user_id)
+  if (id <= 0) {
+    notify('会员编号无效')
+    return
+  }
+  uni.navigateTo({
+    url: '/pagesSub/userExtra/user/detail?userId=' + id + '&matchmakerView=1',
+    fail: () => notify('打开会员主页失败')
+  })
 }
 const onEnterMember = () => {
   closeMenu()
@@ -1086,6 +1271,10 @@ onMounted(() => {
 .mcard-status.st-passed text { color: var(--sage); }
 .mcard-status.st-rejected { background: var(--match-blush); }
 .mcard-status.st-rejected text { color: var(--match-coral); }
+.mcard-vip { padding: 4rpx 10rpx; border-radius: 8rpx; background: #b98a2b; }
+.mcard-vip text { color: var(--paper); font-size: 17rpx; font-weight: 800; }
+.mcard-profile-entry { padding: 7rpx 12rpx; border-radius: 8rpx; background: var(--accent-bg); }
+.mcard-profile-entry text { color: var(--accent2); font-size: 19rpx; font-weight: 800; }
 
 .mcard-body { margin-top: 18rpx; display: flex; flex-direction: row; gap: 18rpx; }
 .mcard-ava { position: relative; width: 96rpx; height: 96rpx; border-radius: 50%; overflow: hidden; background: var(--accent-bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -1123,7 +1312,8 @@ onMounted(() => {
 .filter-layer { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 110; display: flex; flex-direction: row; }
 .filter-mask { position: absolute; left: 0; top: 0; right: 0; bottom: 0; background: var(--ink); opacity: .44; }
 .filter-drawer { position: relative; width: 640rpx; max-width: 88%; height: 100%; margin-left: auto; background: var(--surface); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; }
-.filter-head { flex-shrink: 0; padding: calc(env(safe-area-inset-top) + 30rpx) 28rpx 24rpx; border-bottom: 1rpx solid var(--line); display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+/* 顶部留位与宿主导航带对齐（状态栏 + 88rpx），避免标题与关闭键顶进状态栏或微信胶囊。 */
+.filter-head { flex-shrink: 0; padding: calc(var(--status-bar-height) + 88rpx) 28rpx 24rpx; border-bottom: 1rpx solid var(--line); display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
 .filter-title { display: block; color: var(--ink); font-size: 31rpx; font-weight: 800; }
 .filter-subtitle { display: block; margin-top: 7rpx; color: var(--muted); font-size: 20rpx; }
 .filter-close { width: 56rpx; height: 56rpx; border-radius: 50%; background: var(--warm); display: flex; align-items: center; justify-content: center; }
@@ -1292,6 +1482,25 @@ onMounted(() => {
 .assign-row.picked text { color: var(--accent2); font-weight: 800; }
 .assign-row.disabled { opacity: 0.45; }
 .assign-current { color: var(--muted) !important; font-size: 19rpx !important; }
+
+/* review sheet */
+.review-fee-row { display: flex; flex-direction: row; align-items: center; gap: 10rpx; margin: 4rpx 4rpx 0; }
+.review-fee-label { color: var(--ink); font-size: 27rpx; font-weight: 800; }
+.review-fee-value { color: var(--sage); font-size: 27rpx; font-weight: 800; }
+.review-fee-time { color: var(--muted); font-size: 23rpx; }
+.review-status-row { display: flex; flex-direction: row; align-items: stretch; gap: 14rpx; }
+.review-chip { flex: 1; min-height: 92rpx; padding: 10rpx 8rpx; border: 1rpx solid transparent; border-radius: 16rpx; background: var(--review-soft); display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+.review-chip text { color: var(--ink); font-size: 24rpx; text-align: center; }
+.review-chip.picked { border-color: var(--review-purple); background: var(--review-lilac); }
+.review-chip.picked text { color: var(--review-purple); font-weight: 800; }
+.review-chip:active { opacity: 0.75; }
+.review-reject-area { display: flex; flex-direction: column; gap: 14rpx; }
+.review-reason { width: 100%; min-height: 150rpx; padding: 20rpx; border-radius: 16rpx; background: var(--review-soft); box-sizing: border-box; color: var(--ink); font-size: 23rpx; }
+.review-template-title { color: var(--ink); font-size: 25rpx; font-weight: 800; margin-top: 6rpx; }
+.review-template { min-height: 76rpx; padding: 0 22rpx; border-radius: 14rpx; background: var(--review-soft); display: flex; align-items: center; }
+.review-template text { color: var(--ink2); font-size: 22rpx; }
+.review-template:active { opacity: 0.75; }
+.review-submit { margin-top: 10rpx; background: linear-gradient(90deg, var(--review-purple), var(--review-lilac)); }
 
 /* abandon modal */
 .modal-mask { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 95; display: flex; align-items: center; justify-content: center; }

@@ -1,27 +1,41 @@
 <template>
 	<view class="matchmaker-page">
 		<view class="page-shell">
-			<scroll-view class="page-scroller" scroll-y enhanced :show-scrollbar="false">
-				<view v-if="currentTabValue !== 'ai'" class="page-head" :class="{ 'page-head-merged': currentTabValue === 'service' }">
-				<image class="page-head-art" src="/static/generated/matchmaker-hero-calligraphy.webp" mode="aspectFill"></image>
-				<text class="page-desc">服务红娘负责匹配推进，私人定制负责长期陪跑，AI 红娘负责梳理线索与破冰建议。</text>
+			<view class="page-head">
+				<view class="hero-net">
+					<view
+						v-for="(lineStyle, li) in heroLineStyles"
+						:key="li"
+						class="hero-line"
+						:style="lineStyle"
+					></view>
+					<view
+						v-for="(dotStyle, di) in heroDotStyles"
+						:key="di"
+						class="hero-dot"
+						:style="dotStyle"
+					></view>
+				</view>
+				<text class="page-kicker">星河牵线</text>
+				<text class="page-desc">每颗星都沿着自己的直线前行，谁也说不清哪一刻会靠近谁。可当它们真的靠近时，那一瞬间亮起的线，就是缘分被世界看见的样子。</text>
+			</view>
 
-					<view class="page-tabs">
-						<view class="matchmaker-tab-bar">
-							<view
-								v-for="(tab, index) in tabs"
-								:key="tab"
-								class="matchmaker-tab"
-								:class="{ active: currentTabIndex === index }"
-								@click="handleTabChange(index)"
-							>
-								<text>{{ tab }}</text>
-							</view>
-						</view>
+			<view class="page-tabs">
+				<view class="matchmaker-tab-bar">
+					<view
+						v-for="(tab, index) in tabs"
+						:key="tab"
+						class="matchmaker-tab"
+						:class="{ active: currentTabIndex === index }"
+						@click="handleTabChange(index)"
+					>
+						<text>{{ tab }}</text>
 					</view>
 				</view>
+			</view>
 
-				<view class="page-content" :class="{ 'service-page-content': currentTabValue === 'service', 'ai-page-content': currentTabValue === 'ai' }">
+			<scroll-view class="page-scroller" scroll-y enhanced :show-scrollbar="false">
+				<view class="page-content" :class="{ 'service-page-content': currentTabValue === 'service' }">
 					<view class="error-card" v-if="loadError.length > 0">
 						<text class="error-title">部分内容加载失败</text>
 						<text class="error-desc">{{ loadError }}</text>
@@ -35,7 +49,7 @@
 						<view class="service-showcase">
 							<view class="section-header service-showcase-header">
 								<view>
-									<text class="section-title section-title-hand">服务红娘</text>
+									<text class="section-title">服务红娘</text>
 									<text class="section-desc">专业顾问会先理解你的关系目标，再决定如何帮你更稳地认识一个人。</text>
 								</view>
 							</view>
@@ -65,15 +79,15 @@
 						<MatchmakerRank v-if="rankList.length > 0" :list="rankList" @item-click="handleMatchmakerDetail" />
 					<view class="join-entry-row">
 						<view class="join-entry" @click="handleBecomeMatchmaker">
-							<view class="join-entry-icon"><text>缘</text></view>
+							<image class="join-entry-icon" src="/static/icons/join-matchmaker.png" mode="aspectFit"></image>
 							<text class="join-entry-label">我要做红娘</text>
 						</view>
 						<view class="join-entry" @click="handleBecomePartner">
-							<view class="join-entry-icon partner"><text>伴</text></view>
+							<image class="join-entry-icon" src="/static/icons/join-partner.png" mode="aspectFit"></image>
 							<text class="join-entry-label">申请合伙人</text>
 						</view>
 						<view class="join-entry" @click="handleBecomePromoter">
-							<view class="join-entry-icon promoter"><text>推</text></view>
+							<image class="join-entry-icon" src="/static/icons/join-promoter.png" mode="aspectFit"></image>
 							<text class="join-entry-label">推广红娘</text>
 						</view>
 					</view>
@@ -124,50 +138,21 @@
 
 					<view v-if="currentTabValue === 'custom'" class="join-entry-row">
 						<view class="join-entry" @click="handleBecomeMatchmaker">
-							<view class="join-entry-icon"><text>缘</text></view>
+							<image class="join-entry-icon" src="/static/icons/join-matchmaker.png" mode="aspectFit"></image>
 							<text class="join-entry-label">我要做红娘</text>
 						</view>
 						<view class="join-entry" @click="handleBecomePartner">
-							<view class="join-entry-icon partner"><text>伴</text></view>
+							<image class="join-entry-icon" src="/static/icons/join-partner.png" mode="aspectFit"></image>
 							<text class="join-entry-label">申请合伙人</text>
 						</view>
 						<view class="join-entry" @click="handleBecomePromoter">
-							<view class="join-entry-icon promoter"><text>推</text></view>
+							<image class="join-entry-icon" src="/static/icons/join-promoter.png" mode="aspectFit"></image>
 							<text class="join-entry-label">推广红娘</text>
 						</view>
 					</view>
 
 					</view>
 
-					<view v-if="currentTabValue === 'ai'" class="ai-chat-page">
-						<view class="ai-chat-nav">
-							<view class="ai-back" @click="leaveAiChat"><view class="ai-back-chevron"></view></view>
-							<text class="ai-nav-title">AI 红娘</text>
-							<text class="ai-clear" @click="clearAiMessages">清除记录</text>
-						</view>
-
-						<view class="ai-profile-card">
-							<image class="ai-profile-avatar" src="/static/portraits/profile-woman-main.webp" mode="aspectFill"></image>
-							<view class="ai-profile-copy">
-								<text class="ai-profile-name">小缘助手</text>
-								<text class="ai-profile-subtitle">关系沟通助手</text>
-							</view>
-							<view class="ai-online"><view class="ai-online-dot"></view><text>在线</text></view>
-						</view>
-
-						<view class="ai-message-list">
-							<view v-for="item in aiMessages" :key="item.id" class="ai-message" :class="item.role">
-								<text>{{ item.text }}</text>
-							</view>
-						</view>
-
-						<view class="quick-question-panel">
-							<view class="quick-question-title"><view></view><text>快捷问题</text><view></view></view>
-							<view class="quick-question-grid">
-								<view v-for="item in aiQuickQuestions" :key="item" class="quick-question" @click="askAiQuestion(item)"><text>{{ item }}</text></view>
-							</view>
-						</view>
-					</view>
 				</view>
 			</scroll-view>
 		</view>
@@ -178,12 +163,6 @@
 			</view>
 		</view>
 
-		<view v-if="currentTabValue === 'ai'" class="ai-input-safe">
-			<view class="ai-input-bar">
-				<input class="ai-chat-input" :value="aiInput" placeholder="请输入你的问题" confirm-type="send" @input="onAiInput" @confirm="sendAiMessage" />
-				<view class="ai-send-button" @click="sendAiMessage"><text>发送</text></view>
-			</view>
-		</view>
 	</view>
 
 	<!-- 自定义底部导航栏 -->
@@ -193,7 +172,7 @@
 
 <script setup lang="uts">
 import XsaTabBar from '@/components/XsaTabBar.uvue'
-import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
+	import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	import XsaEmpty from '@/components/XsaEmpty.uvue'
 	import MatchmakerCard from '@/components/MatchmakerCard.uvue'
 	import MatchmakerRank from '@/components/MatchmakerRank.uvue'
@@ -202,10 +181,9 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		getVolunteerMatchmakers,
 		getCustomPlans
 	} from '@/api'
-	import { mockServiceMatchmakers, mockVolunteerMatchmakers, mockCustomPlans } from '@/mock/matchmaker'
 
-	const tabs = ['服务红娘', '私人定制', 'AI红娘']
-	const tabValues = ['service', 'custom', 'ai']
+	const tabs = ['服务红娘', '私人定制']
+	const tabValues = ['service', 'custom']
 	const customHomeValues = [
 		{ mark: '准', title: '精准匹配', copy: '根据关系期待筛选候选对象。' },
 		{ mark: '专', title: '专属服务', copy: '一位红娘持续跟进反馈。' },
@@ -228,26 +206,12 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		{ title: '安排见面', copy: '双方沟通' },
 		{ title: '持续跟进', copy: '反馈复盘' }
 	]
-	const aiQuickQuestions = [
-		'如何提高相亲成功率',
-		'怎么写自我介绍',
-		'第一次约会注意什么',
-		'帮我分析择偶需求'
-	]
-
 	const currentTabIndex = ref(0)
 	const pageLoading = ref(false)
 	const loadError = ref('')
-	const aiInput = ref('')
-	const aiMessages = ref<any[]>([
-		{ id: 1, role: 'assistant', text: '你好，我是你的 AI 红娘。可以告诉我你的择偶需求吗？' },
-		{ id: 2, role: 'user', text: '我希望对方性格开朗，有稳定职业。' }
-	])
-	const nextAiMessageId = ref(3)
-
-	const serviceMatchmakers = ref<any[]>(mockServiceMatchmakers as any[])
-	const rankList = ref<any[]>(mockVolunteerMatchmakers as any[])
-	const customPlans = ref<any[]>(mockCustomPlans as any[])
+	const serviceMatchmakers = ref<any[]>([])
+	const rankList = ref<any[]>([])
+	const customPlans = ref<any[]>([])
 	const selectedCustomPlanId = ref(0)
 
 	const currentTabValue = computed(() => {
@@ -267,8 +231,247 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		return count * 300 + (count - 1) * 14 + 32
 	})
 
+	// ===== zurb 式点线网络：一整片「星网」，每颗星沿自己的**一条直线**往返 =====
+	// ① 轨迹只有一条直线：每颗星由 { ang 方向角, len 线段全长, spd 峰值速度, ph 起始相位 } 决定，
+	//    x 与 y 由同一个 sin 驱动 → 严格直线，不存在此前的二维曲线与「闪到另一条路线」的跳变。
+	// ② 每颗星自带明灭：缓慢渐入 → 全亮 → 缓慢渐出 → 完全消失，四段时长见 HERO_FI/BI/FO
+	//    （单次渐变约 3~4.5s，smoothstep 缓动，两端与全亮/全黑段无缝衔接）。
+	//    消失期间它仍在自己的直线上继续走，所以重新出现时是接着走的，不会「闪到别处」。
+	// ③ 任意两颗星只要靠近（272rpx 内）就自动连线，一颗星同时挂 3 条左右，
+	//    于是各处的星会随时连成一片、又随之明灭而整片重排。
+	// 9 颗小星（r 5~14rpx，直径 10~28rpx），初始按「4 + 3 + 2」铺满分给星网的那条带子
+	// （见 HERO_BOUND_Y0/Y1：只在「星河牵线」上方活动，不会压到文案）。
+	// 三行 y 由 88/162/236 收拢到 72/118/164 —— 带子矮了，行距同步压紧。
+	const heroParticles = [
+		{ cx: 104, cy: 72, r: 12, ang: 14, len: 146, spd: 30, ph: 0.00, fw: 0.42 },
+		{ cx: 264, cy: 72, r: 7, ang: 58, len: 170, spd: 36, ph: 0.37, fw: 0.55 },
+		{ cx: 424, cy: 72, r: 9, ang: -34, len: 170, spd: 28, ph: 0.62, fw: 0.36 },
+		{ cx: 584, cy: 72, r: 14, ang: 104, len: 150, spd: 32, ph: 0.15, fw: 0.48 },
+		{ cx: 184, cy: 118, r: 6, ang: 96, len: 170, spd: 38, ph: 0.80, fw: 0.58 },
+		{ cx: 344, cy: 118, r: 10, ang: 8, len: 190, spd: 26, ph: 0.45, fw: 0.40 },
+		{ cx: 504, cy: 118, r: 5, ang: 140, len: 170, spd: 34, ph: 0.05, fw: 0.52 },
+		{ cx: 264, cy: 164, r: 6, ang: -20, len: 170, spd: 29, ph: 0.70, fw: 0.34 },
+		// 原来 72°（近乎竖直）：带子矮了以后竖直方向余量太小，行程会被压到 ~30rpx，
+		// 这颗星看上去几乎不动 —— 改成 60°，斜率还在，行程回到 ~40rpx。
+		{ cx: 424, cy: 164, r: 7, ang: 60, len: 140, spd: 36, ph: 0.28, fw: 0.63 }
+	]
+	// 速度总开关：所有星星的移动快慢只由这一个数决定（>1 更快）
+	const HERO_SPEED = 1.0
+	const HERO_LINE_BASE = 700
+	// 连线阈值（rpx）：距离进入 300 内开始出现、超出 300 完全熄灭，淡出带 100。
+	// 阈值比「最近邻」放得宽，是为了让每颗星除了 2~3 条亮线，还挂着若干条很淡的外围线
+	// —— 线的浓度因此有层次（不是齐刷刷一个亮度），网络也不会在几颗星同时走暗时整个空掉。
+	const HERO_LINK_MAX = 300
+	const HERO_LINK_FADE = 100
+	// 线的亮度上限。配合下面 0.10 的底亮度，近线的「深」端更实，
+	// 于是同屏的线能拉开「很淡 ↔ 很亮」的对比，而不是糊成一片灰。
+	const HERO_LINE_ALPHA = 0.95
+	const HERO_TICK_MS = 33
+	// 明灭时间表：把一个周期的相位 0~1 切成四段 ——
+	//   0~FI 渐入 ｜ FI~BI 全亮 ｜ BI~FO 渐出 ｜ FO~1 全黑
+	// 不用正弦：正弦在两端（全黑/全亮）停留很久、中间扫得飞快，观感就是「长时间没动静 →
+	// 忽然亮起又忽然灭掉」。改成按时长切段后，渐入/渐出各占 30% 周期
+	// （fw≈0.42 时周期 15s → 单次渐变约 4.5s），且 smoothstep 两端导数为 0，
+	// 与「全亮」「全黑」两段无缝衔接，看不到任何硬起硬落。
+	const HERO_FI = 0.30
+	const HERO_BI = 0.62
+	const HERO_FO = 0.92
+	// rpx → px 系数。小程序视图层把 rpx 换算成 px 时会取整到「整像素」，
+	// 而粒子每帧只走约 0.2px —— 取整后就变成「攒够 1px 才跳一次」，这正是抖动的真凶。
+	// 所以每帧变化的位移一律换算成小数 px 直接下发（实测 px 的小数不会被丢）。
+	const heroRpx = uni.getSystemInfoSync().windowWidth / 750
+	// 全场两两配对（n=9 → 36 对，顺序固定），每对线对应一个固定的角度累计槽位。
+	// 用两个平行数组而不是二维数组：uni-app-x 的 uts 对嵌套数组类型推断更挑剔。
+	const heroPairA : number[] = []
+	const heroPairB : number[] = []
+	const buildHeroPairs = () => {
+		for (let i = 0; i < heroParticles.length; i++) {
+			for (let j = i + 1; j < heroParticles.length; j++) {
+				heroPairA.push(i)
+				heroPairB.push(j)
+			}
+		}
+	}
+	buildHeroPairs()
+	// 每颗星的运行时状态：
+	//   heroFadePh —— 明灭相位（错开，避免所有星同时熄灭）
+	//   heroDirX/Y —— 直线方向的单位向量（由 ang 预计算，省掉每帧的三角函数）
+	//   heroHalf   —— 半程长度（rpx）：由 hero 可见区裁出来，保证线段整体不出框
+	const heroFadePh : number[] = []
+	const heroDirX : number[] = []
+	const heroDirY : number[] = []
+	const heroHalf : number[] = []
+	// hero-net 的可见区（rpx）：星心含半径不得越出，否则会贴边或被裁掉。
+	const HERO_BOUND_X0 = 30
+	const HERO_BOUND_X1 = 664
+	// 纵向边界 = 星网的「活动带」上下沿。上沿离卡片顶 24rpx、下沿 204rpx，
+	// 而「星河牵线」从 228rpx 起（= .page-head 的 padding-top），中间留 24rpx 净空 ——
+	// 星星与连线被这条带子箍住，永远不会盖到文案上。改高度时这三处要一起动：
+	// HERO_BOUND_Y1 / .hero-net{height} / .page-head{padding-top}。
+	const HERO_BOUND_Y0 = 24
+	const HERO_BOUND_Y1 = 204
+	const initHeroState = () => {
+		for (let i = 0; i < heroParticles.length; i++) {
+			const p = heroParticles[i]
+			const rad = p.ang * Math.PI / 180
+			const ux = Math.cos(rad)
+			const uy = Math.sin(rad)
+			heroDirX.push(ux)
+			heroDirY.push(uy)
+			// 沿 ±u 两个方向各能走多远才碰壁，取较短的那个当半程 → 线段关于中点对称、永不出框。
+			// 半径也算进去（x0/x1 等已按 r 内缩），所以星边不会蹭到 hero 边界。
+			const x0 = HERO_BOUND_X0 + p.r
+			const x1 = HERO_BOUND_X1 - p.r
+			const y0 = HERO_BOUND_Y0 + p.r
+			const y1 = HERO_BOUND_Y1 - p.r
+			const plusX = ux > 0 ? (x1 - p.cx) / ux : (ux < 0 ? (x0 - p.cx) / ux : 99999)
+			const plusY = uy > 0 ? (y1 - p.cy) / uy : (uy < 0 ? (y0 - p.cy) / uy : 99999)
+			const minusX = ux > 0 ? (p.cx - x0) / ux : (ux < 0 ? (p.cx - x1) / ux : 99999)
+			const minusY = uy > 0 ? (p.cy - y0) / uy : (uy < 0 ? (p.cy - y1) / uy : 99999)
+			let half = p.len / 2
+			if (plusX < half) half = plusX
+			if (plusY < half) half = plusY
+			if (minusX < half) half = minusX
+			if (minusY < half) half = minusY
+			if (half < 20) half = 20
+			heroHalf.push(half)
+			// 明灭相位错开，避免所有星同时熄灭（2.399 是黄金角 → 相位在周期上分布最均匀）
+			heroFadePh.push(i * 2.399 + 2.0)
+		}
+	}
+	initHeroState()
+	const emptyStyles = (n : number) : string[] => {
+		const out : string[] = []
+		for (let i = 0; i < n; i++) out.push('')
+		return out
+	}
+	// 累计角度（不归一化）：atan2 在 ±180° 处会突变，直接用会让线在跨越时“甩”一下；
+	// 这里把每帧角度拉到上一帧附近最近的等价角，保证旋转始终走最近的小弧。
+	const heroAngles : number[] = []
+	const heroDotStyles = ref<string[]>(emptyStyles(heroParticles.length))
+	const heroLineStyles = ref<string[]>(emptyStyles(heroPairA.length))
+	let heroTimer = -1
+	const heroStartAt = Date.now()
+
+	const heroTick = () => {
+		const tf = (Date.now() - heroStartAt) / 1000
+		const xs : number[] = []
+		const ys : number[] = []
+		const ops : number[] = []
+		const dotStyles : string[] = []
+		const n = heroParticles.length
+		for (let i = 0; i < n; i++) {
+			const p = heroParticles[i]
+			// ---- 明灭：缓慢渐入 → 全亮 → 缓慢渐出 → 完全消失 ----
+			// 位置不受明灭影响（见下），所以重新出现时星是接着原来那条路线继续走的。
+			// 相位按时长切成四段（见顶部 HERO_FI/BI/FO），渐入渐出用 smoothstep：
+			// 两端导数为 0，接上「全亮」「全黑」两段是平滑的，不会出现一亮一灭的硬切。
+			let ph = (tf * p.fw + heroFadePh[i]) / 6.2831853
+			ph = ph - Math.floor(ph)
+			let op = 0
+			if (ph < HERO_FI) {
+				const q = ph / HERO_FI
+				op = q * q * (3 - 2 * q)
+			} else if (ph < HERO_BI) {
+				op = 1
+			} else if (ph < HERO_FO) {
+				const q = (HERO_FO - ph) / (HERO_FO - HERO_BI)
+				op = q * q * (3 - 2 * q)
+			}
+			ops.push(op)
+			// ---- 轨迹：沿自己那一条固定直线做简谐往返 ----
+			// x 与 y 由**同一个** sin 驱动（相位一致）→ 轨迹严格是一条直线，不是二维曲线。
+			// 简谐（而非线性三角波）的好处：端点是速度自然趋零再折回，
+			// 不会像线性往返那样在尽头「硬弹」一下。位置/速度全程连续。
+			// 角速度按 half 反算，使峰值线速度正好等于 p.spd（rpx/秒），半程短的星不会显得更快。
+			const half = heroHalf[i]
+			const w = p.spd / half
+			const off = half * Math.sin(tf * HERO_SPEED * w + p.ph * 6.2831853)
+			const x = p.cx + heroDirX[i] * off
+			const y = p.cy + heroDirY[i] * off
+			xs.push(x)
+			ys.push(y)
+			const d = (p.r * 2 * heroRpx).toFixed(2)
+			// 全部换算成小数 px：小程序的 rpx 换算会取整，直接发 rpx 就等于把位置量化到整像素。
+			// translate3d 而非 translate：提升为合成层，靠合成器做亚像素位移，不走主线程重绘。
+			const dop = Math.round(op * 1000) / 1000
+			dotStyles.push(`width:${d}px;height:${d}px;transform:translate3d(${((x - p.r) * heroRpx).toFixed(2)}px,${((y - p.r) * heroRpx).toFixed(2)}px,0);opacity:${dop}`)
+		}
+		const lineStyles : string[] = []
+		for (let k = 0; k < heroPairA.length; k++) {
+			const i = heroPairA[k]
+			const j = heroPairB[k]
+			// 任一端星星变暗，这条线就跟着变淡；星彻底消失时线正好归零（没有任何硬切）。
+			const endOp = ops[i] < ops[j] ? ops[i] : ops[j]
+			const dx = xs[j] - xs[i]
+			const dy = ys[j] - ys[i]
+			const dist = Math.sqrt(dx * dx + dy * dy)
+			const raw = (HERO_LINK_MAX - dist) / HERO_LINK_FADE
+			const dfLin = raw <= 0 ? 0 : (raw >= 1 ? 1 : raw)
+			// 距离因子取平方：线一离开「最近」就快速暗淡下去。
+			// 线性映射下中距离的线仍有大半亮度，「淡的线」淡不下来；平方后
+			// 近线依旧饱满、远线迅速隐没，明暗层次才拉得开（配合 CSS 的两端渐隐，
+			// 一条线本身也在「淡→深→淡」地起伏）。
+			const df = dfLin * dfLin
+			// 线的亮度 = 距离因子 × 星的存活度 lv(endOp)。
+			// lv 用「endOp≥0.62 时为 1，再往下平滑归零」的曲线：星大半时间处在全亮段，
+			// 线就一直实；星一旦开始明显变暗，线连续地跟着暗下去，直到星完全消失时正好归零。
+			// 旧版这里是 `0.10 + 0.90 × endOp` 的固定底亮度 —— 星灭到阈值时线还有约 10% 亮度，
+			// 然后被硬切成 0，一帧之间跳掉，非常突兀；现在全程连续，没有台阶。
+			const lvRaw = endOp / 0.62
+			const lvLin = lvRaw <= 0 ? 0 : (lvRaw >= 1 ? 1 : lvRaw)
+			const lv = lvLin * lvLin * (3 - 2 * lvLin)
+			const alpha = Math.round(df * lv * HERO_LINE_ALPHA * 1000) / 1000
+			if (alpha <= 0.008) {
+				lineStyles.push('opacity:0')
+				continue
+			}
+			// 角度始终连续累计（即使这条线这帧不亮），重新亮起时不会因为角度槽位过期而错位
+			let ang = Math.atan2(dy, dx) * 180 / Math.PI
+			if (k < heroAngles.length) {
+				const prev = heroAngles[k]
+				ang = prev + ((ang - prev) % 360 + 540) % 360 - 180
+			}
+			heroAngles[k] = ang
+			// 角度保留一位小数：0.1° 在 170rpx 长的线上只有 0.3rpx 端点位移，
+			// 肉眼看不出台阶，但能保证线的旋转是连续推进而不是逐格跳。
+			const scale = dist / HERO_LINE_BASE
+			lineStyles.push(`transform:translate3d(${(xs[i] * heroRpx).toFixed(2)}px,${(ys[i] * heroRpx).toFixed(2)}px,0) rotate(${ang.toFixed(1)}deg) scaleX(${scale.toFixed(3)});opacity:${alpha}`)
+		}
+		heroDotStyles.value = dotStyles
+		heroLineStyles.value = lineStyles
+	}
+
+	const startHeroNet = () => {
+		if (heroTimer != -1) return
+		// 首帧在首次渲染前就算好，元素不会从初始位置「飞入」，因此不需要任何补间过渡
+		heroTick()
+		heroTimer = setInterval(heroTick, HERO_TICK_MS)
+	}
+
+	const stopHeroNet = () => {
+		if (heroTimer != -1) {
+			clearInterval(heroTimer)
+			heroTimer = -1
+		}
+	}
+
 	onMounted(() => {
 		reloadPage()
+		startHeroNet()
+	})
+
+	onUnmounted(() => {
+		stopHeroNet()
+	})
+
+	// 页面被覆盖/切走时暂停帧循环，回到前台再续上（省掉无意义的 setData）
+	onHide(() => {
+		stopHeroNet()
+	})
+
+	onShow(() => {
+		startHeroNet()
 	})
 
 	const handleTabChange = (index : number) => {
@@ -300,37 +503,45 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	const loadServiceMatchmakers = async () => {
 		try {
 			const res = await getServiceMatchmakers()
-			const data = res?.data
-			// 仅当接口返回有效非空数组时覆盖；否则保留页面内置虚拟数据（离线 / mock 预览）
-			if (res.success && Array.isArray(data) && data.length > 0) {
-				serviceMatchmakers.value = data as any[]
+			if (res.success && res.data != null) {
+				serviceMatchmakers.value = res.data as any[]
+			} else if (loadError.value.length == 0) {
+				loadError.value = '网络连接不可用，请检查网络后重新加载。'
 			}
 		} catch (e) {
-			// 接口异常时保留虚拟数据，不覆盖
+			if (loadError.value.length == 0) {
+				loadError.value = '服务红娘数据加载失败。'
+			}
 		}
 	}
 
 	const loadMatchmakerRanking = async () => {
 		try {
 			const res = await getVolunteerMatchmakers()
-			const data = res?.data
-			if (res.success && Array.isArray(data) && data.length > 0) {
-				rankList.value = data as any[]
+			if (res.success && res.data != null) {
+				rankList.value = res.data as any[]
+			} else if (loadError.value.length == 0) {
+				loadError.value = '红娘排行榜加载失败，请稍后重试。'
 			}
 		} catch (e) {
-			// 保留虚拟数据
+			if (loadError.value.length == 0) {
+				loadError.value = '红娘排行榜加载失败，请稍后重试。'
+			}
 		}
 	}
 
 	const loadCustomContent = async () => {
 		try {
 			const planRes = await getCustomPlans()
-			const data = planRes?.data
-			if (planRes.success && Array.isArray(data) && data.length > 0) {
-				customPlans.value = data as any[]
+			if (planRes.success && planRes.data != null) {
+				customPlans.value = planRes.data as any[]
+			} else if (loadError.value.length == 0) {
+				loadError.value = '网络连接不可用，请检查网络后重新加载。'
 			}
 		} catch (e) {
-			// 保留虚拟数据
+			if (loadError.value.length == 0) {
+				loadError.value = '私人定制内容加载失败。'
+			}
 		}
 	}
 
@@ -404,33 +615,6 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		applyCustomPlan()
 	}
 
-	const onAiInput = (event: any) => {
-		aiInput.value = event.detail.value
-	}
-
-	const sendAiMessage = () => {
-		const text = aiInput.value.trim()
-		if (text.length == 0) return
-		aiMessages.value.push({ id: nextAiMessageId.value, role: 'user', text: text })
-		nextAiMessageId.value = nextAiMessageId.value + 1
-		aiInput.value = ''
-		aiMessages.value.push({ id: nextAiMessageId.value, role: 'assistant', text: '我先帮你把这个问题拆成可以观察和沟通的具体线索，再一起看看下一步怎么做。' })
-		nextAiMessageId.value = nextAiMessageId.value + 1
-	}
-
-	const askAiQuestion = (question: string) => {
-		aiInput.value = question
-		sendAiMessage()
-	}
-
-	const clearAiMessages = () => {
-		aiMessages.value = [{ id: 1, role: 'assistant', text: '你好，我是你的 AI 红娘。可以告诉我你的择偶需求吗？' }]
-		nextAiMessageId.value = 2
-	}
-
-	const leaveAiChat = () => {
-		currentTabIndex.value = 0
-	}
 </script>
 
 <style scoped>
@@ -472,23 +656,88 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		flex-direction: column;
 	}
 
+	/* 上半段（padding-top）就是星网的地盘，所以它必须 ≥ .hero-net 的高度 + HERO_BOUND_Y1
+	   那点余量；下半段才是文案。整卡高度 = padding-top 228 + kicker 42 + gap 14 +
+	   3 行描述 ~129 + padding-bottom 32 ≈ 445rpx（原来约 543rpx）。 */
 	.page-head {
+		position: relative;
+		overflow: hidden;
+		min-height: 420rpx;
 		margin: 20rpx 28rpx 0;
-		padding: 0 30rpx 0;
+		padding: 228rpx 30rpx 32rpx;
 		display: flex;
 		flex-direction: column;
-		gap: 12rpx;
-		border: 1px solid var(--match-line);
+		/* kicker 与描述之间的盒子间隙。视觉间隙 = 它 + 两行各自的行内留白，
+		   所以不能按「等于胶囊那条间隙」直接取值 —— 实测取 8rpx 时两处视觉间隙持平
+		   （见 .page-tabs 的 margin-top，两者是成对校准的，改一个要动另一个）。 */
+		gap: 2rpx;
 		border-radius: 24rpx;
-		background: var(--match-paper);
-		box-shadow: 0 10rpx 24rpx rgba(91, 175, 128, 0.08);
+		background: linear-gradient(150deg, #0B1F2A 0%, #0F2E3A 55%, #11445A 100%);
+		box-shadow: 0 12rpx 28rpx rgba(11, 31, 42, 0.22);
 	}
 
-	.page-head-merged {
-		border-radius: 24rpx 24rpx 0 0;
-		border-bottom: none;
-		box-shadow: none;
+	/* zurb 式点+连线粒子网络（用 view 节点实现，避免 uni-app-x SVG 属性被吃） */
+	.hero-net {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		/* 与 .page-head 的 padding-top 等高：星网的可视区就到此为止，
+		   下面的文案区(≥228rpx)这块画布根本不覆盖。 */
+		height: 228rpx;
+		pointer-events: none;
+		z-index: 1;
+		overflow: visible;
 	}
+
+	/* ===== zurb 式点线网络（constellation）=====
+	   点位由 JS 每帧计算（正弦漂浮），连线再按两点实时距离算出长度/角度/透明度：
+	   距离越近越清晰，超出阈值即完全隐形 —— 由此产生「忽连忽断」的拓扑变化。
+	   left/top 直接 = cx-r / cy-r（避免负 margin 在 mp-weixin 不生效） */
+	/* 点/线的 left、top 恒定不动，位置与长度全部交给 transform：
+	   translate 定位、rotate 定向、scaleX 定长。这样每帧只改合成层属性，
+	   不触发 layout 重排 —— 这是「丝滑」的关键（尤其中低端机）。 */
+	.hero-dot {
+		position: absolute;
+		left: 0;
+		top: 0;
+		border-radius: 50%;
+		background: #FFFFFF;
+		box-shadow: 0 0 6rpx rgba(255, 255, 255, 0.40);
+		/* 预先声明要动 transform：让渲染引擎把它放进独立合成层，
+		   每帧只做图层位移，不重新光栅化 —— box-shadow 的模糊是最贵的重绘项。 */
+		will-change: transform;
+		backface-visibility: hidden;
+	}
+
+	/* 连线：定宽 700rpx 的横线，transform-origin 在左端，
+	   由 `translate(起点) rotate(角度) scaleX(距离/700)` 把它摆到两个圆心之间 */
+	.hero-line {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 700rpx;
+		height: 2rpx;
+		/* 沿线方向「淡 → 深 → 淡」：两端完全透明、中间一段实心，
+		   于是每条线自己就是一道渐隐渐显的光，而不是一根生硬的实心短线。
+		   scaleX 会连同渐变一起缩放，所以两端的淡出带占比恒定，线无论长短都是同样的形态。
+		   线的两端正好落在星星的圆心里、被星本身盖住，所以端点透明不会显得「线和星脱节」。 */
+		background: linear-gradient(
+			90deg,
+			rgba(255, 255, 255, 0) 0%,
+			#FFFFFF 30%,
+			#FFFFFF 70%,
+			rgba(255, 255, 255, 0) 100%
+		);
+		transform-origin: 0 50%;
+		will-change: transform, opacity;
+		backface-visibility: hidden;
+	}
+
+	/* 这里刻意不用 CSS 补间：位移本身已是小数 px + 30fps 下发，
+	   每帧步进仅约 0.2px，肉眼连续。加补间反而会引入相位滞后，
+	   并与小程序视图层的更新节奏互相干扰（实测会出现「停一下再补跑」）。
+	   位置/长度/角度全部只在 transform 里变，left/top/width 恒定，不触发 layout。 */
 
 	.page-head-art {
 		width: calc(100% + 60rpx);
@@ -498,24 +747,44 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		border-radius: 24rpx 24rpx 0 0;
 	}
 
-	.page-title {
-		font-size: 46rpx;
+	.page-kicker {
+		position: relative;
+		z-index: 3;
+		font-size: 32rpx;
 		line-height: 1.3;
-		font-family: var(--sans);
+		font-weight: 800;
+		letter-spacing: 0.06em;
+		color: rgba(255, 217, 160, 0.98);
+	}
+
+	.page-title {
+		position: relative;
+		z-index: 3;
+		font-size: 42rpx;
+		line-height: 1.3;
+		font-family: var(--serif);
 		font-weight: 700;
-		color: var(--ink);
+		color: #FFFFFF;
 	}
 
 	.page-desc {
-		font-size: 23rpx;
-		line-height: 1.55;
-		color: var(--muted);
+		position: relative;
+		z-index: 3;
+		font-size: 26rpx;
+		line-height: 1.65;
+		letter-spacing: 0.01em;
+		color: rgba(255, 255, 255, 0.78);
 	}
 
+	/* tabs 上提，让胶囊压住卡片下沿。这个负 margin 决定了「描述末行 → 胶囊外轮廓」
+	   的间隙：盒子间隙恰为 32rpx(padding-bottom) + margin-top，所以
+	   margin-top = -32rpx 时盒子间隙归零，只剩描述末行的行内留白 —— 与 kicker↔描述
+	   那条视觉间隙持平（两条间隙是一对，改 gap 或这条都要一起看）。 */
 	.page-tabs {
 		position: relative;
 		z-index: 2;
-		padding: 0 16rpx 18rpx;
+		margin-top: -26rpx;
+		padding: 0 46rpx 18rpx;
 	}
 
 	.matchmaker-tab-bar {
@@ -534,23 +803,22 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	.matchmaker-tab {
 		position: relative;
 		flex: 1;
-		width: 33.3333%;
+		width: 50%;
 		min-width: 0;
 		flex-shrink: 1;
-		height: 76rpx;
+		height: 80rpx;
 		border-radius: 999rpx;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 27rpx;
-		font-weight: 800;
-		letter-spacing: 0.5rpx;
-		color: var(--muted);
+		font-size: 32rpx;
+		font-weight: 700;
+		color: rgba(18, 101, 88, 0.55);
 	}
 
 	.matchmaker-tab.active {
 		background: var(--accent-bg);
-		color: var(--accent2);
+		color: #126558;
 	}
 
 	.page-scroller {
@@ -566,12 +834,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.service-page-content {
-		padding-top: 0;
 		padding-bottom: calc(env(safe-area-inset-bottom) + 144rpx);
-	}
-
-	.ai-page-content {
-		padding: 12rpx 24rpx calc(env(safe-area-inset-bottom) + 144rpx);
 	}
 
 	.error-card {
@@ -584,13 +847,13 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.error-title {
-		font-size: 32rpx;
+		font-size: 28rpx;
 		font-weight: 800;
 		color: var(--ink);
 	}
 
 	.error-desc {
-		font-size: 24rpx;
+		font-size: 22rpx;
 		line-height: 1.55;
 		color: var(--ink2);
 	}
@@ -604,7 +867,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		background: var(--surface);
 		display: flex;
 		align-items: center;
-		font-size: 22rpx;
+		font-size: 20rpx;
 		font-weight: 800;
 		color: var(--accent2);
 	}
@@ -628,14 +891,14 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.summary-value {
-		font-size: 34rpx;
+		font-size: 30rpx;
 		line-height: 1.2;
 		font-weight: 800;
 		color: var(--ink);
 	}
 
 	.summary-label {
-		font-size: 20rpx;
+		font-size: 18rpx;
 		line-height: 1.45;
 		color: var(--muted);
 	}
@@ -676,17 +939,17 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		gap: 12rpx;
 	}
 
-	.custom-home-kicker { font-size: 22rpx; font-weight: 800; letter-spacing: .08em; color: var(--accent2); }
-	.custom-home-title { font-size: 44rpx; line-height: 1.3; font-family: var(--sans); font-weight: 700; color: var(--ink); }
-	.custom-home-desc { font-size: 24rpx; line-height: 1.6; color: var(--muted); }
+	.custom-home-kicker { font-size: 20rpx; font-weight: 800; letter-spacing: .08em; color: var(--accent2); }
+	.custom-home-title { font-size: 40rpx; line-height: 1.3; font-family: var(--serif); font-weight: 700; color: var(--ink); }
+	.custom-home-desc { font-size: 22rpx; line-height: 1.6; color: var(--muted); }
 	.custom-home-values { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12rpx; }
 	.custom-home-value { min-height: 188rpx; padding: 18rpx 14rpx; border-radius: 16rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 10rpx; }
-	.custom-home-mark { width: 44rpx; height: 44rpx; border-radius: 50%; background: var(--accent-bg); color: var(--accent2); display: flex; align-items: center; justify-content: center; font-size: 24rpx; font-weight: 800; }
-	.custom-home-value-title { font-size: 26rpx; font-weight: 800; color: var(--ink); }.custom-home-value-copy { font-size: 20rpx; line-height: 1.5; color: var(--muted); }
-	.custom-home-services { display: grid; grid-template-columns: 1fr 1fr; gap: 12rpx; }.custom-home-service { min-height: 144rpx; padding: 18rpx; border-radius: 16rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 7rpx; }.custom-home-service-index { font-size: 20rpx; color: var(--accent2); font-weight: 800; }.custom-home-service-title { font-size: 29rpx; font-weight: 800; color: var(--ink); }.custom-home-service-copy { font-size: 21rpx; line-height: 1.45; color: var(--muted); }
-	.custom-home-process-scroll, .custom-home-plan-scroll { width: 100%; margin: 0 -32rpx; padding: 0 32rpx; }.custom-home-process-list, .custom-home-plan-list { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: flex-start; gap: 14rpx; }.custom-home-process { width: 128rpx; flex-shrink: 0; display: flex; flex-direction: column; gap: 8rpx; }.custom-home-process-mark { width: 50rpx; height: 50rpx; border-radius: 50%; background: var(--accent); color: var(--paper); display: flex; align-items: center; justify-content: center; font-size: 20rpx; font-weight: 800; }.custom-home-process-title { font-size: 25rpx; font-weight: 800; color: var(--ink); }.custom-home-process-copy { font-size: 20rpx; color: var(--muted); }
+	.custom-home-mark { width: 44rpx; height: 44rpx; border-radius: 50%; background: var(--accent-bg); color: var(--accent2); display: flex; align-items: center; justify-content: center; font-size: 22rpx; font-weight: 800; }
+	.custom-home-value-title { font-size: 24rpx; font-weight: 800; color: var(--ink); }.custom-home-value-copy { font-size: 18rpx; line-height: 1.5; color: var(--muted); }
+	.custom-home-services { display: grid; grid-template-columns: 1fr 1fr; gap: 12rpx; }.custom-home-service { min-height: 144rpx; padding: 18rpx; border-radius: 16rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 7rpx; }.custom-home-service-index { font-size: 18rpx; color: var(--accent2); font-weight: 800; }.custom-home-service-title { font-size: 25rpx; font-weight: 800; color: var(--ink); }.custom-home-service-copy { font-size: 19rpx; line-height: 1.45; color: var(--muted); }
+	.custom-home-process-scroll, .custom-home-plan-scroll { width: 100%; margin: 0 -32rpx; padding: 0 32rpx; }.custom-home-process-list, .custom-home-plan-list { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: flex-start; gap: 14rpx; }.custom-home-process { width: 128rpx; flex-shrink: 0; display: flex; flex-direction: column; gap: 8rpx; }.custom-home-process-mark { width: 50rpx; height: 50rpx; border-radius: 50%; background: var(--accent); color: var(--paper); display: flex; align-items: center; justify-content: center; font-size: 18rpx; font-weight: 800; }.custom-home-process-title { font-size: 23rpx; font-weight: 800; color: var(--ink); }.custom-home-process-copy { font-size: 18rpx; color: var(--muted); }
 	.custom-home-plan-list { box-sizing: border-box; }
-	.custom-home-plan { position: relative; width: 300rpx; min-height: 220rpx; flex-shrink: 0; padding: 22rpx; border-radius: 16rpx; background: var(--surface); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 9rpx; box-sizing: border-box; transition: 0.2s; }.custom-home-plan.selected { border-color: var(--accent); background: linear-gradient(145deg, var(--paper) 0%, var(--match-mist) 100%); box-shadow: var(--match-shadow); transform: translateY(-3rpx); }.custom-home-plan-title-row { display: flex; flex-direction: row; align-items: center; gap: 8rpx; min-height: 34rpx; padding-right: 46rpx; }.custom-home-plan-name { font-size: 32rpx; font-family: var(--sans); font-weight: 700; color: var(--ink); white-space: nowrap; }.custom-home-plan-recommend { padding: 3rpx 8rpx; border: 1px solid var(--accent-bg); border-radius: 999rpx; background: var(--match-mist); color: var(--accent2); font-size: 18rpx; font-weight: 800; line-height: 1.25; white-space: nowrap; }.custom-home-plan-selected-badge { position: absolute; top: 12rpx; right: 12rpx; padding: 6rpx 11rpx; border-radius: 999rpx; background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%); box-shadow: var(--shadow-sm); color: var(--paper); font-size: 19rpx; font-weight: 800; line-height: 1.2; }.custom-home-plan-price { font-size: 44rpx; color: var(--brown); font-weight: 800; }.custom-home-plan.selected .custom-home-plan-price { color: var(--accent2); }.custom-home-plan-duration { font-size: 20rpx; color: var(--muted); }.custom-home-plan-feature { font-size: 23rpx; color: var(--accent2); font-weight: 800; }.custom-home-plan-copy { font-size: 20rpx; line-height: 1.45; color: var(--muted); }
+	.custom-home-plan { position: relative; width: 300rpx; min-height: 220rpx; flex-shrink: 0; padding: 22rpx; border-radius: 16rpx; background: var(--surface); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 9rpx; box-sizing: border-box; transition: 0.2s; }.custom-home-plan.selected { border-color: var(--accent); background: linear-gradient(145deg, var(--paper) 0%, var(--match-mist) 100%); box-shadow: var(--match-shadow); transform: translateY(-3rpx); }.custom-home-plan-title-row { display: flex; flex-direction: row; align-items: center; gap: 8rpx; min-height: 34rpx; padding-right: 46rpx; }.custom-home-plan-name { font-size: 28rpx; font-family: var(--serif); font-weight: 700; color: var(--ink); white-space: nowrap; }.custom-home-plan-recommend { padding: 3rpx 8rpx; border: 1px solid var(--accent-bg); border-radius: 999rpx; background: var(--match-mist); color: var(--accent2); font-size: 16rpx; font-weight: 800; line-height: 1.25; white-space: nowrap; }.custom-home-plan-selected-badge { position: absolute; top: 12rpx; right: 12rpx; padding: 6rpx 11rpx; border-radius: 999rpx; background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%); box-shadow: var(--shadow-sm); color: var(--paper); font-size: 17rpx; font-weight: 800; line-height: 1.2; }.custom-home-plan-price { font-size: 40rpx; color: var(--brown); font-weight: 800; }.custom-home-plan.selected .custom-home-plan-price { color: var(--accent2); }.custom-home-plan-duration { font-size: 18rpx; color: var(--muted); }.custom-home-plan-feature { font-size: 21rpx; color: var(--accent2); font-weight: 800; }.custom-home-plan-copy { font-size: 18rpx; line-height: 1.45; color: var(--muted); }
 
 	.plan-entry-card {
 		padding: 28rpx;
@@ -709,14 +972,14 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.plan-entry-title {
-		font-size: 34rpx;
-		font-family: var(--sans);
+		font-size: 30rpx;
+		font-family: var(--serif);
 		font-weight: 700;
 		color: var(--ink);
 	}
 
 	.plan-entry-desc {
-		font-size: 24rpx;
+		font-size: 22rpx;
 		line-height: 1.5;
 		color: var(--muted);
 	}
@@ -733,7 +996,7 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.plan-entry-arrow text {
-		font-size: 40rpx;
+		font-size: 36rpx;
 		font-weight: 700;
 		color: var(--accent2);
 	}
@@ -751,42 +1014,33 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 
 	.section-title {
 		display: block;
-		font-size: 38rpx;
+		font-size: 34rpx;
 		line-height: 1.2;
-		font-family: "Kaiti SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-		font-weight: 600;
-		color: var(--match-deep);
-	}
-
-	/* 服务红娘标题：与红娘昵称互换字体后改手写楷体融合栈，与红娘排行榜标题统一 */
-	.section-title-hand {
-		font-family: "Kaiti SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-		font-size: 32rpx;
+		font-family: var(--serif);
 		font-weight: 700;
-		color: var(--ink);
+		color: var(--match-deep);
 	}
 
 	.section-desc {
 		display: block;
 		margin-top: 8rpx;
-		font-size: 22rpx;
+		font-size: 20rpx;
 		line-height: 1.55;
 		color: var(--muted);
 	}
 
 	.section-link {
 		flex-shrink: 0;
-		font-size: 24rpx;
+		font-size: 22rpx;
 		font-weight: 800;
 		color: var(--match-coral);
 	}
 
 	.service-showcase {
 		padding: 26rpx 0 24rpx;
-		border-radius: 0 0 24rpx 24rpx;
+		border-radius: 24rpx;
 		background: var(--match-paper);
 		border: 1px solid var(--match-line);
-		border-top: none;
 		box-shadow: 0 8rpx 22rpx rgba(91, 175, 128, 0.07);
 		overflow: hidden;
 	}
@@ -832,15 +1086,15 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.notice-title {
-		font-size: 20rpx;
-		font-weight: 500;
-		color: #999999;
+		font-size: 27rpx;
+		font-weight: 800;
+		color: var(--match-deep);
 	}
 
 	.notice-text {
-		font-size: 20rpx;
-		line-height: 1.5;
-		color: #999999;
+		font-size: 21rpx;
+		line-height: 1.6;
+		color: var(--ink2);
 	}
 
 	.feature-card {
@@ -855,22 +1109,22 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 	}
 
 	.feature-kicker {
-		font-size: 22rpx;
+		font-size: 20rpx;
 		font-weight: 800;
 		letter-spacing: 0.08em;
 		color: var(--soft);
 	}
 
 	.feature-title {
-		font-size: 42rpx;
+		font-size: 38rpx;
 		line-height: 1.35;
-		font-family: var(--sans);
+		font-family: var(--serif);
 		font-weight: 700;
 		color: var(--paper);
 	}
 
 	.feature-desc {
-		font-size: 24rpx;
+		font-size: 22rpx;
 		line-height: 1.65;
 		color: rgba(250, 252, 252, 0.78);
 	}
@@ -881,412 +1135,6 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		gap: 18rpx;
 	}
 
-	.ai-hero {
-		padding: 30rpx 28rpx;
-		border-radius: 24rpx;
-		background: linear-gradient(180deg, rgba(24, 65, 93, 0.96), rgba(24, 65, 93, 0.88));
-		box-shadow: var(--shadow-md);
-		display: flex;
-		flex-direction: column;
-		gap: 14rpx;
-	}
-
-	.ai-badge {
-		align-self: flex-start;
-		height: 42rpx;
-		padding: 0 14rpx;
-		border-radius: 999rpx;
-		background: rgba(121, 177, 169, 0.22);
-		color: var(--paper);
-		display: flex;
-		align-items: center;
-		font-size: 20rpx;
-		font-weight: 800;
-	}
-
-	.ai-title {
-		font-size: 42rpx;
-		line-height: 1.36;
-		font-family: var(--sans);
-		font-weight: 700;
-		color: var(--paper);
-	}
-
-	.ai-desc {
-		font-size: 24rpx;
-		line-height: 1.65;
-		color: rgba(250, 252, 252, 0.76);
-	}
-
-	.ai-flow {
-		display: flex;
-		flex-direction: column;
-		gap: 12rpx;
-		margin-top: 6rpx;
-	}
-
-	.ai-flow-item {
-		display: flex;
-		align-items: flex-start;
-		gap: 12rpx;
-	}
-
-	.flow-index {
-		width: 44rpx;
-		height: 44rpx;
-		border-radius: 50%;
-		background: rgba(250, 252, 252, 0.14);
-		color: var(--paper);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 20rpx;
-		font-weight: 800;
-		flex-shrink: 0;
-	}
-
-	.flow-copy {
-		font-size: 24rpx;
-		line-height: 1.6;
-		color: rgba(250, 252, 252, 0.82);
-	}
-
-	.prompt-list {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 12rpx;
-	}
-
-	.prompt-chip {
-		min-height: 58rpx;
-		padding: 0 18rpx;
-		border-radius: 16rpx;
-		border: 1px solid var(--line);
-		background: var(--surface);
-		display: flex;
-		align-items: center;
-		font-size: 24rpx;
-		font-weight: 700;
-		color: var(--ink2);
-	}
-
-	.prompt-chip.selected {
-		background: var(--accent-bg);
-		border-color: var(--accent);
-		color: var(--accent2);
-	}
-
-	.prompt-preview {
-		padding: 22rpx 24rpx;
-		border-radius: 20rpx;
-		background: var(--surface);
-		box-shadow: var(--shadow-sm);
-		display: flex;
-		flex-direction: column;
-		gap: 8rpx;
-	}
-
-	.prompt-preview-title {
-		font-size: 22rpx;
-		font-weight: 800;
-		color: var(--accent2);
-	}
-
-	.prompt-preview-text {
-		font-size: 26rpx;
-		line-height: 1.6;
-		color: var(--ink);
-	}
-
-	.ai-list {
-		display: flex;
-		flex-direction: column;
-		gap: 16rpx;
-	}
-
-	.ai-item {
-		display: flex;
-		gap: 18rpx;
-		padding: 24rpx;
-		border-radius: 22rpx;
-		background: var(--surface);
-		box-shadow: var(--shadow-sm);
-	}
-
-	.ai-avatar {
-		width: 124rpx;
-		height: 156rpx;
-		border-radius: 18rpx 30rpx 18rpx 18rpx;
-		flex-shrink: 0;
-	}
-
-	.ai-body {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 10rpx;
-		min-width: 0;
-	}
-
-	.ai-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 10rpx;
-	}
-
-	.ai-name {
-		font-size: 36rpx;
-		line-height: 1.2;
-		font-family: var(--sans);
-		font-weight: 700;
-		color: var(--ink);
-	}
-
-	.ai-score {
-		height: 42rpx;
-		padding: 0 12rpx;
-		border-radius: 999rpx;
-		background: rgba(56, 152, 141, 0.12);
-		color: var(--accent2);
-		display: flex;
-		align-items: center;
-		font-size: 22rpx;
-		font-weight: 800;
-		flex-shrink: 0;
-	}
-
-	.ai-meta {
-		font-size: 24rpx;
-		line-height: 1.5;
-		color: var(--muted);
-	}
-
-	.ai-copy {
-		font-size: 24rpx;
-		line-height: 1.6;
-		color: var(--ink2);
-	}
-
-	.ai-tags {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8rpx;
-	}
-
-	.ai-chat-page {
-		display: flex;
-		flex-direction: column;
-		gap: 20rpx;
-	}
-
-	.ai-chat-nav {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16rpx;
-		padding: 4rpx 4rpx 0;
-	}
-
-	.ai-back {
-		width: 64rpx;
-		height: 64rpx;
-		border-radius: 50%;
-		background: var(--surface);
-		border: 1px solid var(--line);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		box-shadow: var(--shadow-sm);
-		flex-shrink: 0;
-	}
-
-	.ai-back-chevron {
-		width: 18rpx;
-		height: 18rpx;
-		border-left: 4rpx solid var(--ink);
-		border-bottom: 4rpx solid var(--ink);
-		transform: rotate(45deg);
-		margin-left: 6rpx;
-	}
-
-	.ai-nav-title {
-		flex: 1;
-		min-width: 0;
-		font-size: 38rpx;
-		line-height: 1.2;
-		font-family: var(--sans);
-		font-weight: 700;
-		color: var(--ink);
-		text-align: center;
-	}
-
-	.ai-clear {
-		flex-shrink: 0;
-		font-size: 24rpx;
-		font-weight: 700;
-		color: var(--accent2);
-	}
-
-	.ai-profile-card {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: 18rpx;
-		padding: 22rpx;
-		border-radius: 24rpx;
-		background: linear-gradient(135deg, rgba(195, 222, 218, 0.42), rgba(255, 255, 255, 0.96));
-		box-shadow: var(--shadow-sm);
-	}
-
-	.ai-profile-avatar {
-		width: 112rpx;
-		height: 112rpx;
-		border-radius: 24rpx;
-		flex-shrink: 0;
-		border: 4rpx solid rgba(255, 255, 255, 0.82);
-	}
-
-	.ai-profile-copy {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 6rpx;
-	}
-
-	.ai-profile-name {
-		font-size: 34rpx;
-		line-height: 1.2;
-		font-family: var(--sans);
-		font-weight: 700;
-		color: var(--ink);
-	}
-
-	.ai-profile-subtitle {
-		font-size: 23rpx;
-		line-height: 1.5;
-		color: var(--muted);
-	}
-
-	.ai-online {
-		height: 44rpx;
-		padding: 0 14rpx;
-		border-radius: 999rpx;
-		background: rgba(56, 152, 141, 0.12);
-		color: var(--accent2);
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: 8rpx;
-		font-size: 22rpx;
-		font-weight: 700;
-		flex-shrink: 0;
-	}
-
-	.ai-online-dot {
-		width: 12rpx;
-		height: 12rpx;
-		border-radius: 50%;
-		background: var(--sage);
-	}
-
-	.ai-message-list {
-		display: flex;
-		flex-direction: column;
-		gap: 14rpx;
-	}
-
-	.ai-message {
-		max-width: 86%;
-		padding: 18rpx 20rpx;
-		border-radius: 20rpx;
-		font-size: 26rpx;
-		line-height: 1.6;
-		word-break: break-word;
-	}
-
-	.ai-message.assistant {
-		align-self: flex-start;
-		background: var(--surface);
-		color: var(--ink2);
-		box-shadow: var(--shadow-sm);
-		border-bottom-left-radius: 8rpx;
-	}
-
-	.ai-message.assistant text {
-		color: var(--ink2);
-	}
-
-	.ai-message.user {
-		align-self: flex-end;
-		background: var(--accent);
-		color: var(--paper);
-		border-bottom-right-radius: 8rpx;
-		box-shadow: 0 8rpx 22rpx rgba(56, 152, 141, 0.18);
-	}
-
-	.ai-message.user text {
-		color: var(--paper);
-	}
-
-	.quick-question-panel {
-		display: flex;
-		flex-direction: column;
-		gap: 16rpx;
-		padding: 24rpx 22rpx;
-		border-radius: 24rpx;
-		background: var(--surface);
-		box-shadow: var(--shadow-sm);
-	}
-
-	.quick-question-title {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: 12rpx;
-	}
-
-	.quick-question-title view {
-		flex: 1;
-		height: 1px;
-		background: var(--line);
-	}
-
-	.quick-question-title text {
-		flex-shrink: 0;
-		font-size: 23rpx;
-		font-weight: 800;
-		color: var(--accent2);
-	}
-
-	.quick-question-grid {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 12rpx;
-	}
-
-	.quick-question {
-		min-height: 58rpx;
-		padding: 0 18rpx;
-		border-radius: 16rpx;
-		border: 1px solid var(--line);
-		background: var(--paper);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 24rpx;
-		font-weight: 700;
-		color: var(--ink2);
-	}
-
-	.quick-question text,
-	.ai-online text,
-	.ai-send-button text {
-		color: inherit;
-	}
-
 	.join-entry-row {
 		display: flex;
 		flex-direction: row;
@@ -1294,50 +1142,49 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		padding: 2rpx 0;
 	}
 
+	/* 三个入口卡片：底色/纹理取自参考图实测（纸色 #E1E7E1，纤维颗粒 sd≈2.5%%）。
+	   贴图是 tools/paper_tex.py 按参考图统计特征合成的无缝平铺图，
+	   源文件 static/textures/join-entry-paper.png；小程序 wxss 不能引用本地图片，故内联 base64。
+	   尺寸 96rpx 让纹理在 3x 屏上约 1.5 倍放大，颗粒落在 2~3 物理像素，与参考图在手机上等大时的观感一致。 */
 	.join-entry {
+		position: relative;
 		flex: 1;
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 9rpx;
+		gap: 12rpx;
 		padding: 20rpx 8rpx 18rpx;
 		border-radius: 20rpx;
-		background: var(--match-paper);
-		box-shadow: 0 7rpx 18rpx rgba(91, 175, 128, 0.07);
-		border: 1px solid var(--match-line);
+		background-color: #E1E7E1;
+		background-image: url("data:image/png;base64,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");
+		background-repeat: repeat;
+		background-size: 96rpx 96rpx;
+		box-shadow: 0 7rpx 18rpx rgba(21, 74, 69, 0.10);
+		border: 1px solid #D9E1D9;
 	}
 
+	/* 三张卡错开贴图原点，避免并排时露出同一块纹理 */
+	.join-entry:nth-child(2) {
+		background-position: -31rpx -17rpx;
+	}
+
+	.join-entry:nth-child(3) {
+		background-position: -62rpx -34rpx;
+	}
+
+	/* 三个入口图标：深墨圆底 + 白色手绘线条（参考手作涂鸦风格），尺寸随屏幕等比 */
 	.join-entry-icon {
-		width: 58rpx;
-		height: 58rpx;
-		border-radius: 18rpx;
-		background: var(--match-mist);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 26rpx;
-		font-weight: 800;
-		color: var(--accent2);
-	}
-
-	.join-entry-icon.partner {
-		background: #FFF5E7;
-		color: #D9963A;
-	}
-
-	.join-entry-icon.promoter {
-		background: var(--accent-bg);
-		color: var(--accent2);
+		width: 80rpx;
+		height: 80rpx;
 	}
 
 	.join-entry-label {
-		font-size: 25rpx;
-		font-weight: 600;
+		font-size: 22rpx;
+		font-weight: 700;
 		color: var(--match-deep);
 		text-align: center;
 		line-height: 1.35;
-		letter-spacing: 0.5rpx;
 	}
 
 	.custom-apply-safe {
@@ -1359,57 +1206,13 @@ import LiveMatchmakingPanel from '@/components/LiveMatchmakingPanel.uvue'
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 32rpx;
+		font-size: 28rpx;
 		font-weight: 800;
 		box-shadow: var(--shadow-md);
 	}
 
 	.custom-apply-button text {
 		color: var(--paper);
-	}
-
-	.ai-input-safe {
-		position: fixed;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		padding: 16rpx 24rpx calc(env(safe-area-inset-bottom) + 16rpx);
-		background: rgba(250, 252, 252, 0.96);
-		border-top: 1px solid var(--line);
-		z-index: 30;
-	}
-
-	.ai-input-bar {
-		height: 88rpx;
-		padding-left: 28rpx;
-		border: 1px solid var(--line);
-		border-radius: 999rpx;
-		background: var(--surface);
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: 12rpx;
-	}
-
-	.ai-chat-input {
-		flex: 1;
-		min-width: 0;
-		height: 100%;
-		font-size: 26rpx;
-		color: var(--ink);
-	}
-
-	.ai-send-button {
-		min-width: 144rpx;
-		height: 88rpx;
-		border-radius: 999rpx;
-		background: var(--accent);
-		color: var(--paper);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 29rpx;
-		font-weight: 800;
 	}
 
 </style>

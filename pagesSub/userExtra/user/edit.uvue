@@ -2,7 +2,12 @@
 	<view class="edit-page">
 		<view class="nav-bar">
 			<view class="nav-back" @tap="onCancel"><text class="nav-back-icon">‹</text></view>
-			<text class="nav-title">编辑资料</text>
+			<text class="nav-title">{{ isMemberEdit ? '编辑会员资料' : '编辑资料' }}</text>
+		</view>
+
+		<view v-if="isMemberEdit" class="mm-edit-banner">
+			<text class="mm-edit-banner-mark">!</text>
+			<text class="mm-edit-banner-text">您正在以红娘权限编辑会员资料 · 会员 ID {{ editMemberId }}</text>
 		</view>
 
 		<view v-if="loading" class="state-block">
@@ -30,8 +35,8 @@
 				<text v-if="missingCompletionSummary != ''" class="progress-missing">待完善：{{ missingCompletionSummary }}</text>
 			</view>
 
-			<XsaProfileAiFirstAnalysis v-if="aiFirstAnalysisVisible" :analyzing="aiAnalyzing" :error-message="aiError" @close="closeAiFirstAnalysis" @start="startAiFirstAnalysis" />
-			<XsaProfileAiCard v-else :score="aiScore" :summary="aiSummary" :todos="aiTodos" :has-data="aiHasData" :analyzing="aiAnalyzing" :error-message="aiError" :stale="aiStale" @retry="onAiRetry" @start="openAiFirstAnalysis" @jump="onAiJump" />
+			<XsaProfileAiFirstAnalysis v-if="!isMemberEdit && aiFirstAnalysisVisible" :analyzing="aiAnalyzing" :error-message="aiError" @close="closeAiFirstAnalysis" @start="startAiFirstAnalysis" />
+			<XsaProfileAiCard v-else-if="!isMemberEdit" :score="aiScore" :summary="aiSummary" :todos="aiTodos" :has-data="aiHasData" :analyzing="aiAnalyzing" :error-message="aiError" :stale="aiStale" @retry="onAiRetry" @start="openAiFirstAnalysis" @jump="onAiJump" />
 
 			<view id="sec-avatar" class="section-card avatar-section ai-anchor-avatar">
 				<view class="section-heading">
@@ -93,7 +98,7 @@
 				</view>
 			</view>
 
-			<view class="section-card certification-card">
+			<view v-if="!isMemberEdit" class="section-card certification-card">
 				<view class="section-heading">
 					<text class="section-title">四重认证</text>
 					<text class="section-caption">已完成 {{ completedCertCount }}/4{{ completionSuffix('realname', 5, ' · 实名') }}{{ completionSuffix('single_pledge', 1, ' · 单身承诺') }}</text>
@@ -274,7 +279,7 @@
 </template>
 
 <script setup lang="uts">
-	import { getOwnProfile, updateOwnProfile, updateOwnNickname, getOwnPreferences, uploadUserProfileMedia, deleteUserProfilePhoto, getMeProfile, getUserCertifications, getProfileCompletion } from '@/api'
+	import { getOwnProfile, updateOwnProfile, updateOwnNickname, getOwnPreferences, uploadUserProfileMedia, deleteUserProfilePhoto, getMeProfile, getUserCertifications, getProfileCompletion, getAgreementVersions, acceptAgreement, getMatchmakerMemberProfile, updateMatchmakerMemberProfile, getMatchmakerMemberPreferences, getMatchmakerMemberCompletion, updateMatchmakerMemberNickname, uploadMatchmakerMemberMedia, deleteMatchmakerMemberPhoto } from '@/api'
 	import { getLatestThoughtfulness, analyzeProfileThoughtfulness, normalizeThoughtfulness, ThoughtfulnessResult } from '@/api/ai-profile.uts'
 	import XsaProfileAiCard from '@/components/XsaProfileAiCard.uvue'
 	import XsaProfileAiFirstAnalysis from '@/components/XsaProfileAiFirstAnalysis.uvue'
@@ -487,9 +492,52 @@
 		return raw
 	}
 
+	/* ==================== 红娘代编会员资料 ==================== */
+	// 服务红娘从会员主页或资料待审带 memberId 进入本页时切换为「代会员编辑」模式：
+	// 数据源换成工作台域接口，并放开性别、生日等本人不可改字段。
+	const editMemberId = ref(0)
+	const isMemberEdit = computed((): boolean => editMemberId.value > 0)
+	const memberIdText = (): string => '' + editMemberId.value
+	const apiGetProfile = async (): Promise<any> => {
+		if (isMemberEdit.value) return await getMatchmakerMemberProfile(memberIdText())
+		return await getOwnProfile()
+	}
+	const apiGetPreferences = async (): Promise<any> => {
+		if (isMemberEdit.value) return await getMatchmakerMemberPreferences(memberIdText())
+		return await getOwnPreferences()
+	}
+	const apiGetCompletion = async (): Promise<any> => {
+		if (isMemberEdit.value) return await getMatchmakerMemberCompletion(memberIdText())
+		return await getProfileCompletion()
+	}
+	const apiUpdateProfile = async (data: any): Promise<any> => {
+		if (isMemberEdit.value) return await updateMatchmakerMemberProfile(memberIdText(), data)
+		return await updateOwnProfile(data)
+	}
+	const apiUpdateNickname = async (nickname: string): Promise<any> => {
+		if (isMemberEdit.value) return await updateMatchmakerMemberNickname(memberIdText(), nickname)
+		return await updateOwnNickname(nickname)
+	}
+	const apiUploadMedia = async (path: string, kind: string): Promise<any> => {
+		if (isMemberEdit.value) return await uploadMatchmakerMemberMedia(memberIdText(), path, kind)
+		return await uploadUserProfileMedia(path, kind)
+	}
+	const apiDeletePhoto = async (mediaId: number): Promise<any> => {
+		if (isMemberEdit.value) return await deleteMatchmakerMemberPhoto(memberIdText(), mediaId)
+		return await deleteUserProfilePhoto(mediaId)
+	}
+
+	const resolveEditMemberId = () => {
+		const pages = getCurrentPages()
+		const currentPage = pages[pages.length - 1]
+		const options = currentPage != null ? currentPage.options : null
+		const raw = options != null && options.memberId != null ? Number(options.memberId) : 0
+		editMemberId.value = !isNaN(raw) && raw > 0 ? raw : 0
+	}
+
 	const refreshCompletion = async () => {
 		try {
-			const completion = await getProfileCompletion()
+			const completion = await apiGetCompletion()
 			if (!completion.success || completion.data == null) return
 			const data = completion.data as any
 			const returnedScore = data.score != null ? data.score : data.completion_score
@@ -674,9 +722,9 @@
 		loadError.value = ''
 		profileLoaded.value = false
 		try {
-			const profileRes = await getOwnProfile()
+			const profileRes = await apiGetProfile()
 			if (!profileRes.success || profileRes.data == null) {
-				loadError.value = profileRes.message != null ? '' + profileRes.message : '个人资料接口暂不可用'
+				loadError.value = profileRes.message != null ? '' + profileRes.message : (isMemberEdit.value ? '会员资料接口暂不可用' : '个人资料接口暂不可用')
 				return
 			}
 			profileLoaded.value = true
@@ -686,20 +734,22 @@
 				console.error('[EditProfile] profile response mapping failed', profileError)
 			}
 			try {
-				const preferenceRes = await getOwnPreferences()
+				const preferenceRes = await apiGetPreferences()
 				if (preferenceRes.success && preferenceRes.data != null) applyPreferences(preferenceRes.data)
 			} catch (preferenceError) {
 				console.error('[EditProfile] preferences unavailable', preferenceError)
 			}
-			try {
-				const meRes = await getMeProfile()
-				if (meRes.success && meRes.data != null) {
-					realNameStatus.value = meRes.data.realNameStatus != null ? '' + meRes.data.realNameStatus : 'missing'
-					educationStatus.value = meRes.data.educationStatus != null ? '' + meRes.data.educationStatus : 'missing'
-					avatarCertificationPassed.value = meRes.data.certifications != null && meRes.data.certifications.avatar == true
+			if (!isMemberEdit.value) {
+				try {
+					const meRes = await getMeProfile()
+					if (meRes.success && meRes.data != null) {
+						realNameStatus.value = meRes.data.realNameStatus != null ? '' + meRes.data.realNameStatus : 'missing'
+						educationStatus.value = meRes.data.educationStatus != null ? '' + meRes.data.educationStatus : 'missing'
+						avatarCertificationPassed.value = meRes.data.certifications != null && meRes.data.certifications.avatar == true
+					}
+				} catch (meError) {
+					console.error('[EditProfile] auth profile unavailable', meError)
 				}
-			} catch (meError) {
-				console.error('[EditProfile] auth profile unavailable', meError)
 			}
 			try {
 				const certificationsRes = await getUserCertifications()
@@ -720,7 +770,7 @@
 			await refreshCompletion()
 			lastSavedPayloadJson.value = JSON.stringify(buildProfilePayload())
 			clearPendingEditedKeys()
-			loadThoughtfulness()
+			if (!isMemberEdit.value) loadThoughtfulness()
 		} catch (e) {
 			loadError.value = '网络不可用，请重试'
 		} finally {
@@ -772,7 +822,8 @@
 		const names = missing.map((key: string) => labels[key] || key)
 		return names.length > 4 ? names.slice(0, 4).join('、') + '等' + names.length + '项' : names.join('、')
 	})
-	const isIdentityLocked = computed(() => realNameStatus.value == 'passed')
+	// 红娘代编允许修正性别与生日，因此不套用「实名通过后锁定」限制。
+	const isIdentityLocked = computed(() => !isMemberEdit.value && realNameStatus.value == 'passed')
 	const heightPickerIndex = computed(() => {
 		const value = Number(formData.value.height)
 		return value >= 140 && value <= 220 ? value - 140 : 0
@@ -846,7 +897,10 @@
 		{ key: 'single_pledge', label: '单身承诺', icon: '誓', passed: singlePledgeStatus.value == 'passed', desc: singlePledgeStatus.value == 'passed' ? '手写承诺已审核通过' : (singlePledgeStatus.value == 'reviewing' ? '手写承诺审核中' : (singlePledgeStatus.value == 'rejected' ? '审核未通过，可重新签署' : '手写签署当前单身状态承诺')) }
 	])
 
-	onMounted(() => load())
+	onMounted(() => {
+		resolveEditMemberId()
+		load()
+	})
 	onShow(() => {
 		if (!loading.value) {
 			load()
@@ -924,7 +978,7 @@
 		if (path == '') return null
 		uploadingMedia.value = true
 		try {
-			const res = await uploadUserProfileMedia(path, kind)
+			const res = await apiUploadMedia(path, kind)
 			if (!res.success || res.data == null) {
 				uni.showToast({ title: res.message != null ? '' + res.message : '上传失败，请重试', icon: 'none' })
 				return null
@@ -1085,7 +1139,7 @@
 		if (index < 0 || index >= list.length) return
 		const item = list[index]
 		if (item.id == null || Number(item.id) <= 0) return
-		const res = await deleteUserProfilePhoto(Number(item.id))
+		const res = await apiDeletePhoto(Number(item.id))
 		if (res.success) {
 			list.splice(index, 1)
 			if (pendingAiEditedKeys.value.indexOf('photos') < 0) pendingAiEditedKeys.value.push('photos')
@@ -1095,8 +1149,16 @@
 	}
 
 	const goCertification = (key: string) => {
+		if (isMemberEdit.value) {
+			uni.showToast({ title: '认证与承诺需会员本人完成', icon: 'none' })
+			return
+		}
 		if (key == 'avatar') {
 			chooseAvatar()
+			return
+		}
+		if (key == 'single_pledge') {
+			singlePledgeVisible.value = true
 			return
 		}
 		uni.navigateTo({ url: '/pagesSub/profileExtra/certification?type=' + key })
@@ -1105,7 +1167,7 @@
 		if (saving.value || uploadingMedia.value) return
 		saving.value = true
 		try {
-			const res = await updateOwnProfile({ self_intro: textValue(formData.value.introduction) || null })
+			const res = await apiUpdateProfile({ self_intro: textValue(formData.value.introduction) || null })
 			if (!res.success) {
 				uni.showToast({ title: res.message != null ? '' + res.message : '自我介绍保存失败', icon: 'none' })
 				return
@@ -1177,7 +1239,7 @@
 		const nextAnswer = textValue(qaDraft.value).trim()
 		const payload = buildQaPayload(index, nextAnswer)
 		try {
-			const res = await updateOwnProfile({ qa_answers: payload })
+			const res = await apiUpdateProfile({ qa_answers: payload })
 			if (!res.success) throw new Error(res.message != null ? '' + res.message : 'save failed')
 			uni.setStorageSync(QA_STORAGE_KEY, payload)
 			qaItems.value[index].answer = nextAnswer
@@ -1249,7 +1311,7 @@
 		}
 		saving.value = true
 		try {
-			const res = await updateOwnNickname(value)
+			const res = await apiUpdateNickname(value)
 			if (!res.success) {
 				uni.showToast({ title: res.message != null ? '' + res.message : '昵称保存失败', icon: 'none' })
 				return
@@ -1276,23 +1338,25 @@
 		}
 		saving.value = true
 		try {
-			const nicknameRes = await updateOwnNickname(textValue(formData.value.nickname))
+			const nicknameRes = await apiUpdateNickname(textValue(formData.value.nickname))
 			if (!nicknameRes.success) {
 				uni.showToast({ title: nicknameRes.message != null ? '' + nicknameRes.message : '昵称保存失败', icon: 'none' })
 				return
 			}
-			const profileRes = await updateOwnProfile(buildProfilePayload())
+			const profileRes = await apiUpdateProfile(buildProfilePayload())
 			if (!profileRes.success) {
 				uni.showToast({ title: profileRes.message != null ? '' + profileRes.message : '基础资料保存失败', icon: 'none' })
 				return
 			}
 			await refreshCompletion()
-			uni.showToast({ title: '资料已保存', icon: 'success' })
-			// AI 用心度:对本次保存的编辑内容触发评审,不阻塞保存/返回流程
-			const editedKeys = collectEditedKeys(lastSavedPayloadJson.value, buildProfilePayload(), pendingAiEditedKeys.value)
-			clearPendingEditedKeys()
-			lastSavedPayloadJson.value = JSON.stringify(buildProfilePayload())
-			triggerThoughtfulness('save', editedKeys)
+			uni.showToast({ title: isMemberEdit.value ? '会员资料已保存' : '资料已保存', icon: 'success' })
+			// AI 用心度:对本次保存的编辑内容触发评审,不阻塞保存/返回流程（会员资料代编不参与本人用心度）
+			if (!isMemberEdit.value) {
+				const editedKeys = collectEditedKeys(lastSavedPayloadJson.value, buildProfilePayload(), pendingAiEditedKeys.value)
+				clearPendingEditedKeys()
+				lastSavedPayloadJson.value = JSON.stringify(buildProfilePayload())
+				triggerThoughtfulness('save', editedKeys)
+			}
 			if (detailSheetVisible.value) detailSheetVisible.value = false
 			else setTimeout(() => uni.navigateBack({ delta: 1 }), 700)
 		} catch (e) {
@@ -1323,6 +1387,9 @@
 .nav-back { position: absolute; left: 4px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--surface); }
 .nav-back-icon { font-size: 28px; font-weight: 700; color: var(--ink); line-height: 1; }
 .nav-title { font-size: 18px; font-weight: 700; color: var(--ink); }
+.mm-edit-banner { display: flex; flex-direction: row; align-items: center; gap: 8px; margin: 12px 16px 0; padding: 10px 14px; border-radius: 12px; background: #FCE8E6; }
+.mm-edit-banner-mark { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #E4574C; color: #FFFFFF; font-size: 13px; font-weight: 700; line-height: 1; }
+.mm-edit-banner-text { flex: 1; color: #B23A31; font-size: 12px; font-weight: 600; line-height: 1.4; }
 .state-block { flex: 1; min-height: 420px; padding: 100px 24px 140px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(180deg, var(--canvas), var(--paper)); }
 .error-state { flex: 1; min-height: 420px; padding: 72px 32px 140px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(180deg, var(--canvas), var(--paper)); }
 .error-mark { width: 76px; height: 76px; margin-bottom: 24px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); box-shadow: var(--shadow-md); }

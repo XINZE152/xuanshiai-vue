@@ -1,0 +1,174 @@
+<template>
+	<XsaSheet :visible="visible" title="服务导航" @close="emit('close')">
+		<view class="sv-wrap">
+			<view class="sv-feature-row">
+				<view class="sv-feature" @click="pick('member_zone')">
+					<view class="sv-iz">
+						<view class="sv-person-back"></view>
+						<view class="sv-person-front"></view>
+					</view>
+					<text class="sv-feature-label">会员分区</text>
+				</view>
+				<view class="sv-feature" @click="pick('filter')">
+					<view class="sv-iz sv-iz-flower"><view class="sv-fp a"></view><view class="sv-fp b"></view><view class="sv-fp c"></view><view class="sv-fp d"></view></view>
+					<text class="sv-feature-label">条件筛选</text>
+				</view>
+				<view class="sv-feature" @click="pick('activity')">
+					<view class="sv-iz"><view class="sv-heart"></view></view>
+					<text class="sv-feature-label">相亲活动</text>
+				</view>
+				<view class="sv-feature" @click="pick('video')">
+					<view class="sv-iz">
+						<view class="sv-tv-ear l"></view>
+						<view class="sv-tv-ear r"></view>
+						<view class="sv-tv"><view class="sv-tv-play"></view></view>
+					</view>
+					<text class="sv-feature-label">短视频</text>
+				</view>
+				<view class="sv-feature" @click="pick('news')">
+					<view class="sv-iz"><view class="sv-news"><view class="sv-news-l1"></view><view class="sv-news-l2"></view></view></view>
+					<text class="sv-feature-label">红娘喜讯</text>
+				</view>
+			</view>
+
+			<view class="sv-card-row">
+				<view class="sv-card" @click="pick('custom')">
+					<view class="sv-ciz"><view class="sv-x-bar l"></view><view class="sv-x-bar r"></view></view>
+					<text class="sv-card-label">私人定制</text>
+				</view>
+				<view class="sv-card" @click="pick('vip')">
+					<view class="sv-ciz"><view class="sv-crown"></view><view class="sv-crown-base"></view></view>
+					<text class="sv-card-label">开通VIP</text>
+				</view>
+				<view class="sv-card" @click="pick('matchmaker_center')">
+					<view class="sv-ciz"><view class="sv-hex"><text class="sv-hex-i">i</text></view></view>
+					<text class="sv-card-label">红娘中心</text>
+				</view>
+				<view class="sv-card" @click="pick('about')">
+					<view class="sv-ciz"><view class="sv-about-head"></view><view class="sv-about-body"></view></view>
+					<text class="sv-card-label">关于我们</text>
+				</view>
+				<view class="sv-card" @click="pick('member_center')">
+					<view class="sv-ciz"><view class="sv-mc-ring"><view class="sv-mc-head"></view><view class="sv-mc-body"></view></view></view>
+					<text class="sv-card-label">{{ memberCenterLabel }}</text>
+				</view>
+			</view>
+
+			<view class="sv-pill-row">
+				<view class="sv-pill" @click="pick('intro_outgoing')"><text>我申请的牵线</text><view v-if="introBadge != '' && introBadge != '0'" class="sv-pill-badge"><text>{{ introBadge }}</text></view></view>
+				<view class="sv-pill" @click="pick('intro_incoming')"><text>向我申请的牵线</text></view>
+				<view class="sv-pill" @click="pick('meeting')"><text>待见面</text></view>
+			</view>
+		</view>
+	</XsaSheet>
+</template>
+
+<script setup lang="uts">
+import XsaSheet from '@/components/XsaSheet.uvue'
+
+/**
+ * 服务导航下拉菜单：红娘管理中心、合伙人管理中心、推广红娘管理中心共用同一模板。
+ * 组件只负责展示与回报选项；跳转由各中心页面决定，「我申请的牵线」角标由各中心
+ * 传入自己的待处理计数（introBadge，空串隐藏），体现图二样式。
+ * member_center 入口文案默认为「会员中心」，各中心可用 memberCenterLabel 按角色改名
+ * （红娘管理中心改为「我的账号」）。
+ */
+interface Props {
+	visible: boolean;
+	introBadge?: string;
+	memberCenterLabel?: string;
+}
+
+withDefaults(defineProps<Props>(), { introBadge: '', memberCenterLabel: '会员中心' })
+
+const emit = defineEmits<{
+	close: [];
+	select: [key: string];
+}>()
+
+const pick = (key: string) => {
+	emit('select', key)
+}
+</script>
+
+<style scoped>
+.sv-wrap { display: flex; flex-direction: column; gap: 28rpx; }
+
+/* 彩色功能行 */
+.sv-feature-row { display: flex; flex-direction: row; justify-content: space-between; padding: 4rpx 6rpx 0; }
+.sv-feature { width: 120rpx; display: flex; flex-direction: column; align-items: center; }
+.sv-feature-label { margin-top: 12rpx; color: var(--ink); font-size: 24rpx; font-weight: 700; }
+.sv-iz { position: relative; width: 52rpx; height: 52rpx; }
+
+/* 会员分区：双人人形 */
+.sv-person-back { position: absolute; left: 0; top: 6rpx; width: 26rpx; height: 42rpx; }
+.sv-person-back:before { content: ''; position: absolute; left: 6rpx; top: 0; width: 15rpx; height: 15rpx; border-radius: 50%; background: var(--sage-soft); }
+.sv-person-back:after { content: ''; position: absolute; left: 0; bottom: 0; width: 26rpx; height: 24rpx; border-radius: 13rpx 13rpx 6rpx 6rpx; background: var(--sage-soft); }
+.sv-person-front { position: absolute; right: 0; top: 0; width: 30rpx; height: 48rpx; }
+.sv-person-front:before { content: ''; position: absolute; left: 7rpx; top: 0; width: 16rpx; height: 16rpx; border-radius: 50%; background: var(--sage); }
+.sv-person-front:after { content: ''; position: absolute; left: 0; bottom: 0; width: 30rpx; height: 27rpx; border-radius: 15rpx 15rpx 7rpx 7rpx; background: var(--sage); }
+
+/* 条件筛选：四瓣花 */
+.sv-iz-flower { display: flex; flex-direction: row; flex-wrap: wrap; width: 48rpx; height: 48rpx; margin-top: 2rpx; }
+.sv-fp { width: 23rpx; height: 23rpx; border-radius: 50%; }
+.sv-fp.a { background: var(--review-orange); }
+.sv-fp.b { background: var(--review-orange-soft); }
+.sv-fp.c { background: var(--review-orange-soft); }
+.sv-fp.d { background: var(--review-orange); }
+
+/* 相亲活动：心形 */
+.sv-heart { position: relative; width: 24rpx; height: 24rpx; margin: 14rpx auto 0; background: linear-gradient(135deg, var(--review-pink), var(--match-coral)); transform: rotate(45deg); border-radius: 5rpx; }
+.sv-heart:before, .sv-heart:after { content: ''; position: absolute; width: 24rpx; height: 24rpx; border-radius: 50%; background: var(--match-coral); }
+.sv-heart:before { left: -12rpx; }
+.sv-heart:after { top: -12rpx; }
+
+/* 短视频：紫色电视机 */
+.sv-tv { position: absolute; left: 4rpx; bottom: 4rpx; width: 44rpx; height: 34rpx; border-radius: 10rpx; background: linear-gradient(135deg, var(--review-purple), var(--review-deep)); display: flex; align-items: center; justify-content: center; }
+.sv-tv-play { width: 0; height: 0; border-left: 14rpx solid var(--paper); border-top: 9rpx solid transparent; border-bottom: 9rpx solid transparent; }
+.sv-tv-ear { position: absolute; top: 0; width: 5rpx; height: 16rpx; border-radius: 3rpx; background: var(--review-purple); }
+.sv-tv-ear.l { left: 12rpx; transform: rotate(-24deg); }
+.sv-tv-ear.r { right: 12rpx; transform: rotate(24deg); }
+
+/* 红娘喜讯：红色气泡 */
+.sv-news { position: absolute; left: 4rpx; bottom: 6rpx; width: 44rpx; height: 36rpx; border-radius: 12rpx; background: linear-gradient(135deg, var(--match-coral), var(--review-danger)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5rpx; }
+.sv-news-l1 { width: 24rpx; height: 4rpx; border-radius: 2rpx; background: var(--paper); }
+.sv-news-l2 { width: 14rpx; height: 4rpx; border-radius: 2rpx; background: var(--paper); }
+
+/* 目录卡片行 */
+.sv-card-row { display: flex; flex-direction: row; gap: 14rpx; }
+.sv-card { flex: 1; min-height: 128rpx; border-radius: 16rpx; background: var(--warm); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12rpx; padding: 14rpx 0; }
+.sv-card-label { color: var(--ink2); font-size: 22rpx; }
+.sv-ciz { position: relative; width: 40rpx; height: 40rpx; }
+
+/* 私人定制：交叉 */
+.sv-x-bar { position: absolute; left: 3rpx; top: 17rpx; width: 34rpx; height: 6rpx; border-radius: 3rpx; background: var(--ink); }
+.sv-x-bar.l { transform: rotate(45deg); }
+.sv-x-bar.r { transform: rotate(-45deg); }
+
+/* 开通VIP：皇冠 */
+.sv-crown { position: absolute; left: 3rpx; top: 8rpx; width: 0; height: 0; border-left: 17rpx solid transparent; border-right: 17rpx solid transparent; border-bottom: 16rpx solid var(--ink); }
+.sv-crown-base { position: absolute; left: 7rpx; bottom: 4rpx; width: 26rpx; height: 5rpx; border-radius: 3rpx; background: var(--ink); }
+
+/* 红娘中心：圆角框 + i */
+.sv-hex { position: absolute; left: 2rpx; top: 2rpx; width: 36rpx; height: 36rpx; border: 4rpx solid var(--ink); border-radius: 12rpx; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
+.sv-hex-i { color: var(--ink); font-size: 22rpx; font-weight: 800; font-style: italic; }
+
+/* 关于我们：人形轮廓 */
+.sv-about-head { position: absolute; left: 14rpx; top: 2rpx; width: 13rpx; height: 13rpx; border: 3rpx solid var(--ink); border-radius: 50%; box-sizing: border-box; }
+.sv-about-body { position: absolute; left: 8rpx; bottom: 4rpx; width: 25rpx; height: 12rpx; border: 3rpx solid var(--ink); border-bottom: none; border-radius: 12rpx 12rpx 0 0; box-sizing: border-box; }
+
+/* 会员中心：人形居圆环 */
+.sv-mc-ring { position: absolute; left: 2rpx; top: 2rpx; width: 36rpx; height: 36rpx; border: 3rpx solid var(--ink); border-radius: 50%; box-sizing: border-box; }
+.sv-mc-head { position: absolute; left: 12rpx; top: 7rpx; width: 8rpx; height: 8rpx; border-radius: 50%; background: var(--ink); }
+.sv-mc-body { position: absolute; left: 8rpx; bottom: 5rpx; width: 16rpx; height: 8rpx; border-radius: 8rpx 8rpx 0 0; background: var(--ink); }
+
+/* 牵线快捷行 */
+.sv-pill-row { display: flex; flex-direction: row; justify-content: space-between; padding: 0 4rpx 6rpx; }
+.sv-pill { position: relative; min-height: 72rpx; padding: 0 36rpx; border-radius: 999rpx; background: var(--warm); display: flex; align-items: center; justify-content: center; }
+.sv-pill text { color: var(--ink2); font-size: 24rpx; }
+/* 待处理数角标：由各中心传入真实计数，无数据显示 */
+.sv-pill-badge { position: absolute; top: -10rpx; right: -10rpx; min-width: 30rpx; height: 30rpx; padding: 0 8rpx; border-radius: 999rpx; background: var(--review-danger); display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+.sv-pill-badge text { color: var(--paper); font-size: 19rpx; font-weight: 800; }
+
+.sv-feature:active, .sv-card:active, .sv-pill:active { opacity: 0.7; }
+</style>

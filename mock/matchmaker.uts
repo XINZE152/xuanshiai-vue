@@ -360,22 +360,6 @@ export const mockCustomCases = [
 /** 向后兼容旧命名 */
 export const mockCustomPackages = mockCustomPlans
 
-/** AI 红娘预设对话 */
-export const mockAiChatSeed = [
-  {
-    role: 'ai',
-    text: '你好，我可以先帮你把“想找什么样的人”从模糊感觉整理成可沟通的条件。'
-  },
-  {
-    role: 'me',
-    text: '我希望对方情绪稳定，也愿意认真沟通。'
-  },
-  {
-    role: 'ai',
-    text: '可以进一步拆成：冲突时不冷处理、能表达需求、对长期关系有共同规划。哪一项对你最重要？'
-  }
-]
-
 /**
  * 合伙人中心本地测试数据。
  * 成员、团队业绩与奖励明细均为脱敏演示值，用于完整校验名下会员、统计和搜索流程。
@@ -393,7 +377,10 @@ export const mockPartnerCenterSnapshot = {
     teamPerformance: 28760.00,
     totalEarned: 4386.80,
     points: 1280,
-    level: '成长合伙人'
+    level: '成长合伙人',
+    nextLevel: '战略合伙',
+    memberGap: 7,
+    effectiveMemberCount: 93
   },
   inviteCode: 'PARTNER-SOFIA-2026',
   teamPerformance: 28760.00,
@@ -435,7 +422,7 @@ export const mockPartnerCenterSnapshot = {
 /** 推广红娘中心本地数据源：默认不预置客源、会员、收益、订单或商家数据。 */
 export const mockPromoterCenterSnapshot = {
   source: 'mock',
-  profile: { nickname: 'Lemon', phone: '13712347543', wechatBound: false, balance: 0, points: 0, level: '初级', teamName: '', registerAt: '2026-08-23 21:44:00' },
+  profile: { nickname: 'Lemon', phone: '13712347543', wechatBound: false, balance: 0, points: 0, level: '初级', nextLevel: '推广大师', memberGap: 51, teamStatus: 'NONE', teamName: '', registerAt: '2026-08-23 21:44:00' },
   teamOptions: [
     { id: 'PT-001', name: '宣誓爱1' },
     { id: 'PT-002', name: '山海相知团队' },

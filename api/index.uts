@@ -309,9 +309,16 @@ export {
   getMatchmakerWorkspaceIntroductions,
   getMatchmakerWorkspaceMeetingRequests,
   updateMatchmakerMeetingStatus,
+  scheduleMatchmakerMeeting,
+  updateMatchmakerMeetingRecordStatus,
   updateMatchmakerIntroductionStatus,
   createMatchmakerIntroduction,
   deleteMatchmakerMeetingRequest,
+  createPartnerTeamQrcode,
+  getPartnerJoinRequests,
+  reviewPartnerJoinRequest,
+  submitPromoterTeamRequest,
+  cancelPromoterTeamRequest,
   updateMatchmakerReviewMember,
   createMatchmakerWorkspaceMember,
   getMatchmakerMemberFollowUps,
@@ -341,7 +348,15 @@ export {
   submitMatchmakerApplication,
   submitPartnerApplication,
   submitPromoterApplication,
-  bookMatchmaker
+  bookMatchmaker,
+  getMatchmakerMemberProfile,
+  updateMatchmakerMemberProfile,
+  getMatchmakerMemberPreferences,
+  updateMatchmakerMemberPreferences,
+  getMatchmakerMemberCompletion,
+  updateMatchmakerMemberNickname,
+  uploadMatchmakerMemberMedia,
+  deleteMatchmakerMemberPhoto
 } from './matchmaker.uts'
 
 

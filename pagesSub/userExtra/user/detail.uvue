@@ -158,17 +158,17 @@
 				</view>
 			</view>
 
-			<view class="scroll-bottom-spacer"></view>
+			<view class="scroll-bottom-spacer" :class="{ 'spacer-matchmaker': fromMatchmaker }"></view>
 		</scroll-view>
 
-			<!-- AI分身悬浮按钮：3D 小猫形象（与首页同款），右下悬浮位 -->
-			<view v-if="!isOwnProfile && !isPreview && !detailLoading && detailError == ''" class="detail-ai-float" @tap="openAiAvatar">
+			<!-- AI分身悬浮按钮：3D 小猫形象（与首页同款），右下悬浮位；红娘代看模式隐藏 -->
+			<view v-if="!isOwnProfile && !isPreview && !fromMatchmaker && !detailLoading && detailError == ''" class="detail-ai-float" @tap="openAiAvatar">
 				<image class="detail-ai-float-cat" src="/static/ai-cat/ai-cat.webp" mode="aspectFit"></image>
 			</view>
-			<view v-if="showAiGuide" class="ai-guide-bubble" @tap="dismissAiGuide"><text class="ai-guide-text">与对方的AI分身聊天获取更多信息</text></view>
-			<!-- 小猫说话气泡：引导气泡消失后才开始自动弹出，避免两块气泡打架 -->
+			<view v-if="showAiGuide && !fromMatchmaker" class="ai-guide-bubble" @tap="dismissAiGuide"><text class="ai-guide-text">与对方的AI分身聊天获取更多信息</text></view>
+			<!-- 小猫说话气泡：引导气泡消失后才开始自动弹出，避免两块气泡打架；红娘代看模式隐藏 -->
 			<XsaAiCatBubble
-				:active="!isOwnProfile && !isPreview && !detailLoading && detailError == '' && !showAiGuide"
+				:active="!isOwnProfile && !isPreview && !fromMatchmaker && !detailLoading && detailError == '' && !showAiGuide"
 				right="112rpx"
 				bottom="calc(346rpx + env(safe-area-inset-bottom))"
 				@tap="openAiAvatar"
@@ -177,13 +177,23 @@
 			<view v-if="isOwnProfile && !isPreview && !detailLoading && detailError == ''" class="bottom-bar bottom-bar-own">
 				<view class="primary-action edit-only-btn" @tap="goEdit"><text class="primary-action-text">编辑资料</text></view>
 			</view>
-			<!-- 底部操作栏：与首页推荐页同款（分享 + 申请认识 + 收藏爱心） -->
-			<view v-if="!isOwnProfile && !isPreview && !detailLoading && detailError == ''" class="float-bar">
+			<!-- 底部操作栏：与首页推荐页同款（分享 + 申请认识 + 收藏爱心）；红娘查看资料时改用红娘操作栏 -->
+			<view v-if="!isOwnProfile && !isPreview && !fromMatchmaker && !detailLoading && detailError == ''" class="float-bar">
 				<view class="share-btn" @tap="onShare"><text class="ic ic-sys ic-fenxiang share-icon"></text></view>
 				<view class="chat-btn" @tap="onMatch"><text class="ic ic-home ic-hello chat-icon"></text><text class="chat-text">申请认识</text></view>
 				<view class="like-btn" @tap="onLike">
 					<text v-if="isLikedUser" class="heart-icon heart-font heart-solid"></text>
 					<text v-else class="heart-icon heart-font heart-outline"></text>
+				</view>
+			</view>
+
+			<!-- 红娘查看会员主页时的底部操作栏：权限提示 + 编辑资料 + 红娘中心 -->
+			<view v-if="fromMatchmaker && !isPreview && !detailLoading && detailError == ''" class="mm-bar">
+				<view class="mm-bar-alert"><text class="mm-bar-alert-mark">!</text></view>
+				<text class="mm-bar-alert-text">您在以红娘权限查看资料</text>
+				<view class="mm-bar-actions">
+					<view class="mm-bar-btn mm-bar-btn-edit" @tap="onMatchmakerEditMember"><text>编辑资料</text><text class="mm-bar-btn-arrow">›</text></view>
+					<view class="mm-bar-btn mm-bar-btn-center" @tap="onMatchmakerCenter"><text>红娘中心</text><text class="mm-bar-btn-arrow">›</text></view>
 				</view>
 			</view>
 
@@ -222,6 +232,8 @@ const isLockedView = ref(false)
 const viewerIsVip = ref(false)
 const isOwnProfile = ref(false)
 const isPreview = ref(false)
+// 红娘从资料待审进入时跳过 VIP 解锁墙/额度限制（后端 view_profile 已豁免）。
+const fromMatchmaker = ref(false)
 const isLikedUser = ref(false)
 const showAiGuide = ref(false)
 const scrollAnchor = ref('')
@@ -572,6 +584,10 @@ const loadUserDynamics = async (targetUserId: number) => {
 }
 
 const refreshLockedView = () => {
+	if (fromMatchmaker.value) {
+		isLockedView.value = false
+		return
+	}
 	const targetIsVip = user.value.isVIP === true
 	isLockedView.value =
 		!isPreview.value &&
@@ -593,12 +609,15 @@ const redirectParentRoute = (): boolean => {
 	return true
 }
 
+let detailLoadedOnce = false
+
 onMounted(async () => {
 	if (redirectParentRoute()) return
 	const pages = getCurrentPages()
 	const currentPage = pages[pages.length - 1]
 	const options = currentPage.options
 	isPreview.value = options.preview === 'true' || options.preview === true
+	fromMatchmaker.value = options.matchmakerView === '1' || options.matchmakerView === 'true' || options.matchmakerView === true
 
 	let parsed = 0
 	if (options.userId != null && options.userId != '') {
@@ -622,7 +641,8 @@ onMounted(async () => {
 	await loadViewerMembership()
 	await load()
 	console.log('[user detail] after load user.value.id', user.value.id, 'name', user.value.name)
-	if (!isOwnProfile.value && !isPreview.value && uni.getStorageSync('xsa_ai_avatar_guide_shown') != true) showAiGuide.value = true
+	detailLoadedOnce = true
+	if (!isOwnProfile.value && !isPreview.value && !fromMatchmaker.value && uni.getStorageSync('xsa_ai_avatar_guide_shown') != true) showAiGuide.value = true
 	if (options.anchor != null && ('' + options.anchor) != '') {
 		const anchorId = '' + options.anchor
 		setTimeout(() => { scrollAnchor.value = anchorId }, 400)
@@ -632,6 +652,8 @@ onMounted(async () => {
 onShow(async () => {
 	if (redirectParentRoute()) return
 	await loadViewerMembership()
+	// 红娘代编返回后重新拉取会员资料，保证主页立即反映刚保存的内容
+	if (detailLoadedOnce && fromMatchmaker.value) await load()
 	refreshLockedView()
 })
 
@@ -640,6 +662,25 @@ const openQuotaMembership = () => { uni.navigateTo({ url: '/pagesSub/profileExtr
 const handleDetailErrorAction = () => { if (detailQuotaExhausted.value) openQuotaMembership(); else load() }
 const onShare = () => { uni.showToast({ title: '分享给朋友', icon: 'none' }) }
 const goEdit = () => { uni.navigateTo({ url: '/pagesSub/userExtra/user/edit' }) }
+/* 红娘查看会员主页底部操作栏：编辑资料 / 红娘中心 */
+const onMatchmakerEditMember = () => {
+	const id = Number(user.value.id)
+	if (!(id > 0)) {
+		uni.showToast({ title: '会员信息尚未加载完成', icon: 'none' })
+		return
+	}
+	uni.navigateTo({
+		url: '/pagesSub/userExtra/user/edit?memberId=' + id + '&matchmakerView=1',
+		fail: () => uni.showToast({ title: '打开会员资料编辑失败', icon: 'none' })
+	})
+}
+const onMatchmakerCenter = () => {
+	uni.navigateTo({
+		url: '/pagesSub/matchmaker/become-matchmaker',
+		fail: () => uni.showToast({ title: '打开红娘中心失败', icon: 'none' })
+	})
+}
+
 const onViewMyPortrait = () => {
 	uni.navigateTo({
 		url: '/pagesSub/profileExtra/my-portrait-result?subject=personal',
@@ -908,6 +949,19 @@ const onLike = async () => {
 .spotlight-button { display: flex; align-items: center; justify-content: center; height: 88rpx; border-radius: 44rpx; background-color: var(--plane-yellow); }
 .spotlight-button-text { color: var(--ink); font-size: 28rpx; font-weight: 700; }
 .scroll-bottom-spacer { height: 420rpx; }
+.spacer-matchmaker { height: 560rpx; }
+
+/* 红娘查看会员主页：底部权限提示 + 编辑资料 / 红娘中心 */
+.mm-bar { position: fixed; z-index: 60; left: 0; right: 0; bottom: 0; display: flex; flex-direction: row; align-items: center; gap: 10rpx; padding: 18rpx 24rpx calc(18rpx + env(safe-area-inset-bottom)); background-color: var(--surface); border-top: 1rpx solid var(--line); box-shadow: 0 -4rpx 20rpx rgba(17, 23, 24, 0.06); }
+.mm-bar-alert { width: 32rpx; height: 32rpx; border-radius: 8rpx; background-color: var(--match-blush); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.mm-bar-alert-mark { color: var(--match-coral); font-size: 21rpx; font-weight: 800; }
+.mm-bar-alert-text { flex: 1; min-width: 0; color: var(--ink2); font-size: 21rpx; }
+.mm-bar-actions { display: flex; flex-direction: row; align-items: center; gap: 12rpx; flex-shrink: 0; }
+.mm-bar-btn { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 4rpx; height: 62rpx; padding: 0 22rpx; border-radius: 999rpx; }
+.mm-bar-btn text { color: var(--paper); font-size: 23rpx; font-weight: 800; }
+.mm-bar-btn-arrow { font-size: 22rpx !important; }
+.mm-bar-btn-edit { background-color: var(--accent2); }
+.mm-bar-btn-center { background-color: var(--match-coral); }
 .bottom-bar { position: fixed; z-index: 20; right: 0; bottom: 0; left: 0; display: flex; flex-direction: row; align-items: center; gap: 12rpx; padding: 20rpx 32rpx calc(20rpx + env(safe-area-inset-bottom)); background-color: var(--surface); box-shadow: var(--shadow-md); }
 .bottom-bar-own { justify-content: center; }
 .bottom-back { display: flex; flex-direction: column; align-items: center; gap: 2rpx; }

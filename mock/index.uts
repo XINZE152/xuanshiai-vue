@@ -71,8 +71,7 @@ export {
   mockCustomPlans,
   mockCustomServicePaymentOrders,
   mockVolunteerMatchmakers,
-  mockCustomPackages,
-  mockAiChatSeed
+  mockCustomPackages
 } from './matchmaker.uts'
 
 // AI 分身

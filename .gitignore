@@ -21,6 +21,7 @@ mock-local/
 .agents/
 test-local-mock-login.js
 skills-lock.json
+openapi_snapshot.json
 demo/
 open-in-hbuilderx.bat
 open-wechat-devtools.bat
