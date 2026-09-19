@@ -44,6 +44,7 @@ let reconnectTimer: any = null
 let socketGeneration = 0
 let selectionSequence = 0
 let reconnectAttempts = 0
+let recoveryGeneration = 0
 let disposed = false
 const statusLabel = (status: string): string => liveStatusLabel(status)
 const formatTime = (value: any): string => value == null ? '时间待定' : ('' + value).replace('T', ' ').substring(0, 16)
@@ -126,8 +127,11 @@ const updateStageFromSnapshot = (snapshot: any) => {
   }
 }
 const recoverSocket = async (generation: number) => {
+  if (recoveryGeneration == generation) return
+  recoveryGeneration = generation
   const sequence = selectionSequence
   await syncSelectedState(sequence, false)
+  if (recoveryGeneration == generation) recoveryGeneration = 0
   if (disposed || generation != socketGeneration || sequence != selectionSequence || reconnectAttempts >= 3) return
   const delays = [1000, 2000, 4000]
   const delay = delays[reconnectAttempts]
@@ -136,7 +140,7 @@ const recoverSocket = async (generation: number) => {
   reconnectTimer = setTimeout(() => { reconnectTimer = null; connectSocket() }, delay)
 }
 const handleSocketDown = (generation: number) => {
-  if (disposed || generation != socketGeneration || reconnectTimer != null) return
+  if (disposed || generation != socketGeneration || reconnectTimer != null || recoveryGeneration == generation) return
   socket = null
   socketState.value = reconnectAttempts >= 3 ? '实时状态暂不可用，已通过刷新同步' : '实时连接已断开，正在同步场次状态'
   recoverSocket(generation)
