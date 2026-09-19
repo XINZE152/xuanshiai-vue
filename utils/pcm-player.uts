@@ -1,0 +1,348 @@
+/**
+ * 微信端流式 PCM 播放器（墨相师实时语音 v2 专用）。
+ *
+ * 下行音频是 24kHz 单声道 pcm_s16le 的 base64 分片。必须用
+ * WebAudioContext.createBuffer 从原始采样创建缓冲、按音频时钟调度播放，
+ * 绝不能把 PCM 当压缩文件交给 decodeAudioData。
+ *
+ * 关键语义（方案 §4）：
+ * - 世代（generation）隔离：旧 generation 的迟到分片直接丢弃；
+ *   stopAll() 立即停掉全部已调度节点并清空缓存，不等网络。
+ * - 跨分片残留字节拼接：奇数字节的 int16 样本跨分片，缓存最后一个
+ *   字节与下一片拼接。
+ * - 有界队列：待播超过 30 秒判定该世代失败（QUEUE_OVERFLOW），
+ *   不允许无界积累。
+ * - 启动缓冲约 120ms 后开始调度，单次调度窗口约 200ms（调试初值，
+ *   最终由真机测试调整）；不足启动阈值的短回复在 finish() 后强制播放。
+ * - 序号校验：缺口或回退终止该世代回复，不能跳过中间音频继续播。
+ *
+ * 仅微信小程序端可用（WebAudioContext 基础库 ≥2.19.0）；其他端所有
+ * 方法安全 no-op，enqueue 时回调 status='failed'（PLATFORM_UNSUPPORTED）。
+ */
+
+export type PcmFinishStatus = 'completed' | 'interrupted' | 'failed'
+
+export interface PcmPlayerCallbacks {
+	onStarted?: (generationId: string) => void
+	onProgress?: (generationId: string, playedMs: number) => void
+	onFinished?: (generationId: string, status: PcmFinishStatus, playedMs: number) => void
+}
+
+/** 待播/已调度音频上限（秒）。超限判定该世代失败，防止内存无界。 */
+const MAX_QUEUE_SECONDS = 30
+/** 首个缓冲达到该秒数才开始调度（降低网络抖动造成的断续）。 */
+const START_BUFFER_SECONDS = 0.12
+/** 单次调度转化的音频窗口（秒）。 */
+const SCHEDULE_WINDOW_SECONDS = 0.2
+/** 下行采样率（与后端 v2 协商的 realtime.output.sample_rate 一致）。 */
+const SAMPLE_RATE = 24000
+
+export class PcmPlayer {
+	private callbacks: PcmPlayerCallbacks
+	// WebAudioContext 及节点类型 UTS 无内建声明，沿用项目里 socketTask
+	// 的 any 成员模式；wx API 全部走条件编译。
+	private ctx: any = null
+	private ctxReady = false
+	/** 当前接受的回复世代；空串表示空闲（丢弃一切迟到分片）。 */
+	private generation = ''
+	private finished = false
+	private lastSeq = 0
+	/** 待转化的 PCM 字节队列（每项为 Uint8Array）。 */
+	private queue: any[] = []
+	/** 跨分片残留的最后一个字节（-1 表示无残留）。 */
+	private remainderByte = -1
+	/** 已调度到的音频时钟位置（秒）。 */
+	private scheduledUntil = 0
+	private scheduledSeconds = 0
+	private sources: any[] = []
+	private startAt = 0
+	private startNotified = false
+	private finishNotified = false
+	/** 微信环境探测结果；null 表示尚未探测。 */
+	private platformOk: boolean | null = null
+
+	constructor(callbacks: PcmPlayerCallbacks) {
+		this.callbacks = callbacks
+	}
+
+	// #ifdef MP-WEIXIN
+	private ensureCtx() : boolean {
+		if (this.ctxReady) return true
+		if (this.platformOk == false) return false
+		try {
+			this.ctx = wx.createWebAudioContext()
+			this.ctxReady = this.ctx != null
+			this.platformOk = this.ctxReady
+		} catch (e) {
+			this.platformOk = false
+			this.ctxReady = false
+		}
+		return this.ctxReady
+	}
+
+	private base64ToBytes(base64Data: string) : any | null {
+		try {
+			const buffer = wx.base64ToArrayBuffer(base64Data)
+			if (buffer == null) return null
+			return new Uint8Array(buffer)
+		} catch (e) {
+			return null
+		}
+	}
+	// #endif
+
+	/**
+	 * 接收一个下行音频分片。世代不符（迟到分片）直接丢弃。
+	 * seq 必须从 1 连续递增；缺口/回退终止该世代。
+	 */
+	enqueue(generationId: string, base64Data: string, seq: number) : boolean {
+		// #ifdef MP-WEIXIN
+		if (this.generation != generationId || this.finished || base64Data == '') {
+			return false
+		}
+		if (seq != this.lastSeq + 1) {
+			// 序号缺口或回退：该世代已不可信，终止而不是跳着播。
+			this.terminate(generationId, 'failed')
+			return false
+		}
+		this.lastSeq = seq
+		const bytes = this.base64ToBytes(base64Data)
+		if (bytes == null || bytes.length == 0) {
+			return false
+		}
+		this.queue.push(bytes)
+		const queuedSeconds = this.queuedSeconds()
+		if (queuedSeconds > MAX_QUEUE_SECONDS) {
+			this.terminate(generationId, 'failed')
+			return false
+		}
+		if (!this.ensureCtx()) {
+			this.terminate(generationId, 'failed')
+			return false
+		}
+		if (queuedSeconds >= START_BUFFER_SECONDS) {
+			this.schedule()
+		}
+		return true
+		// #endif
+		// #ifndef MP-WEIXIN
+		this.emitFinished(generationId, 'failed', 0)
+		return false
+		// #endif
+	}
+
+	/** 供应商音频结束信号；不足启动阈值的短回复在此强制播放。 */
+	finish(generationId: string) {
+		// #ifdef MP-WEIXIN
+		if (this.generation != generationId || this.finished) return
+		this.finished = true
+		this.schedule(true)
+		this.maybeComplete()
+		// #endif
+	}
+
+	/** 立即停止全部已调度节点并清空缓存（点击打断/切页时调用）。 */
+	stopAll() {
+		// #ifdef MP-WEIXIN
+		const activeGeneration = this.generation
+		this.generation = ''
+		this.finished = false
+		this.lastSeq = 0
+		this.queue = [] as any[]
+		this.remainderByte = -1
+		this.scheduledUntil = 0
+		this.scheduledSeconds = 0
+		this.startNotified = false
+		this.finishNotified = false
+		for (let i = 0; i < this.sources.length; i++) {
+			try { this.sources[i].stop() } catch (e) {}
+			try { this.sources[i].disconnect() } catch (e) {}
+		}
+		this.sources = [] as any[]
+		if (activeGeneration != '') {
+			this.emitFinished(activeGeneration, 'interrupted', this.currentPlayedMs())
+		}
+		// #endif
+	}
+
+	isPlaying() : boolean {
+		// #ifdef MP-WEIXIN
+		return this.generation != '' && this.sources.length > 0
+		// #endif
+		// #ifndef MP-WEIXIN
+		return false
+		// #endif
+	}
+
+	currentGeneration() : string {
+		return this.generation
+	}
+
+	destroy() {
+		this.stopAll()
+		// #ifdef MP-WEIXIN
+		if (this.ctx != null) {
+			try { this.ctx.close() } catch (e) {}
+			this.ctx = null
+			this.ctxReady = false
+			this.platformOk = null
+		}
+		// #endif
+	}
+
+	// ===== 内部实现（仅微信端） =====
+
+	// #ifdef MP-WEIXIN
+
+	private queuedSeconds() : number {
+		let bytes = 0
+		for (let i = 0; i < this.queue.length; i++) {
+			bytes += this.queue[i].length as number
+		}
+		if (this.remainderByte >= 0) bytes += 1
+		return bytes / (SAMPLE_RATE * 2)
+	}
+
+	/** 把队列中的字节按调度窗口转化为 AudioBuffer 并按音频时钟排期。 */
+	private schedule(force: boolean = false) {
+		if (this.ctx == null || this.generation == '') return
+		if (this.startAt == 0) {
+			this.startAt = this.ctx.currentTime
+			this.scheduledUntil = this.ctx.currentTime + START_BUFFER_SECONDS
+		}
+		let windowSeconds = force
+			? this.queuedSeconds()
+			: SCHEDULE_WINDOW_SECONDS
+		while (this.queuedSeconds() > 0 && windowSeconds > 0) {
+			const chunkSeconds = Math.min(windowSeconds, this.queuedSeconds())
+			const buffer = this.buildBuffer(chunkSeconds)
+			if (buffer == null) break
+			const when = Math.max(this.ctx.currentTime, this.scheduledUntil)
+			const source = this.ctx.createBufferSource()
+			source.buffer = buffer
+			source.connect(this.ctx.destination)
+			const generationId = this.generation
+			source.onEnded(() => {
+				this.onSourceEnded(generationId)
+			})
+			source.start(when)
+			this.sources.push(source)
+			this.scheduledUntil = when + chunkSeconds
+			this.scheduledSeconds = this.scheduledUntil - this.startAt
+			windowSeconds -= chunkSeconds
+		}
+		if (!this.startNotified && this.sources.length > 0) {
+			this.startNotified = true
+			this.callbacks.onStarted?.(this.generation)
+		}
+	}
+
+	/** 从队列取出 chunkSeconds 秒的字节，转成单声道 Float32 AudioBuffer。 */
+	private buildBuffer(chunkSeconds: number) : any | null {
+		const totalBytes = Math.floor(chunkSeconds * SAMPLE_RATE * 2)
+		const sampleCount = Math.floor(totalBytes / 2)
+		if (sampleCount <= 0) return null
+		const buffer = this.ctx.createBuffer(1, sampleCount, SAMPLE_RATE)
+		const channel = buffer.getChannelData(0)
+		let consumed = 0
+		let carry = this.remainderByte
+		for (let s = 0; s < sampleCount; s++) {
+			let low = -1
+			let high = -1
+			if (carry >= 0) {
+				low = carry
+				carry = -1
+				high = this.nextByte()
+				if (high < 0) break
+			} else {
+				low = this.nextByte()
+				if (low < 0) break
+				high = this.nextByte()
+				if (high < 0) {
+					// 样本跨分片：缓存低位字节等下一片拼接。
+					carry = low
+					break
+				}
+			}
+			let sample = (high << 8) | low
+			if (sample >= 32768) sample -= 65536
+			channel[s] = sample / 32768.0
+			consumed += 2
+		}
+		this.remainderByte = carry
+		// 实际写入的样本数可能小于申请值（字节耗尽），尾部补零保证时长一致。
+		for (let s = consumed / 2; s < sampleCount; s++) {
+			channel[s] = 0
+		}
+		return buffer
+	}
+
+	private nextByte() : number {
+		while (this.queue.length > 0) {
+			const head = this.queue[0]
+			if (head.length == 0) {
+				this.queue.shift()
+				continue
+			}
+			const value = head[0] as number
+			if (head.length == 1) {
+				this.queue.shift()
+			} else {
+				// UTS 无 Buffer 子视图 API，逐字节消耗（分片约几十毫秒音频，量级安全）。
+				this.queue[0] = head.slice(1)
+			}
+			return value
+		}
+		return -1
+	}
+
+	private onSourceEnded(generationId: string) {
+		for (let i = 0; i < this.sources.length; i++) {
+			if (this.sources[i] === undefined) continue
+		}
+		// 结束回调只做进度推进与完成判定；停止走 stopAll 的同步路径。
+		this.callbacks.onProgress?.(generationId, this.currentPlayedMs())
+		this.maybeComplete()
+	}
+
+	private maybeComplete() {
+		if (this.finishNotified || this.generation == '') return
+		if (!this.finished || this.queuedSeconds() > 0) return
+		// 已 finish 且队列耗尽：等最后一个节点自然结束（onEnded 后 sources
+		// 由 stopAll/destroy 清理）；此处按音频时钟估算尾包结束时机。
+		const remainMs = Math.max(0, (this.scheduledUntil - this.ctx.currentTime) * 1000)
+		if (remainMs > 60) {
+			setTimeout(() => { this.maybeComplete() }, remainMs + 40)
+			return
+		}
+		this.finishNotified = true
+		const generationId = this.generation
+		this.generation = ''
+		this.emitFinished(generationId, 'completed', Math.round(this.scheduledSeconds * 1000))
+	}
+
+	private currentPlayedMs() : number {
+		if (this.ctx == null || this.startAt == 0) return 0
+		return Math.max(0, Math.round((this.ctx.currentTime - this.startAt) * 1000))
+	}
+
+	private terminate(generationId: string, status: PcmFinishStatus) {
+		const playedMs = this.currentPlayedMs()
+		this.generation = ''
+		this.finished = false
+		this.queue = [] as any[]
+		this.remainderByte = -1
+		this.scheduledUntil = 0
+		this.scheduledSeconds = 0
+		for (let i = 0; i < this.sources.length; i++) {
+			try { this.sources[i].stop() } catch (e) {}
+		}
+		this.sources = [] as any[]
+		this.emitFinished(generationId, status, playedMs)
+	}
+
+	private emitFinished(generationId: string, status: PcmFinishStatus, playedMs: number) {
+		this.callbacks.onFinished?.(generationId, status, playedMs)
+	}
+	// #endif
+}

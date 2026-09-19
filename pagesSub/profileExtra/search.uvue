@@ -15,7 +15,8 @@
 			<view v-if="activeTab === 0" class="search-panel ai-panel">
 				<view class="ai-input-wrap">
 					<textarea class="ai-input" :value="aiQuery" maxlength="300" :placeholder="aiPlaceholder" @input="onAiInput"></textarea>
-					<view class="ai-input-foot"><view class="ai-template-trigger" @tap="requestAiSuggestedQuery"><text class="ai-trigger-text">{{ aiGenerating ? '生成中' : '猜你喜欢' }}</text><view class="ai-trigger-shine"></view></view></view>
+					<view class="ai-input-foot"><view class="ai-template-trigger ai-template-trigger--disabled" @tap="onAiSuggestTap"><text class="ai-trigger-text">猜你喜欢（暂未开放）</text></view></view>
+				<text class="panel-unavailable-note">AI 觅遇能力接入中：当前可改用「精准甄选」按条件筛选</text>
 				</view>
 
 				<view class="ai-drift-field">
@@ -46,6 +47,7 @@
 				</view>
 				<view class="mbti-tag-cloud"><text>INTJ</text><text>ENFP</text><text>INFJ</text><text>ENTP</text><text>ISFJ</text></view>
 				<text class="mbti-balance-copy">同频的人，终会相遇</text>
+				<text class="panel-unavailable-note">MBTI 筛选能力接入中：暂不支持按人格类型筛选</text>
 			</view>
 
 			<view v-else class="search-panel condition-panel">
@@ -58,8 +60,8 @@
 					<view id="age-track" class="range-control" @touchstart="onAgeTrackTouchStart" @touchmove="onAgeTrackTouchMove" @touchend="onTrackTouchEnd"><view class="range-track"></view><view class="range-active" :style="{ left: ageLoPct + '%', width: ageZoneWidth + '%' }"></view><view class="range-handle" :style="{ left: ageLoPct + '%' }"></view><view class="range-handle" :style="{ left: ageHiPct + '%' }"></view></view>
 				</view>
 				<view class="condition-group condition-toggle-group">
-					<view class="condition-toggle-copy"><text class="condition-label">仅认证用户</text><text class="condition-help">优先展示已认证资料</text></view>
-					<button class="condition-toggle" :class="{ active: certificationOnly }" @tap="certificationOnly = !certificationOnly"><view class="toggle-knob"></view></button>
+					<view class="condition-toggle-copy"><text class="condition-label">仅认证用户</text><text class="condition-help">暂不支持：筛选接口暂无认证字段</text></view>
+					<button class="condition-toggle" disabled :class="{ active: false }"><view class="toggle-knob"></view></button>
 				</view>
 
 				<view class="advanced-heading"><text class="condition-label">更多筛选</text></view>
@@ -70,6 +72,7 @@
 				</view>
 				<view class="condition-group advanced-condition-group">
 					<text class="condition-label">收入偏好（年）{{ incomeReadout }}</text>
+					<text class="condition-help">按资料中的年收入口径筛选</text>
 					<view class="income-slider">
 						<view id="income-track" class="range-control" @touchstart="onIncomeTrackTouchStart" @touchmove="onIncomeTrackTouchMove" @touchend="onTrackTouchEnd"><view class="range-track"></view><view class="range-active" :style="{ left: incomeLoPct + '%', width: incomeZoneWidth + '%' }"></view><view class="range-handle" :style="{ left: incomeLoPct + '%' }"></view><view class="range-handle" :style="{ left: incomeHiPct + '%' }"></view></view>
 						<view class="range-scale"><text>5w</text><text>15w</text><text>30w</text><text>50w</text><text>100w</text><text>500w</text></view>
@@ -77,10 +80,11 @@
 				</view>
 				<view class="condition-group advanced-condition-group">
 					<text class="condition-label">家乡偏好</text>
-					<picker class="wide-condition-picker" mode="selector" :range="hometownOptions" :value="hometownIndex" @change="onHometownChange"><view class="wide-picker-value"><text>{{ hometownOptions[hometownIndex] }}</text><text>›</text></view></picker>
+					<view class="wide-picker-disabled"><text>暂不支持：筛选接口暂无家乡字段</text></view>
 				</view>
 				<view class="condition-group advanced-condition-group">
 					<text class="condition-label">学历偏好</text>
+					<text class="condition-help">按所选学历及以上筛选</text>
 					<view class="condition-choice-grid education-grid"><view v-for="item in educationOptions" :key="item" class="choice-chip" :class="{ selected: education === item }" @tap="education = item"><text>{{ item }}</text></view></view>
 				</view>
 				<view class="condition-group advanced-condition-group">
@@ -141,14 +145,14 @@
 					<view v-for="(item, index) in resultCandidates" :key="item.id" class="result-card" :class="{ featured: index === 0 }" @tap="goToResultProfile(item)">
 						<image class="result-avatar" :class="{ featured: index === 0 }" :src="resultAvatar(item)" mode="aspectFill"></image>
 						<view class="result-card-body">
-							<view class="result-card-topline"><text class="result-match-count">匹配 {{ resultMatchCount(index) }} 项期待</text><text class="result-card-arrow">›</text></view>
+							<view class="result-card-topline"><text class="result-card-arrow">›</text></view>
 							<text class="result-name">{{ resultName(item) }}</text>
 							<text class="result-meta">{{ resultMeta(item) }}</text>
-							<view class="result-reasons"><text v-for="reason in resultReasons(index)" :key="reason" class="result-reason">{{ reason }}</text></view>
 							<text v-if="index === 0" class="result-card-hint">点击查看完整资料</text>
 						</view>
 					</view>
-					<text class="result-disclaimer">AI 推荐会受资料完整度影响，结果仅作认识参考</text>
+					<button v-if="hasMore && resultState === 'success'" class="load-more-button" :disabled="loadingMore" @tap="loadMoreResults"><text>{{ loadingMore ? '加载中…' : '加载更多' }}</text></button>
+					<text class="result-disclaimer">结果按资料完整度与筛选条件返回，仅作认识参考</text>
 				</view>
 			</scroll-view>
 
@@ -169,7 +173,8 @@
 <script setup lang="uts">
 	import XsaSheet from '@/components/XsaSheet.uvue'
 	import XsaTag from '@/components/XsaTag.uvue'
-	import { getOwnProfile, getEmotionLabSummary, setMyMbtiType, getRecommendUsers, generateIdealPartner } from '@/api'
+	import { getOwnProfile, getEmotionLabSummary, setMyMbtiType, getDiscoveryRecommendations } from '@/api'
+	import { buildStructuredSearchParams } from '@/utils/searchFilterMapping.uts'
 
 	const systemInfo = uni.getSystemInfoSync()
 	const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
@@ -188,6 +193,9 @@
 	const resultCandidates = ref<any[]>([])
 	const resultError = ref('请检查网络后再试一次')
 	let searchRunId = 0
+	const nextCursor = ref('')
+	const hasMore = ref(false)
+	const loadingMore = ref(false)
 	const updateSearchProgress = (value: number) => {
 		searchProgress.value = Math.round(value)
 		if (value < 35) searchProgressCopy.value = '正在理解你的搜索期待'
@@ -225,7 +233,9 @@
 	const HEIGHT_MIN = 140
 	const HEIGHT_MAX = 220
 	const INCOME_STOPS = [5, 15, 30, 50, 100, 500]
-	const educationOptions = ['小学', '初中', '技校', '高中', '大专', '本科', '硕士', '博士']
+	// 学历选项与存储域（education_level 1=高中及以下 … 5=博士，编辑器写入域）对齐；
+	// 小学/初中/技校在存储域不可表达，隐藏（后端字典冲突已单独记录）。
+	const educationOptions = ['不限', '高中', '大专', '本科', '硕士', '博士']
 	const marriageOptions = ['未婚', '离异']
 	const hometownIndex = ref(0)
 	const residenceIndex = ref(0)
@@ -326,24 +336,7 @@
 			index += 1
 		}, 45)
 	}
-	const requestAiSuggestedQuery = async () => {
-		if (aiGenerating.value) return
-		aiGenerating.value = true
-		stopAiTyping()
-		try {
-			const result = await generateIdealPartner()
-			if (!result.success || result.data == null) {
-				uni.showToast({ title: result.message != null ? toText(result.message) : '暂时无法生成，请稍后重试', icon: 'none' })
-				return
-			}
-			typeAiText(toText(result.data))
-		} catch (error) {
-			console.error('[Search] AI suggestion failed', error)
-			uni.showToast({ title: 'AI 暂时不可用，请稍后重试', icon: 'none' })
-		} finally {
-			aiGenerating.value = false
-		}
-	}
+	const onAiSuggestTap = () => { uni.showToast({ title: 'AI 猜你喜欢暂未开放', icon: 'none' }) }
 	const onHometownChange = (event: any) => { hometownIndex.value = Number(event.detail.value) }
 	const onResidenceChange = (event: any) => { residenceIndex.value = Number(event.detail.value) }
 	const clampInt = (value: any, min: number, max: number, fallback: number): number => {
@@ -613,15 +606,6 @@
 		if (city != '') parts.push(city)
 		return parts.join(' | ')
 	}
-	const resultMatchCount = (index: number): number => {
-		const base = activeTab.value == 0 ? 2 : activeTab.value == 1 ? targetMbtis.value.length : 1 + (education.value != '' ? 1 : 0) + (incomeMin.value != null || incomeMax.value != null ? 1 : 0)
-		return Math.max(1, Math.min(5, base - (index % 2)))
-	}
-	const resultReasons = (index: number): string[] => {
-		if (activeTab.value == 1) return index % 2 == 0 ? ['人格类型接近', '相处节奏合拍'] : ['思维方式互补', '关系期待相近']
-		if (activeTab.value == 2) return index % 2 == 0 ? ['基础条件符合', '资料完整'] : ['生活范围接近', '认证资料']
-		return index % 2 == 0 ? ['相处期待接近', '兴趣有交集'] : ['生活方式相近', '认真对待关系']
-	}
 	const normalizeResultList = (response: any): any[] => {
 		if (response == null) return []
 		const payload = response.data != null ? response.data : response
@@ -629,25 +613,48 @@
 		if (payload.items != null && Array.isArray(payload.items)) return payload.items as any[]
 		return []
 	}
+	const buildCurrentQuery = (): any => {
+		return buildStructuredSearchParams({
+			ageMin: ageMin.value,
+			ageMax: ageMax.value,
+			heightMin: heightMin.value,
+			heightMax: heightMax.value,
+			incomeMinWan: incomeMin.value,
+			incomeMaxWan: incomeMax.value,
+			education: education.value,
+			marriage: marriage.value,
+			residenceLabel: residenceOptions[residenceIndex.value]
+		})
+	}
 	const beginSearch = async () => {
 		const runId = searchRunId + 1
 		searchRunId = runId
 		resultState.value = 'loading'
-		updateSearchProgress(6)
-		searchProgressCopy.value = '正在理解你的搜索期待'
+		// 筛选变化即重置旧游标与旧结果（契约：cursor 只在同一条件集内推进）
+		nextCursor.value = ''
+		hasMore.value = false
+		loadingMore.value = false
+		updateSearchProgress(35)
+		searchProgressCopy.value = '正在按条件筛选'
 		resultCandidates.value = []
 		resultError.value = '请检查网络后再试一次'
 		try {
-			const responsePromise = getRecommendUsers()
-			const firstPass = animateSearchProgress(runId, 6, 64, 920)
-			const response = await responsePromise
+			const params = buildCurrentQuery()
+			params.page = 1
+			params.page_size = 20
+			const response = await getDiscoveryRecommendations(params)
 			if (runId != searchRunId) return
-			resultCandidates.value = normalizeResultList(response)
-			if (!await firstPass || runId != searchRunId) return
-			if (!await animateSearchProgress(runId, 64, 94, 760) || runId != searchRunId) return
-			if (!await animateSearchProgress(runId, 94, 100, 280) || runId != searchRunId) return
+			if (response == null || !response.success || response.data == null) {
+				resultState.value = 'error'
+				resultError.value = response != null && response.message != null && ('' + response.message).trim() != '' ? '' + response.message : '搜索服务暂时不可用，请稍后再试'
+				return
+			}
+			resultCandidates.value = response.data.items != null && Array.isArray(response.data.items) ? response.data.items as any[] : []
+			nextCursor.value = response.data.nextCursor != null ? '' + response.data.nextCursor : ''
+			hasMore.value = response.data.hasMore == true
+			if (!await animateSearchProgress(runId, 35, 100, 420) || runId != searchRunId) return
 			if (resultCandidates.value.length > 0) {
-				searchProgressCopy.value = '已整理出值得你了解的人'
+				searchProgressCopy.value = '已按条件整理出结果'
 				resultState.value = 'success'
 			} else {
 				resultState.value = 'empty'
@@ -660,9 +667,35 @@
 			resultError.value = '搜索服务暂时不可用，请稍后再试'
 		}
 	}
+	const loadMoreResults = async () => {
+		if (loadingMore.value || !hasMore.value || nextCursor.value == '') return
+		const runId = searchRunId
+		loadingMore.value = true
+		try {
+			const params = buildCurrentQuery()
+			params.cursor = nextCursor.value
+			params.page_size = 20
+			const response = await getDiscoveryRecommendations(params)
+			if (runId != searchRunId) return
+			if (response == null || !response.success || response.data == null) {
+				uni.showToast({ title: '加载更多失败，请稍后再试', icon: 'none' })
+				return
+			}
+			const items = response.data.items != null && Array.isArray(response.data.items) ? response.data.items as any[] : []
+			resultCandidates.value = resultCandidates.value.concat(items)
+			nextCursor.value = response.data.nextCursor != null ? '' + response.data.nextCursor : ''
+			hasMore.value = response.data.hasMore == true
+		} catch (error) {
+			if (runId != searchRunId) return
+			console.error('[Search] load more failed', error)
+			uni.showToast({ title: '加载更多失败，请稍后再试', icon: 'none' })
+		} finally {
+			if (runId == searchRunId) loadingMore.value = false
+		}
+	}
 	const submitSearch = () => {
-		if (activeTab.value == 0 && aiQuery.value.trim() == '') { uni.showToast({ title: '先写一句你的理想型', icon: 'none' }); return }
-		if (activeTab.value == 1 && targetMbtis.value.length == 0) { uni.showToast({ title: '请先选择对方类型', icon: 'none' }); return }
+		if (activeTab.value == 0) { uni.showToast({ title: 'AI 觅遇暂未开放，可先用「精准甄选」筛选', icon: 'none' }); return }
+		if (activeTab.value == 1) { uni.showToast({ title: 'MBTI 筛选暂未开放', icon: 'none' }); return }
 		saveHistory(buildHistoryRecord())
 		beginSearch()
 	}
@@ -902,4 +935,10 @@
 .mbti-type-button.selected { border-color: var(--accent); background: var(--accent-bg); color: var(--accent2); }
 .sheet-selected-tags { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10rpx; min-height: 54rpx; margin-top: 22rpx; }
 .sheet-empty-text { color: var(--ink2); font-size: 23rpx; font-weight: 500; }
+
+/* —— 接线收尾新增状态样式 —— */
+.panel-unavailable-note { display: block; margin-top: 16rpx; color: var(--muted); font-size: 24rpx; line-height: 1.6; }
+.ai-template-trigger--disabled { opacity: 0.5; }
+.wide-picker-disabled { width: 100%; padding: 20rpx 24rpx; border-radius: 16rpx; background: #F1EDE6; color: var(--muted); font-size: 26rpx; }
+.load-more-button { margin: 24rpx auto 8rpx; padding: 18rpx 48rpx; border-radius: 40rpx; background: #FFFFFF; border: 1rpx solid #E5E1DA; color: var(--ink); font-size: 26rpx; }
 </style>

@@ -48,7 +48,7 @@ function mapCard(row: any): any {
     certificationTags: certifications,
     isVip: card.isVip === true || card.is_vip === true,
     isFavorite: card.is_favorite == true,
-    matchScore: card.match_score != null ? Number(card.match_score) : (card.match != null ? Number(card.match) : 0),
+    matchScore: card.match_score != null ? Number(card.match_score) : (card.match != null ? Number(card.match) : null),
     viewCount: card.view_count != null ? Number(card.view_count) : 0,
     matchReason: card.match_reason != null ? '' + card.match_reason : '',
     raw: card
@@ -65,7 +65,8 @@ function mapPage(raw: any): any {
     page: body.page != null ? Number(body.page) : 1,
     pageSize: body.page_size != null ? Number(body.page_size) : 20,
     total: body.total != null ? Number(body.total) : items.length,
-    hasMore: body.has_more == true
+    hasMore: body.has_more == true,
+    nextCursor: body.next_cursor != null ? '' + body.next_cursor : ''
   }
 }
 

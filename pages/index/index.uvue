@@ -113,23 +113,12 @@
 
 						<view class="divider"></view>
 
-						<view class="cert-section">
+						<!-- 认证标签来自后端 certification_tags 真实字段（实名/单身承诺）；
+						     无认证数据的候选隐藏该区块，不展示未接线的认证结论 -->
+						<view class="cert-section" v-if="currentCertTags.length > 0">
 							<text class="cert-label">已认证:</text>
-							<view class="cert-tag">
-								<text class="ic ic-sys ic-shiming cert-icon"></text>
-								<text class="cert-text">实名</text>
-							</view>
-							<view class="cert-tag">
-								<text class="ic ic-me ic-xueli cert-icon"></text>
-								<text class="cert-text">学历</text>
-							</view>
-							<view class="cert-tag">
-								<text class="ic ic-home ic-heart cert-icon gold-icon"></text>
-								<text class="cert-text">单身</text>
-							</view>
-							<view class="cert-tag">
-								<text class="ic ic-social ic-paishe cert-icon"></text>
-								<text class="cert-text">头像</text>
+							<view class="cert-tag" v-for="(tag, ci) in currentCertTags" :key="ci">
+								<text class="cert-text">{{ tag }}</text>
 							</view>
 						</view>
 
@@ -140,11 +129,11 @@
 								<view class="ring-outer">
 									<view class="ring-inner"></view>
 								</view>
-								<text class="ring-percent">{{ currentRecommendUser.matchScore }}%</text>
+								<text class="ring-percent">{{ aiScoreText }}</text>
 							</view>
 							<view class="match-info">
 								<text class="match-title">AI 匹配度分析</text>
-								<text class="match-desc">MBTI高度契合 · 兴趣重合度高 · 三观相近</text>
+								<text v-if="currentRecommendUser.matchReason != null && currentRecommendUser.matchReason != ''" class="match-desc">{{ currentRecommendUser.matchReason }}</text>
 							</view>
 						</view>
 
@@ -1140,7 +1129,7 @@
 
 	// ========== AI 匹配度（MBTI 配对解析小窗） ==========
 	const aiVisible = ref(false)
-	const myMbti = ref('INFP')
+	const myMbti = ref('')
 	const myAvatar = ref('')
 	const aiProfileLoaded = ref(false)
 
@@ -1179,14 +1168,30 @@
 		const user = currentRecommendUser.value as any
 		return user.avatar != null ? '' + user.avatar : ''
 	})
+	// 认证标签：后端 certification_tags 真实字段（mapCard 已映射），缺失时隐藏区块
+	const currentCertTags = computed((): string[] => {
+		const user = currentRecommendUser.value as any
+		const tags = user.certificationTags
+		return tags != null && tags.length > 0 ? tags : []
+	})
 	const aiOtherMbti = computed((): string => {
 		const user = currentRecommendUser.value as any
 		const mbti = user.mbti != null ? '' + user.mbti : ''
-		return mbti.length == 4 ? mbti.toUpperCase() : 'ENTP'
+		// 对方 MBTI 缺失时如实返回空串（由展示层隐藏），不伪造类型
+		return mbti.length == 4 ? mbti.toUpperCase() : ''
+	})
+	// 环形分数：真实 0 分显示 0%，无数据/解析失败显示 --（不与零分混淆）
+	const aiScoreText = computed((): string => {
+		const user = currentRecommendUser.value as any
+		if (user.matchScore == null) return '--'
+		const score = Number(user.matchScore)
+		if (isNaN(score)) return '--'
+		return '' + Math.round(score) + '%'
 	})
 	const aiScore = computed((): number => {
 		const user = currentRecommendUser.value as any
-		const score = Number(user.matchScore || 0)
+		if (user.matchScore == null) return 0
+		const score = Number(user.matchScore)
 		return isNaN(score) ? 0 : score
 	})
 

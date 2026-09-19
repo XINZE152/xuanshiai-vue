@@ -6,7 +6,7 @@
 		<scroll-view class="visitors-scroll" scroll-y>
 			<view class="unlock-banner"><view class="banner-top"><view class="banner-lock"><text class="ic ic-vip ic-huiyuan"></text></view><view class="banner-copy"><text class="banner-title">解锁查看全部访客</text><text class="banner-subtitle">开通VIP会员，查看谁在关注你</text></view></view><view class="banner-button" @tap="goVip"><text>立即开通会员</text></view></view>
 			<view class="visitor-heading"><text>最近访客</text><view class="sort"><text class="ic ic-sys ic-xiala"></text><text>按时间</text></view></view>
-			<view class="visitor-grid"><view class="visitor-card" v-for="visitor in visitors" :key="visitor.distance"><view class="photo-area"><view class="person-placeholder"><text class="ic ic-social ic-touxiang"></text></view><view class="photo-lock"><view class="photo-lock-circle"><text class="ic ic-vip ic-huiyuan"></text></view></view></view><view class="info-strip"><text>距你 {{ visitor.distance }}</text><text class="hot">人气 {{ visitor.hot }}</text></view></view></view>
+			<view class="visitor-grid"><view class="visitor-card" v-for="visitor in visitors" :key="visitor.distance"><view class="photo-area"><view class="person-placeholder"><text class="ic ic-social ic-touxiang"></text></view><view class="photo-lock"><view class="photo-lock-circle"><text class="ic ic-vip ic-huiyuan"></text></view></view></view><view class="info-strip"><text>距你 {{ visitor.distance }}</text><text class="hot">合拍度 {{ visitor.compatText }}</text></view></view></view>
 			<view class="bottom-unlock"><view class="bottom-vip-icon"><text class="ic ic-vip ic-huiyuan"></text></view><text class="bottom-title">还有更多人在关注你</text><text class="bottom-desc">开通VIP会员后，所有访客记录将自动解锁，你可以查看对方的详细资料并发起互动</text><view class="bottom-button" @tap="goVip"><text>立即开通VIP · 解锁全部访客</text></view><view class="feature-list"><text>✓ 无限查看</text><text>✓ 清晰头像</text><text>✓ 详细资料</text></view></view>
 		</scroll-view>
 	</view>
@@ -22,7 +22,7 @@ const loadVisitors = async () => {
 	const result: any[] = []
 	for (let i = 0; i < rows.length; i++) {
 		const card = rows[i].target != null ? rows[i].target : {}
-		result.push({ distance: card.distance_km != null ? Number(card.distance_km).toFixed(1) + 'km' : '未知', hot: card.match_score != null ? Math.round(Number(card.match_score)) : 0 })
+		result.push({ distance: card.distance_km != null ? Number(card.distance_km).toFixed(1) + 'km' : '未知', compatText: card.match_score != null ? Math.round(Number(card.match_score)) + '%' : '--' })
 	}
 	visitors.value = result
 }

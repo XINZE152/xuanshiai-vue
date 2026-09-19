@@ -21,7 +21,7 @@
 			</view>
 			<view class="section-divider"></view>
 			<view class="upsell-card"><view class="lock-circle"><text class="ic ic-vip ic-huiyuan lock-icon"></text></view><text class="upsell-title">开通会员查看全部访客</text><text class="upsell-desc">解锁后可查看谁看过你，发现更多缘分</text><view class="upsell-button" @tap="goVip"><text>立即开通会员</text></view></view>
-			<view class="visitor-section"><text class="visitor-title">最近访客</text><view class="visitor-row" v-for="visitor in visitors" :key="visitor.distance"><view class="visitor-avatar"><text class="ic ic-social ic-touxiang visitor-icon"></text></view><view class="visitor-info"><text class="visitor-name">{{ visitor.name }}</text><text class="visitor-meta">距你 {{ visitor.distance }} · 人气 {{ visitor.hot }}</text></view><view class="lock-badge"><text class="ic ic-vip ic-huiyuan"></text><text>VIP查看</text></view></view></view>
+			<view class="visitor-section"><text class="visitor-title">最近访客</text><view class="visitor-row" v-for="visitor in visitors" :key="visitor.distance"><view class="visitor-avatar"><text class="ic ic-social ic-touxiang visitor-icon"></text></view><view class="visitor-info"><text class="visitor-name">{{ visitor.name }}</text><text class="visitor-meta">距你 {{ visitor.distance }} · 合拍度 {{ visitor.compatText }}</text></view><view class="lock-badge"><text class="ic ic-vip ic-huiyuan"></text><text>VIP查看</text></view></view></view>
 		</scroll-view>
 		<view v-if="filterVisible" class="filter-mask" @tap="closeFilter">
 			<view class="filter-sheet" @tap.stop="noop">
@@ -64,7 +64,7 @@ const loadVisitors = async () => {
 	const result: any[] = []
 	for (let i = 0; i < rows.length; i++) {
 		const card = rows[i].target != null ? rows[i].target : {}
-		result.push({ name: card.nickname != null ? card.nickname : '匿名用户', distance: card.distance_km != null ? Number(card.distance_km).toFixed(1) + 'km' : '未知', hot: card.match_score != null ? Math.round(Number(card.match_score)) : 0 })
+		result.push({ name: card.nickname != null ? card.nickname : '匿名用户', distance: card.distance_km != null ? Number(card.distance_km).toFixed(1) + 'km' : '未知', compatText: card.match_score != null ? Math.round(Number(card.match_score)) + '%' : '--' })
 	}
 	visitors.value = result
 }

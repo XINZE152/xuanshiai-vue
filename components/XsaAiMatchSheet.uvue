@@ -28,7 +28,7 @@
 								<image v-if="myAvatar != ''" class="pair-avatar-img" :src="myAvatar" mode="aspectFill"></image>
 								<text v-else class="pair-avatar-fallback">我</text>
 							</view>
-							<view class="pair-type-chip"><text class="pair-type-text">{{ myMbti }}</text></view>
+							<view v-if="myMbti != ''" class="pair-type-chip"><text class="pair-type-text">{{ myMbti }}</text></view>
 						</view>
 						<view class="pair-center">
 							<text class="pair-score-label">匹配度</text>
@@ -39,69 +39,19 @@
 								<image v-if="otherAvatar != ''" class="pair-avatar-img" :src="otherAvatar" mode="aspectFill"></image>
 								<text v-else class="pair-avatar-fallback">Ta</text>
 							</view>
-							<view class="pair-type-chip"><text class="pair-type-text">{{ otherMbti }}</text></view>
-						</view>
-					</view>
-					<text class="pair-headline">{{ analysis.headline }}</text>
-
-					<!-- 合适的点 -->
-					<view class="section">
-						<view class="section-head">
-							<view class="section-mark"></view>
-							<text class="section-title">合适的点</text>
-						</view>
-						<view class="harmony-grid">
-							<view class="harmony-item" v-for="(item, index) in analysis.harmony" :key="'h' + index">
-								<text class="harmony-title">{{ item.title }}</text>
-								<text class="harmony-text">{{ item.text }}</text>
-							</view>
+							<view v-if="otherType != ''" class="pair-type-chip"><text class="pair-type-text">{{ otherType }}</text></view>
 						</view>
 					</view>
 
-					<view class="section-divider"></view>
-
-					<!-- 可能的摩擦 -->
-					<view class="section">
-						<view class="section-head">
-							<view class="section-mark"></view>
-							<text class="section-title">可能的摩擦</text>
-						</view>
-						<view class="friction-list">
-							<view class="friction-item" v-for="(item, index) in analysis.friction" :key="'f' + index">
-								<view class="friction-title-row">
-									<view class="friction-dot"></view>
-									<text class="friction-title">{{ item.title }}</text>
-								</view>
-								<text class="friction-line"><text class="friction-who">{{ myMbti }}</text>{{ item.mine }}</text>
-								<text class="friction-line"><text class="friction-who">{{ otherMbti }}</text>{{ item.theirs }}</text>
-							</view>
-						</view>
+					<!-- 解读内容尚未接入正式数据：明确不可用态，不展示本地模拟结论 -->
+					<view class="state-unavailable">
+						<text class="state-unavailable-title">解读内容暂未开放</text>
+						<text class="state-unavailable-desc">AI 匹配解读正在接入双方真实资料，开放后将在此展示。当前仅展示由系统估算的匹配度分数。</text>
 					</view>
 
-					<view class="section-divider"></view>
-
-					<!-- 社交建议 -->
-					<view class="section">
-						<view class="section-head">
-							<view class="section-mark"></view>
-							<text class="section-title">社交建议</text>
-						</view>
-						<view class="advice-list">
-							<view class="advice-item" v-for="(group, index) in analysis.advice" :key="'a' + index">
-								<text class="advice-title">{{ group.title }}</text>
-								<view class="advice-points">
-									<view class="advice-point" v-for="(point, pi) in group.points" :key="'p' + index + '-' + pi">
-										<view class="point-dot"></view>
-										<text class="point-text">{{ point }}</text>
-									</view>
-								</view>
-							</view>
-						</view>
-					</view>
-
-					<view class="sheet-tip">
-						<text>基于双方 MBTI 与公开资料生成，仅供参考，不代表平台承诺任何关系结果。</text>
-					</view>
+				<view class="sheet-tip">
+					<text>匹配度由系统按双方当前可见资料估算（legacy-rule-v1），供了解和破冰参考，不代表平台承诺任何关系结果。</text>
+				</view>
 				</view>
 			</scroll-view>
 		</view>
@@ -119,8 +69,6 @@
  *   overflow 滚动失效的问题；
  * - 视觉遵循 DESIGN.md 瓷白青瓷体系（衬线标题 + 细线分区）。
  */
-import { getMbtiPairAnalysis } from '@/mock/aiMatch.uts'
-
 interface Props {
 	visible: boolean;
 	myName: string;
@@ -136,7 +84,7 @@ const props = withDefaults(defineProps<Props>(), {
 	visible: false,
 	myName: '你',
 	myAvatar: '',
-	myMbti: 'INFP',
+	myMbti: '',
 	otherName: 'Ta',
 	otherAvatar: '',
 	otherMbti: '',
@@ -158,18 +106,17 @@ let dragStartY = 0
 let dragStartHeight = 72
 
 const scoreText = computed(() : string => {
-	const score = Number(props.score || 0)
-	if (isNaN(score) || score <= 0) return '--'
+	// 真实 0 分显示 0%，未传入/解析失败显示 --（不与零分混淆）
+	if (props.score == null) return '--'
+	const score = Number(props.score)
+	if (isNaN(score)) return '--'
 	return '' + Math.round(score) + '%'
 })
 
+// 对方 MBTI 缺失时返回空串（展示层隐藏 chip），不伪造类型
 const otherType = computed(() : string => {
 	const mbti = props.otherMbti
-	return mbti != null && mbti.length == 4 ? mbti : 'ENTP'
-})
-
-const analysis = computed(() : any => {
-	return getMbtiPairAnalysis(props.myMbti, otherType.value, props.myName, props.otherName)
+	return mbti != null && mbti.length == 4 ? mbti : ''
 })
 
 const handleClose = () => {
@@ -553,6 +500,31 @@ watch(() => props.visible, (newValue: boolean) => {
 	font-size: 15px;
 	line-height: 1.7;
 	color: var(--ink2);
+}
+
+/* 解读内容不可用态（未接入正式数据） */
+.state-unavailable {
+	margin-top: 22px;
+	padding: 26px 16px;
+	border-radius: 12px;
+	background: var(--warm);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+
+.state-unavailable-title {
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--ink);
+	margin-bottom: 8px;
+}
+
+.state-unavailable-desc {
+	font-size: 13px;
+	line-height: 1.7;
+	color: var(--muted);
+	text-align: center;
 }
 
 /* 底部提示 */

@@ -30,7 +30,7 @@ expectAbsent(proxy, 'uni.request(', 'AI draft proxy does not call a provider dir
 expectAbsent(proxy, 'api.deepseek.com', 'AI draft proxy has no provider endpoint')
 expectAbsent(proxy, 'AI_API_KEY', 'AI draft proxy has no client-side provider key')
 expectAbsent(proxy, 'sk-', 'AI draft proxy has no secret-shaped literal')
-expect(searchPage, 'const result = await generateIdealPartner()', 'search page invokes the proxy without profile arguments')
+expectAbsent(searchPage, 'await generateIdealPartner()', 'AI ideal-partner entry stays closed until the backend route exists (never faked by plain search)')
 expect(searchPage, 'const aiGenerating = ref(false)', 'search page prevents duplicate draft submissions')
 expectAbsent(searchPage, '会员专享', 'advanced conditions are not hidden behind membership copy')
 expectAbsent(searchPage, '<text class="vip-badge">VIP</text>', 'advanced conditions have no VIP badge')

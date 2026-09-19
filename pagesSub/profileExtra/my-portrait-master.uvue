@@ -265,6 +265,7 @@ import { getMoxiangState, getSessionTurns, getMoxiangArchive, MoxiangStateRespon
 import { displayFieldValue } from '@/utils/profile-field-display.uts'
 import { categoryLabel } from '@/utils/moxiang-dimension.uts'
 import { loadMoxiangTrace } from '@/utils/moxiangTrace.uts'
+import { PcmPlayer } from '@/utils/pcm-player.uts'
 
 // ===== 导航与安全区域 =====
 const systemInfo = uni.getSystemInfoSync()
@@ -464,6 +465,31 @@ let chunkSeq = 0
 let isRecording = false
 let typingMsgId = 0
 
+// ===== 实时语音 v2（SenseAudio,开发开关默认关;开启后走 PCM 流式播放链路）=====
+const MOXIANG_REALTIME_V2_DEV = false
+let realtimeV2Active = false
+let currentGenerationId = ''
+let lastProgressReportMs = 0
+const pcmPlayer = new PcmPlayer({
+	onStarted: (generationId: string) => {
+		if (masterState.value == 'listening') masterState.value = 'idle'
+		currentGenerationId = generationId
+	},
+	onProgress: (generationId: string, playedMs: number) => {
+		if (generationId != currentGenerationId) return
+		const now = Date.now()
+		if (now - lastProgressReportMs < 500) return
+		lastProgressReportMs = now
+		ws?.sendPlaybackProgress(generationId, playedMs)
+	},
+	onFinished: (generationId: string, status: string, playedMs: number) => {
+		if (generationId != currentGenerationId && status != 'interrupted') return
+		currentGenerationId = ''
+		ws?.sendPlaybackFinished(generationId, status, playedMs)
+		// completed 后不本地抢跑:等服务端 voice_ready 自动开麦
+	}
+})
+
 // ===== 计算属性 =====
 const statusLabel = computed(() : string => {
 	if (connecting.value) return '正在连接'
@@ -577,8 +603,13 @@ function connectWS() {
 				}
 			}
 		},
-		onJourneyReady: (subject: ProfileSubject, sessionId: string, journeyStage: JourneyStage, resumed: boolean) => {
+		onJourneyReady: (subject: ProfileSubject, sessionId: string, journeyStage: JourneyStage, resumed: boolean, protocolVersion?: number) => {
 			connecting.value = false
+			// 实时语音 v2:仅当服务端确认 protocol_version=2 才启用 PCM 播放链路。
+			realtimeV2Active = protocolVersion != null && protocolVersion == 2
+			if (realtimeV2Active) {
+				pcmPlayer.stopAll()
+			}
 			currentSubject.value = subject
 			sessionStarted.value = true
 			buildMode.value = true
@@ -766,13 +797,64 @@ function connectWS() {
 				if (idx >= 0) messages.value.splice(idx, 1)
 			}
 		},
+		// ===== 实时语音 v2 事件(未协商成功时服务端不会推送) =====
+		onVoiceReady: () => {
+			if (!realtimeV2Active) return
+			pcmPlayer.stopAll()
+			startRecordingV2()
+		},
+		onInputClosed: () => {
+			if (!realtimeV2Active) return
+			// 服务端已关输入窗口;直接停麦,不发 audio_end(v2 由供应商 VAD 定稿)
+			if (isRecording) {
+				isRecording = false
+				if (recorderManager != null) {
+					recorderManager.stop()
+				}
+			}
+			if (masterState.value == 'listening') masterState.value = 'thinking'
+		},
+		onAudioOutputStart: (generationId: string, responseId: string, sampleRate: number, format: string) => {
+			if (!realtimeV2Active) return
+			currentGenerationId = generationId
+		},
+		onAudioChunk: (generationId: string, seq: number, base64Data: string) => {
+			if (!realtimeV2Active) return
+			pcmPlayer.enqueue(generationId, base64Data, seq)
+		},
+		onAudioOutputEnd: (generationId: string, responseId: string) => {
+			if (!realtimeV2Active) return
+			pcmPlayer.finish(generationId)
+		},
+		onResponseDone: (generationId: string, status: string) => {
+			if (!realtimeV2Active) return
+			if (status != 'completed') {
+				// 失败/打断的回复:停掉播放残留,等服务端 voice_ready 或用户操作
+				if (currentGenerationId == generationId) {
+					pcmPlayer.stopAll()
+				}
+			} else {
+				pcmPlayer.finish(generationId)
+			}
+		},
+		onCancelled: (generationId: string) => {
+			if (!realtimeV2Active) return
+			if (currentGenerationId == generationId || generationId != '') {
+				pcmPlayer.stopAll()
+			}
+		},
 		onClose: () => {
 			inviteBusy.value = false
+			pcmPlayer.stopAll()
 			if (!connecting.value && sessionStarted.value) {
 				uni.showToast({ title: masterRoleName + '已离开', icon: 'none' })
 			}
 		}
 	})
+	// 实时语音 v2:开发开关打开时声明协议版本与 PCM 播放能力(默认关)。
+	if (MOXIANG_REALTIME_V2_DEV && ws != null) {
+		ws.enableRealtimeV2()
+	}
 	// 双画像共用一条自然对话旅程 WebSocket；主体切换只改变当前会话绑定。
 	if (ws != null) {
 		ws.startJourneyMode(currentSubject.value, 'profile-text-v1')
@@ -1154,11 +1236,53 @@ function switchToText() {
 
 // ===== 语音模式 =====
 function toggleVoice() {
+	// v2 播放中点击语音按钮 = 点击打断("我来说")
+	if (realtimeV2Active && pcmPlayer.isPlaying()) {
+		interruptCurrentReply()
+		return
+	}
+	if (realtimeV2Active) {
+		// v2 空闲时点击:仅在服务端 voice_ready 后才真正可录;
+		// audio_start 触发上游建立,voice_ready 到达后自动开麦。
+		if (ws != null && ws.isConnected() && sessionStarted.value) {
+			ws.sendAudioStart()
+		}
+		return
+	}
 	if (masterState.value == 'listening') {
 		stopRecording()
 	} else {
 		startRecording()
 	}
+}
+
+// ===== 实时语音 v2 =====
+function startRecordingV2() {
+	if (ws == null || !ws.isConnected() || isRecording) return
+	ensureRecorder()
+	isRecording = true
+	chunkSeq = 0
+	partialText.value = ''
+	masterState.value = 'listening'
+	// v2 不发 audio_start(开麦已在打断/轮转时触发);只上报幂等身份
+	ws.sendVoiceInputBegin('' + Date.now() + '-' + Math.floor(Math.random() * 1000000))
+	recorderManager.start({
+		format: 'pcm',
+		sampleRate: 16000,
+		numberOfChannels: 1,
+		frameSize: 4
+	})
+}
+
+function interruptCurrentReply() {
+	const generationId = currentGenerationId
+	// 立即停播,不等网络
+	pcmPlayer.stopAll()
+	currentGenerationId = ''
+	if (ws != null && ws.isConnected() && generationId != '') {
+		ws.sendInterrupt(generationId)
+	}
+	// 服务端打断后轮转上游,voice_ready 到达时自动恢复"我在听"
 }
 
 function ensureRecorder() {
@@ -1485,6 +1609,8 @@ onLoad((options: any) => {
 })
 
 onUnmounted(() => {
+	pcmPlayer.stopAll()
+	pcmPlayer.destroy()
 	if (isRecording) stopRecording()
 	if (audioContext != null) {
 		try { audioContext.destroy() } catch (e) {}

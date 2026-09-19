@@ -299,27 +299,8 @@ export async function getRecommendUser(index: number = 0) {
   })
 }
 
-/**
- * 获取推荐用户列表（全量）
- */
-export async function getRecommendUsers(internalMockScope: string = '') {
-  if (isParentMockScope(internalMockScope)) {
-    const likedIds = getParentMockLikedIds(internalMockScope)
-    const candidates: any[] = []
-    const source = getParentMockCandidateSource()
-    for (let i = 0; i < source.length; i++) {
-      candidates.push({ ...source[i], liked: isMockLiked(Number(source[i].id), likedIds) })
-    }
-    return okRes(candidates)
-  }
-  return request({
-    url: '/user/recommend/list',
-    cloudFunctionName: 'user',
-    action: 'getRecommendList',
-    method: 'GET',
-    mockData: mockRecommendUsers
-  })
-}
+// getRecommendUsers（GET /user/recommend/list）已于 2026-09-13 移除：
+// 后端不存在该路由，唯一调用方（搜索页）已迁移至 GET /discovery/recommendations。
 
 /**
  * 用户级喜欢列表。父母端传入内部 scope 时只读取该子女主体的隔离 Mock；

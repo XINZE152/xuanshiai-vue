@@ -23,7 +23,6 @@ export {
 // 用户相关
 export {
   getRecommendUser,
-  getRecommendUsers,
   getSquareUsers,
   getUserDetail,
   getMeProfile,

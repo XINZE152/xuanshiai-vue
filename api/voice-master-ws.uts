@@ -87,18 +87,27 @@ export interface MasterWSCallbacks {
 	onFinalTranscript?: (text: string) => void
 	onAIThinking?: () => void
 	onAIContent?: (text: string) => void
-	onAIReply?: (text: string, isOpening?: boolean) => void
+	onAIReply?: (text: string, isOpening?: boolean, generationId?: string) => void
 	onTTSAudio?: (audioUrl: string, durationMs: number) => void
 	onConfirmCard?: (card: ConfirmCardPayload) => void
 	onPublishReady?: (subject: ProfileSubject, summary: string) => void
 	onError?: (code: string, message: string) => void
 	onClose?: () => void
 	// ===== Phase 1 Contract v1.1 P1-D =====
-	onJourneyReady?: (subject: ProfileSubject, sessionId: string, journeyStage: JourneyStage, resumed: boolean) => void
+	onJourneyReady?: (subject: ProfileSubject, sessionId: string, journeyStage: JourneyStage, resumed: boolean, protocolVersion?: number) => void
 	onExtractionStatus?: (status: ExtractionStatus) => void
 	onJourneyProgress?: (progress: JourneyProgress) => void
 	onBuildInvite?: (invite: BuildInvitePayload) => void
 	onBuildInviteResolved?: (resolution: BuildInviteResolution) => void
+	// ===== 实时语音 v2（SenseAudio）=====
+	onVoiceReady?: () => void
+	onInputClosed?: () => void
+	onAudioOutputStart?: (generationId: string, responseId: string, sampleRate: number, format: string) => void
+	onAudioChunk?: (generationId: string, seq: number, base64Data: string) => void
+	onAudioOutputEnd?: (generationId: string, responseId: string) => void
+	onResponseDone?: (generationId: string, status: string) => void
+	onCancelled?: (generationId: string) => void
+	onResponseStatus?: (generationId: string, generationStatus: string, playbackStatus: string) => void
 }
 
 export class MasterWS {
@@ -111,9 +120,20 @@ export class MasterWS {
 	// 旅程参数:非空时 session_start 固定携带 moxiang_journey。
 	private journeySubject: ProfileSubject | null = null
 	private journeyConsentVersion = ''
+	// 实时语音 v2:connect 前调用 enableRealtimeV2() 后 session_start
+	// 携带 protocolVersion=2 与 pcmPlayback 能力声明;未协商成功自动回退 v1。
+	private protocolV2 = false
 
 	constructor(callbacks: MasterWSCallbacks) {
 		this.callbacks = callbacks
+	}
+
+	enableRealtimeV2() {
+		this.protocolV2 = true
+	}
+
+	isRealtimeV2() : boolean {
+		return this.protocolV2
 	}
 
 	/**
@@ -207,12 +227,23 @@ switchSubject(subject: ProfileSubject) {
 
 private sendSessionStart() {
 	if (this.journeySubject != null) {
-		this.send({
-			type: 'session_start',
-			mode: 'moxiang_journey',
-			subject: this.journeySubject,
-			consentVersion: this.journeyConsentVersion
-		})
+		if (this.protocolV2) {
+			this.send({
+				type: 'session_start',
+				mode: 'moxiang_journey',
+				subject: this.journeySubject,
+				consentVersion: this.journeyConsentVersion,
+				protocolVersion: 2,
+				capabilities: { pcmPlayback: true }
+			})
+		} else {
+			this.send({
+				type: 'session_start',
+				mode: 'moxiang_journey',
+				subject: this.journeySubject,
+				consentVersion: this.journeyConsentVersion
+			})
+		}
 	} else {
 		this.send({ type: 'session_start' })
 	}
@@ -296,7 +327,8 @@ snoozeBuildInvite(subject: ProfileSubject, inviteId: string) {
 			case 'ai_reply':
 				this.callbacks.onAIReply?.(
 					String(msg.text != null ? msg.text : ''),
-					msg.opening === true
+					msg.opening === true,
+					msg.generation_id != null ? String(msg.generation_id) : undefined
 				)
 				break
 			case 'tts_audio':
@@ -343,6 +375,52 @@ snoozeBuildInvite(subject: ProfileSubject, inviteId: string) {
 			case 'build_invite_resolved':
 				this.handleBuildInviteResolved(msg)
 				break
+			// ===== 实时语音 v2 事件 =====
+			case 'voice_ready':
+				this.callbacks.onVoiceReady?.()
+				break
+			case 'input_closed':
+				this.callbacks.onInputClosed?.()
+				break
+			case 'audio_output_start':
+				this.callbacks.onAudioOutputStart?.(
+					String(msg.generation_id != null ? msg.generation_id : ''),
+					String(msg.response_id != null ? msg.response_id : ''),
+					Number(msg.sample_rate != null ? msg.sample_rate : 0),
+					String(msg.format != null ? msg.format : 'pcm_s16le')
+				)
+				break
+			case 'audio_chunk':
+				this.callbacks.onAudioChunk?.(
+					String(msg.generation_id != null ? msg.generation_id : ''),
+					Number(msg.seq != null ? msg.seq : 0),
+					String(msg.data != null ? msg.data : '')
+				)
+				break
+			case 'audio_output_end':
+				this.callbacks.onAudioOutputEnd?.(
+					String(msg.generation_id != null ? msg.generation_id : ''),
+					String(msg.response_id != null ? msg.response_id : '')
+				)
+				break
+			case 'response_done':
+				this.callbacks.onResponseDone?.(
+					String(msg.generation_id != null ? msg.generation_id : ''),
+					String(msg.status != null ? msg.status : 'failed')
+				)
+				break
+			case 'cancelled':
+				this.callbacks.onCancelled?.(
+					String(msg.generation_id != null ? msg.generation_id : '')
+				)
+				break
+			case 'response_status':
+				this.callbacks.onResponseStatus?.(
+					String(msg.generation_id != null ? msg.generation_id : ''),
+					String(msg.generation_status != null ? msg.generation_status : ''),
+					String(msg.playback_status != null ? msg.playback_status : '')
+				)
+				break
 		}
 	}
 
@@ -359,7 +437,7 @@ snoozeBuildInvite(subject: ProfileSubject, inviteId: string) {
 		return 'chatting'
 	}
 
-	// {"type":"journey_ready","subject":"personal","session_id":"s-...","journey_stage":"chatting","resumed":true}
+	// {"type":"journey_ready","subject":"personal","session_id":"s-...","journey_stage":"chatting","resumed":true,"protocol_version":2}
 	private handleJourneyReady(msg: any) {
 		const subject = this.parseSubject(msg.subject)
 		if (subject == null) {
@@ -369,7 +447,8 @@ snoozeBuildInvite(subject: ProfileSubject, inviteId: string) {
 		const sessionId = String(msg.session_id != null ? msg.session_id : '')
 		const stage = this.parseJourneyStage(msg.journey_stage)
 		const resumed = msg.resumed === true
-		this.callbacks.onJourneyReady?.(subject, sessionId, stage, resumed)
+		const protocolVersion = Number(msg.protocol_version != null ? msg.protocol_version : 1)
+		this.callbacks.onJourneyReady?.(subject, sessionId, stage, resumed, protocolVersion)
 	}
 
 	// {"type":"build_invite","subject":"personal","invite_id":"invite-...","summary_items":[...],"effective_turn_count":4,"dimension_count":3,"candidate_count":3}
@@ -520,6 +599,27 @@ snoozeBuildInvite(subject: ProfileSubject, inviteId: string) {
 
 	sendCancel() {
 		this.send({ type: 'cancel' })
+	}
+
+	// ===== 实时语音 v2 =====
+	// 客户端真实开麦:绑定本轮发言的幂等身份(后端以此落库去重)
+	sendVoiceInputBegin(clientTurnId: string) {
+		this.send({ type: 'voice_input_begin', client_turn_id: clientTurnId })
+	}
+
+	// 点击打断:立即作废当前回复世代(后端退役上游并重建)
+	sendInterrupt(generationId: string) {
+		this.send({ type: 'interrupt', generation_id: generationId })
+	}
+
+	// 播放进度回执(节流由页面控制,建议 ≥500ms)
+	sendPlaybackProgress(generationId: string, playedMs: number) {
+		this.send({ type: 'playback_progress', generation_id: generationId, played_ms: playedMs })
+	}
+
+	// 播放完成/打断回执:completed | interrupted | failed
+	sendPlaybackFinished(generationId: string, status: string, playedMs: number) {
+		this.send({ type: 'playback_finished', generation_id: generationId, status: status, played_ms: playedMs })
 	}
 
 	private send(msg: any) {

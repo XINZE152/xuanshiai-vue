@@ -203,12 +203,12 @@
 
 		<XsaSheet :visible="matchVisible" title="AI 合拍度解读" @close="matchVisible = false">
 			<view class="match-sheet">
-				<view class="match-sheet-score"><text>{{ user.match > 0 ? user.match + '%' : '暂无评分' }}</text></view>
+				<view class="match-sheet-score"><text>{{ user.matchAvailable ? user.match + '%' : '暂无评分' }}</text></view>
 				<view class="match-interpret">
 					<view class="match-interpret-head"><text class="match-interpret-mark">✦</text><text class="match-interpret-title">AI 解读</text></view>
 					<text class="match-interpret-text">{{ detailInterpretation }}</text>
 				</view>
-				<view class="match-sheet-tip"><text>基于公开资料与兴趣交集生成，不代表平台承诺结果。建议从共同兴趣或城市周末安排开始聊。</text></view>
+				<view class="match-sheet-tip"><text>合拍度由系统按双方当前可见资料估算，供了解和破冰参考，不代表平台承诺结果。</text></view>
 			</view>
 		</XsaSheet>
 	</view>
@@ -253,7 +253,7 @@ const user = ref({
 	id: 0,
 	detailLocked: false,
 	name: '', age: '', avatar: '', isVIP: false, job: '', edu: '', city: '',
-	online: '', distance: '', recentActivity: '', match: 0, mbti: '', tags: [], bio: '',
+	online: '', distance: '', recentActivity: '', match: 0, matchAvailable: false, mbti: '', tags: [], bio: '',
 	cover: '', photos: [], lifePhotos: [], expect: [], basicInfo: [],
 	moxiangPersonaTitle: '',
 	moxiangPersonaTags: [] as string[],
@@ -365,7 +365,7 @@ const formatIncome = (raw: any): string => {
 
 user.value = {
 	id: 0, name: '', detailLocked: false, age: '', avatar: '', isVIP: false, job: '', edu: '', city: '',
-	online: '', distance: '', recentActivity: '', match: 0, tags: [], bio: '',
+	online: '', distance: '', recentActivity: '', match: 0, matchAvailable: false, tags: [], bio: '',
 	cover: '', photos: [], lifePhotos: [], expect: [], basicInfo: [],
 	moxiangPersonaTitle: '',
 	moxiangPersonaTags: [] as string[],
@@ -467,6 +467,7 @@ const mapDetailUser = (raw: any, id: number) => {
 		distance: value(card.distance, card.distance_km != null ? '距你 ' + card.distance_km + 'km' : null, ''),
 		recentActivity: value(card.recentActivity, card.activeStatus, ''),
 		match: card.match_score != null ? Number(card.match_score) : (card.match != null ? Number(card.match) : 0),
+		matchAvailable: card.match_score != null || card.match != null,
 		mbti,
 		tags: tagWithMbti,
 		bio: value(card.intro, profile.self_intro, value(card.introduction, profile.introduction, '')),

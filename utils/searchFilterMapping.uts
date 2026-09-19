@@ -1,0 +1,93 @@
+/**
+ * 搜索页结构化筛选 → GET /discovery/recommendations 参数映射。
+ *
+ * 每一项映射都基于当前代码证据，不做未确认的换算；证据来源以注释标注。
+ * 无法确认或后端不支持的字段一律返回 null（调用方必须禁用对应控件），
+ * 不伪装成筛选已生效。
+ *
+ * 后端契约：DiscoveryFilters（app/schemas/discovery.py:13-29），
+ * SQL 条件见 app/services/discovery.py:_filter_sql。
+ * 组合语义：该接口默认 respect_preferences=True——本次筛选条件与
+ * 用户长期择偶偏好（user_partner_preference）同时生效（AND）。
+ */
+
+// ---- 学历（education_level，存储域 = 档案编辑写入域）----
+// 证据：pagesSub/userExtra/user/edit.uvue:328 educationOptions 数组下标即编号
+//（'高中及以下'=1 … '博士'=5）；后端 _AI_SYNC_EDU_MAP（app/services/profile.py:962）
+// 目标域 1..5 与之一致。SQL 语义为 `p.education_level >= :education_min`（及以上）。
+// 注意：GET /discovery/filter-options 返回的 1=博士…5=高中 与存储域方向相反，
+// 不可作为本映射来源（存量后端缺陷，已单独记录）。
+// 搜索页的 '小学'/'初中'/'技校' 在存储域不可表达（编辑器最低档为'高中及以下'），
+// 返回 null → 调用方禁用这三个选项。
+export function educationMinFor(label: string): number | null {
+	if (label == '高中') return 1
+	if (label == '大专') return 2
+	if (label == '本科') return 3
+	if (label == '硕士') return 4
+	if (label == '博士') return 5
+	return null
+}
+
+// ---- 婚况（marriage_status → u.is_married 精确等值）----
+// 证据：GET /discovery/filter-options marriage_statuses 1=未婚 2=离异 3=丧偶
+//（app/services/discovery.py:593，与 docs/api/发现.md 一致）。'不限' = 不传参。
+export function marriageStatusFor(label: string): number | null {
+	if (label == '未婚') return 1
+	if (label == '离异') return 2
+	return null
+}
+
+// ---- 居住地（city_code → p.residence_city_code 精确等值）----
+// 证据：档案写入与展示使用前端 data/location.json 的 6 位码
+//（edit.uvue locationCodesByNames；南京市 320100 / 杭州市 330100 /
+// 深圳市 440300 / 上海市 310000+市辖区 310100）。
+// 后端 /regions 接口（data/p-c-a.json）使用 4 位市码，与存储域不同源，不可用。
+export function residenceCityCodeFor(label: string): string | null {
+	if (label == '上海') return '310100'
+	if (label == '南京') return '320100'
+	if (label == '杭州') return '330100'
+	if (label == '深圳') return '440300'
+	return null
+}
+
+// ---- 收入（年万滑杆 → 年收入元，与存储同口径）----
+// 证据：搜索滑杆为年收入（万）（search.uvue:72 '收入偏好（年）'、:226
+// INCOME_STOPS=[5,15,30,50,100,500]）；档案写入是当前唯一的数字收入写入方，
+// 把年收入档位换算为元存储（edit.uvue incomeValue：'10-20w'→150000、
+// '50-100w'→750000、'100w以上'→1000000）。故 ×10000 与存储值同单位比较。
+// 后端 schema 限制 income_min/max ≤ 1,000,000（超出 422）；存储域最大值即
+// 1,000,000，因此 ≥100 万的档位收敛到 1,000,000（语义 = 无上限）。
+// 已知冲突：docs/api/个人资料.md:307 把 income 标注为"月收入（元）"，与写入
+// 路径矛盾——待产品/后端确认文档口径后再修正本注释。
+export function incomeYuanFromWanPerYear(stopWan: number): number {
+	const yuan = stopWan * 10000
+	if (yuan > 1000000) return 1000000
+	return yuan
+}
+
+// ---- 结构化参数构建 ----
+// 入参为搜索页筛选状态；null/空串/0 下标（'不限'）的字段不进入请求。
+// 年龄 18–60、身高 140–220 的滑杆范围均在后端校验域（age 18–100、
+// height 100–250）内，无静默截断。
+export function buildStructuredSearchParams(input: any): any {
+	const params: any = {}
+	if (input.ageMin != null) params.age_min = Number(input.ageMin)
+	if (input.ageMax != null) params.age_max = Number(input.ageMax)
+	if (input.heightMin != null) params.height_min = Number(input.heightMin)
+	if (input.heightMax != null) params.height_max = Number(input.heightMax)
+	if (input.incomeMinWan != null) params.income_min = incomeYuanFromWanPerYear(Number(input.incomeMinWan))
+	if (input.incomeMaxWan != null) params.income_max = incomeYuanFromWanPerYear(Number(input.incomeMaxWan))
+	if (input.education != '') {
+		const edu = educationMinFor(input.education)
+		if (edu != null) params.education_min = edu
+	}
+	if (input.marriage != '') {
+		const status = marriageStatusFor(input.marriage)
+		if (status != null) params.marriage_status = status
+	}
+	if (input.residenceLabel != '' && input.residenceLabel != '不限') {
+		const code = residenceCityCodeFor(input.residenceLabel)
+		if (code != null) params.city_code = code
+	}
+	return params
+}
