@@ -8,7 +8,7 @@
       <view class="advisor-section">
         <text class="advisor-label">沟通场景</text>
         <view class="option-grid">
-          <view v-for="item in scenarios" :key="item.value" class="option-chip" :class="{ active: scenario == item.value }" @click="scenario = item.value"><text>{{ item.label }}</text></view>
+				<view v-for="item in scenarios" :key="item.value" class="option-chip" :class="{ active: scenario == item.value }" @click="onScenarioChange(item.value)"><text>{{ item.label }}</text></view>
         </view>
       </view>
       <view class="advisor-section">
@@ -22,7 +22,7 @@
       <view class="advisor-section">
         <text class="advisor-label">回复语气</text>
         <view class="tone-row">
-          <view v-for="item in tones" :key="item.value" class="tone-chip" :class="{ active: tone == item.value }" @click="tone = item.value"><text>{{ item.label }}</text></view>
+				<view v-for="item in tones" :key="item.value" class="tone-chip" :class="{ active: tone == item.value }" @click="onToneChange(item.value)"><text>{{ item.label }}</text></view>
         </view>
         <view class="history-row">
           <view class="history-copy"><text class="history-title">结合这段聊天记录理解上下文</text><text class="history-note">只读取当前聊天的最近文本消息</text></view>
@@ -55,7 +55,7 @@ import { getChatSessionId } from '@/api/message.uts'
 
 interface Props { visible: boolean; targetUserId: number; initialMessage?: string }
 const props = withDefaults(defineProps<Props>(), { initialMessage: '' })
-const emit = defineEmits<{ close: []; adopt: [content: string] }>()
+const emit = defineEmits<{ close: []; adopt: [content: string, messageId?: number] }>()
 const scenarios = ADVISOR_SCENARIOS
 const tones = ADVISOR_TONES
 let scenario = ref('reply')
@@ -69,86 +69,100 @@ let advice = ref<any>(null)
 let chatSessionId = ref(0)
 let advisorSessionId = ref(0)
 let adviceIdempotencyKey = ref('')
-
-watch(() => props.visible, async (opened: boolean) => { if (opened) await prepareAdvisor() })
-watch(() => props.targetUserId, () => { resetAdvisorContext() })
+let requestSequence = 0
 
 const resetAdvisorContext = () => {
+  requestSequence += 1
   advice.value = null
   advisorSessionId.value = 0
   adviceIdempotencyKey.value = ''
   errorMessage.value = ''
   chatSessionId.value = 0
+  generating.value = false
 }
+const isCurrent = (sequence: number, targetUserId: number, sessionId: number = 0): boolean => sequence == requestSequence && props.visible && props.targetUserId == targetUserId && (sessionId == 0 || chatSessionId.value == sessionId)
+
+watch(() => props.visible, async (opened: boolean) => { if (opened) await prepareAdvisor(); else resetAdvisorContext() })
+watch(() => props.targetUserId, async () => { if (props.visible) await prepareAdvisor(); else resetAdvisorContext() })
 
 const prepareAdvisor = async () => {
-  const openedFor = props.targetUserId
-  resetAdvisorContext()
+  const sequence = requestSequence + 1
+  requestSequence = sequence
+  const targetUserId = Number(props.targetUserId)
+  advice.value = null
+  advisorSessionId.value = 0
+  adviceIdempotencyKey.value = ''
+  errorMessage.value = ''
+  chatSessionId.value = 0
+  generating.value = false
   incomingMessage.value = props.initialMessage
-  const chatRes = await getChatSessionId(openedFor)
-  if (openedFor != props.targetUserId || !props.visible) return
-  if (!chatRes.success || chatRes.data == null) { errorMessage.value = '当前聊天会话暂时不可用，无法读取聊天上下文。'; return }
-  chatSessionId.value = Number(chatRes.data.id)
+  if (targetUserId <= 0) { errorMessage.value = '当前聊天对象无效，无法读取聊天上下文。'; return }
+  const chatRes = await getChatSessionId(targetUserId)
+  if (!isCurrent(sequence, targetUserId) || !props.visible) return
+  if (!chatRes.success || chatRes.data == null || Number(chatRes.data.id) <= 0) { errorMessage.value = '当前聊天会话暂时不可用，无法读取聊天上下文。'; return }
+  const resolvedChatSessionId = Number(chatRes.data.id)
+  chatSessionId.value = resolvedChatSessionId
   const sessionsRes = await getAdvisorSessions(1, 50)
-  if (openedFor != props.targetUserId || !props.visible) return
+  if (!isCurrent(sequence, targetUserId, resolvedChatSessionId)) return
   if (!sessionsRes.success) { errorMessage.value = advisorErrorMessage(Number(sessionsRes.code), String(sessionsRes.message)); return }
   const items = sessionsRes.data != null && Array.isArray(sessionsRes.data.items) ? sessionsRes.data.items as any[] : []
-  for (let index = 0; index < items.length; index++) if (Number(items[index].chat_session_id) == chatSessionId.value) { advisorSessionId.value = Number(items[index].id); return }
+  for (let index = 0; index < items.length; index++) if (Number(items[index].chat_session_id) == resolvedChatSessionId) { advisorSessionId.value = Number(items[index].id); return }
 }
 
-const ensureAdvisorSession = async (): Promise<boolean> => {
+const ensureAdvisorSession = async (sequence: number, targetUserId: number, resolvedChatSessionId: number): Promise<boolean> => {
+  if (!isCurrent(sequence, targetUserId, resolvedChatSessionId) || resolvedChatSessionId <= 0) return false
   if (advisorSessionId.value > 0) return true
-  const sessionRes = await createAdvisorSession('聊天回复建议', chatSessionId.value)
-  if (!sessionRes.success || sessionRes.data == null) { errorMessage.value = advisorErrorMessage(Number(sessionRes.code), String(sessionRes.message)); return false }
+  const sessionRes = await createAdvisorSession('聊天回复建议', resolvedChatSessionId)
+  if (!isCurrent(sequence, targetUserId, resolvedChatSessionId)) return false
+  if (!sessionRes.success || sessionRes.data == null || Number(sessionRes.data.id) <= 0) { errorMessage.value = advisorErrorMessage(Number(sessionRes.code), String(sessionRes.message)); return false }
   advisorSessionId.value = Number(sessionRes.data.id)
   return true
 }
 const generateAdvice = async () => {
+  if (generating.value) return
   if (incomingMessage.value.trim().length == 0) { errorMessage.value = '请先输入或粘贴对方的最新消息。'; return }
+  const targetUserId = Number(props.targetUserId)
+  const resolvedChatSessionId = Number(chatSessionId.value)
+  const requestScenario = scenario.value
+  const requestTone = tone.value
+  const requestIncomingMessage = incomingMessage.value.trim()
+  const requestGoal = goal.value.trim().length > 0 ? goal.value.trim() : null
+  const requestIncludeHistory = includeHistory.value
+  const sequence = requestSequence + 1
+  requestSequence = sequence
   errorMessage.value = ''
   generating.value = true
   if (adviceIdempotencyKey.value.length == 0) adviceIdempotencyKey.value = 'advisor-' + Date.now().toString() + '-' + Math.floor(Math.random() * 1000000).toString()
   try {
-    const ready = await ensureAdvisorSession()
-    if (!ready) return
-    const response = await getAdvisorAdvice(advisorSessionId.value, {
-      scenario: scenario.value,
-      goal: goal.value.trim().length > 0 ? goal.value.trim() : null,
-      incoming_message: incomingMessage.value.trim(),
-      tone: tone.value,
-      chat_session_id: chatSessionId.value,
-      include_history: includeHistory.value,
-      max_suggestions: 3
-    }, adviceIdempotencyKey.value)
+    if (!await ensureAdvisorSession(sequence, targetUserId, resolvedChatSessionId)) return
+    const response = await getAdvisorAdvice(advisorSessionId.value, { scenario: requestScenario, goal: requestGoal, incoming_message: requestIncomingMessage, tone: requestTone, chat_session_id: resolvedChatSessionId, include_history: requestIncludeHistory, max_suggestions: 3 }, adviceIdempotencyKey.value)
+    if (!isCurrent(sequence, targetUserId, resolvedChatSessionId)) return
     if (!response.success || response.data == null) { errorMessage.value = advisorErrorMessage(Number(response.code), String(response.message)); return }
     advice.value = response.data
     adviceIdempotencyKey.value = ''
   } catch (error) {
-    errorMessage.value = '网络连接不可用，请检查网络后重试。'
-  } finally { generating.value = false }
+    if (isCurrent(sequence, targetUserId, resolvedChatSessionId)) errorMessage.value = '网络连接不可用，请检查网络后重试。'
+  } finally { if (sequence == requestSequence) generating.value = false }
 }
 
-const copySuggestion = (content: string) => {
-  uni.setClipboardData({ data: content, success: () => { uni.showToast({ title: '建议已复制，请确认后再发送', icon: 'none' }); recordFeedback('copied') }, fail: () => { uni.showToast({ title: '复制失败，请长按文本复制', icon: 'none' }) } })
-}
+const copySuggestion = (content: string) => { uni.setClipboardData({ data: content, success: () => { uni.showToast({ title: '建议已复制，请确认后再发送', icon: 'none' }); recordFeedback('copied') }, fail: () => { uni.showToast({ title: '复制失败，请长按文本复制', icon: 'none' }) } }) }
 const adoptSuggestion = (content: string) => {
   const text = content != null ? String(content).trim() : ''
   if (text.length == 0 || advice.value == null) return
-  emit('adopt', text)
-  emit('close')
-  if (advice.value != null && advice.value.id != null) {
-    submitAdvisorFeedback(Number(advice.value.id), 'used').then((_result: any) => {})
-  }
+  const messageId = advice.value.id != null ? Number(advice.value.id) : 0
+  emit('adopt', text, messageId > 0 ? messageId : undefined)
 }
 const recordFeedback = async (feedbackType: string) => {
   if (advice.value == null || advice.value.id == null) return
   const result = await submitAdvisorFeedback(Number(advice.value.id), feedbackType)
   if (result.success && feedbackType != 'copied') uni.showToast({ title: '感谢你的反馈', icon: 'none' })
 }
-const onGoalInput = (event: any) => { goal.value = event.detail.value }
-const onMessageInput = (event: any) => { incomingMessage.value = event.detail.value }
-const onHistoryChange = (event: any) => { includeHistory.value = event.detail.value }
-const closeSheet = () => { emit('close') }
+	const onScenarioChange = (value: string) => { scenario.value = value; requestSequence += 1; generating.value = false; adviceIdempotencyKey.value = ''; advice.value = null }
+	const onToneChange = (value: string) => { tone.value = value; requestSequence += 1; generating.value = false; adviceIdempotencyKey.value = ''; advice.value = null }
+	const onGoalInput = (event: any) => { goal.value = event.detail.value; requestSequence += 1; generating.value = false; adviceIdempotencyKey.value = ''; advice.value = null }
+	const onMessageInput = (event: any) => { incomingMessage.value = event.detail.value; requestSequence += 1; generating.value = false; adviceIdempotencyKey.value = ''; advice.value = null }
+	const onHistoryChange = (event: any) => { includeHistory.value = event.detail.value; requestSequence += 1; generating.value = false; adviceIdempotencyKey.value = ''; advice.value = null }
+const closeSheet = () => { requestSequence += 1; generating.value = false; emit('close') }
 const toneLabel = (value: string): string => { for (let index = 0; index < tones.length; index++) if (tones[index].value == value) return tones[index].label; return '自然' }
 const riskLabel = (value: string): string => value == 'high' ? '注意风险' : (value == 'medium' ? '谨慎表达' : (value == 'low' ? '轻度提醒' : '可参考'))
 </script>

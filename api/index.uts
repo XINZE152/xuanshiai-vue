@@ -1,4 +1,4 @@
-﻿/**
+/**
  * API 统一导出
  * import { getRecommendUser, getMessageList } from '@/api'
  */
@@ -57,6 +57,9 @@ export {
   acceptDiscoveryApplication,
   rejectDiscoveryApplication
 } from './discovery.uts'
+// AI 资料卡成稿出口
+export { summarizeProfileCard, getProfileCardDraft, applyProfileCardDraft, waitForProfileCardTask } from './ai-profile-card.uts'
+
 // AI 三类推荐（M07）
 export {
   getAiRecommendations,
@@ -118,6 +121,7 @@ export {
   waitForSearchTask,
   getSearchSnapshotResults,
   getSearchSuggestions,
+  generateSearchSuggestions,
   searchResultItems,
   searchNextCursor,
   searchHasMore,

@@ -1,0 +1,38 @@
+/**
+ * 资料卡成稿出口：只消费已确认个人成稿，先生成草稿再由用户显式采用。
+ * 不提交事实字段、照片或私人访谈原文。
+ */
+import { request } from './request.uts'
+import { pollTaskUntilTerminal } from './ai-profile.uts'
+
+function idempotencyKey(prefix: string): string {
+  return prefix + '-' + String(Date.now()) + '-' + String(Math.floor(Math.random() * 1000000))
+}
+
+export async function summarizeProfileCard(force: boolean = false, key: string = ''): Promise<any> {
+  const requestKey = key.trim().length >= 8 ? key.trim() : idempotencyKey('profile-card-summarize')
+  return request({
+    url: '/ai/profile-card/summarize',
+    method: 'POST',
+    data: { force: force },
+    headers: { 'Idempotency-Key': requestKey }
+  })
+}
+
+export async function getProfileCardDraft(): Promise<any> {
+  return request({ url: '/ai/profile-card/draft', method: 'GET' })
+}
+
+export async function applyProfileCardDraft(payload: any, key: string = ''): Promise<any> {
+  const requestKey = key.trim().length >= 8 ? key.trim() : idempotencyKey('profile-card-apply')
+  return request({
+    url: '/ai/profile-card/draft/apply',
+    method: 'POST',
+    data: payload,
+    headers: { 'Idempotency-Key': requestKey }
+  })
+}
+
+export async function waitForProfileCardTask(taskId: string, shouldContinue: (() => boolean) | null = null): Promise<any> {
+  return pollTaskUntilTerminal(taskId, 60, shouldContinue)
+}

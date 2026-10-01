@@ -138,6 +138,8 @@
 					<view v-if="awaitingNarrativeConfirmation" class="mpr-btn mpr-btn-primary" :class="{ 'mpr-btn-disabled': confirming }" @tap="onConfirmNarrative">
 						<text class="mpr-btn-primary-text">{{ confirming ? '正在确认…' : '这份画像符合我' }}</text>
 					</view>
+					<view v-if="canPrepareProfileCard" class="mpr-btn mpr-btn-profile-card" @tap="onPrepareProfileCard"><text class="mpr-btn-profile-card-text">整理为公开介绍</text></view>
+					<view v-if="narrativeReady && subject == 'ideal_partner'" class="mpr-btn mpr-btn-profile-card" @tap="onOpenSearchSuggestions"><text class="mpr-btn-profile-card-text">根据已确认资料整理找人建议</text></view>
 					<view v-if="narrativeReady && subject == 'personal'" class="mpr-btn mpr-btn-poster" @tap="onOpenPoster">
 						<text class="mpr-btn-poster-text">生成专属墨相海报</text>
 					</view>
@@ -155,12 +157,26 @@
 
 		<!-- 专属墨相海报弹窗 -->
 		<MoxiangPosterSheet :visible="showPosterSheet" :data="posterData" @close="showPosterSheet = false" />
+
+		<view v-if="profileCardVisible" class="mpr-card-mask" @tap="closeProfileCard">
+			<view class="mpr-card-sheet" @tap.stop>
+				<text class="mpr-card-title">整理为公开介绍</text>
+				<text class="mpr-card-copy">以下内容来自已确认成稿。请选择要写入公开资料的内容，未选择的不会发布。</text>
+				<view v-if="profileCardLoading" class="mpr-card-state"><text>正在整理公开介绍…</text></view>
+				<view v-else-if="profileCardError != ''" class="mpr-card-state"><text>{{ profileCardError }}</text><view class="mpr-btn" @tap="onPrepareProfileCard"><text class="mpr-btn-text">重试</text></view></view>
+				<view v-else>
+					<view v-for="row in profileCardRows" :key="row.key" class="mpr-card-row" @tap="toggleProfileCardField(row.key)"><view class="mpr-card-row-copy"><text class="mpr-card-row-label">{{ row.label }}</text><text class="mpr-card-row-value">{{ row.value }}</text></view><text class="mpr-card-row-toggle">{{ row.selected ? '采用' : '跳过' }}</text></view>
+					<view class="mpr-card-actions"><view class="mpr-btn mpr-btn-ghost" @tap="closeProfileCard"><text class="mpr-btn-text">取消</text></view><view class="mpr-btn mpr-btn-primary" :class="{ 'mpr-btn-disabled': profileCardApplying }" @tap="onApplyProfileCard"><text class="mpr-btn-primary-text">{{ profileCardApplying ? '正在保存…' : '确认采用' }}</text></view></view>
+				</view>
+			</view>
+		</view>
 	</view>
 </template>
 
 <script lang="uts">
 	import { createProfilePreview, getProfilePreview, type ProfilePreviewRecord } from '@/api/ai-moxiang.uts'
 	import { publishProfileDraft, pollTaskUntilTerminal, getPortraitNarrative, confirmPortraitNarrative, regeneratePortraitNarrative } from '@/api/ai-profile.uts'
+	import { summarizeProfileCard, getProfileCardDraft, applyProfileCardDraft, waitForProfileCardTask } from '@/api/ai-profile-card.uts'
 	import { getMeProfile, getOwnProfile } from '@/api/user.uts'
 	import MoxiangPosterSheet from '@/components/moxiang/MoxiangPosterSheet.uvue'
 	import type { MoxiangPosterData } from '@/utils/moxiang-poster-drawer.uts'
@@ -197,6 +213,15 @@
 				regenerating: false,
 				showPosterSheet: false,
 				openPosterOnReady: false,
+				profileCardVisible: false,
+				profileCardLoading: false,
+				profileCardApplying: false,
+				profileCardError: '',
+				profileCardExpectedRevision: 0,
+				profileCardRows: [] as any[],
+				profileCardSummarizeKey: '',
+				profileCardApplyKey: '',
+				profileCardDraft: null as any,
 				posterIdentity: { nickname: '', ageText: '', cityText: '', verifiedBadge: '' }
 			}
 		},
@@ -208,6 +233,11 @@
 			},
 			awaitingNarrativeConfirmation(): boolean {
 				return this.narrative != null && String(this.narrative.status ?? '') == 'pending_confirmation'
+			},
+			canPrepareProfileCard(): boolean {
+				if (this.subject != 'personal' || this.narrative == null) return false
+				const status = String(this.narrative.status ?? '')
+				return status == 'confirmed' || status == 'published'
 			},
 			narrativeStatusLabel(): string {
 				if (this.awaitingNarrativeConfirmation) return '完整画像 · 待你确认'
@@ -251,6 +281,54 @@
 		methods: {
 			onOpenPoster() {
 				this.showPosterSheet = true
+			},
+			buildProfileCardRows(fields: any): any[] {
+				const rows: any[] = []
+				const add = (key: string, label: string, questionId: number = 0) => {
+					const source = fields != null && fields[key] != null ? fields[key] : {}
+					const candidates = source.candidates != null && Array.isArray(source.candidates) ? source.candidates as any[] : []
+					const value = source.value != null && String(source.value).trim() != '' ? String(source.value).trim() : (candidates.length > 0 ? candidates.join('、') : '')
+					if (value == '') return
+					rows.push({ key: key, label: label, value: value, selected: true, questionId: questionId, tags: candidates.map((item: any): string => String(item).trim()).filter((item: string): boolean => item != '') })
+				}
+				add('self_intro', '自我介绍')
+				add('qa_1_partner', '关于理想伴侣', 1)
+				add('qa_3_love', '关于亲密关系', 3)
+				add('qa_2_sports_candidates', '关于生活方式', 2)
+				add('interest_tag_candidates', '兴趣标签')
+				return rows
+			},
+			toggleProfileCardField(key: string) {
+				for (let index = 0; index < this.profileCardRows.length; index++) if (this.profileCardRows[index].key == key) this.profileCardRows[index].selected = !this.profileCardRows[index].selected
+			},
+			closeProfileCard() {
+				if (!this.profileCardApplying) this.profileCardVisible = false
+			},
+			async onPrepareProfileCard() {
+				if (!this.canPrepareProfileCard || this.profileCardLoading) return
+				this.profileCardVisible = true
+				this.profileCardLoading = true
+				this.profileCardError = ''
+				if (this.profileCardSummarizeKey == '') this.profileCardSummarizeKey = 'profile-card-summarize-' + String(Date.now())
+				try {
+					const accepted = await summarizeProfileCard(false, this.profileCardSummarizeKey)
+					if (!this.pageAlive) return
+					if (!accepted.success || accepted.data == null) throw new Error(String(accepted.message ?? '资料卡整理暂时不可用'))
+					const taskId = String(accepted.data.task_id ?? '')
+					if (taskId == '') throw new Error('资料卡整理未返回有效任务')
+					const task = await waitForProfileCardTask(taskId, () => this.pageAlive)
+					if (!task.done || task.status != 'succeeded') throw new Error(task.error != '' ? task.error : '资料卡整理未完成')
+					const draft = await getProfileCardDraft()
+					if (!this.pageAlive) return
+					if (!draft.success || draft.data == null) throw new Error(String(draft.message ?? '资料卡草稿读取失败'))
+					this.profileCardDraft = draft.data
+					this.profileCardExpectedRevision = Number(draft.data.expected_revision ?? 0)
+					this.profileCardRows = this.buildProfileCardRows(draft.data.fields)
+				} catch (error: any) {
+					if (this.pageAlive) this.profileCardError = error?.message ?? String(error)
+				} finally {
+					if (this.pageAlive) this.profileCardLoading = false
+				}
 			},
 			// 海报身份元素（脱敏白名单内）：昵称、年龄段、城市中文、认证徽章。
 			// 任一接口失败都不阻塞海报——身份行留空即可。
@@ -394,6 +472,35 @@
 					this.publishing = false
 				}
 			},
+			async onApplyProfileCard() {
+				if (this.profileCardApplying || this.profileCardRows.length == 0) return
+				this.profileCardApplying = true
+				const accepted: any = {}
+				const qaAnswers: any[] = []
+				const personalTags: string[] = []
+				const rejected: string[] = []
+				for (let index = 0; index < this.profileCardRows.length; index++) {
+					const row = this.profileCardRows[index]
+					if (row.selected != true) { rejected.push(row.key); continue }
+					if (row.key == 'self_intro') accepted.self_intro = row.value
+					else if (row.key == 'interest_tag_candidates') for (let tagIndex = 0; tagIndex < row.tags.length && personalTags.length < 10; tagIndex++) if (row.tags[tagIndex] != '' && personalTags.indexOf(row.tags[tagIndex]) < 0) personalTags.push(row.tags[tagIndex])
+					else if (row.questionId > 0) qaAnswers.push({ question_id: row.questionId, answer: row.value })
+				}
+				if (qaAnswers.length > 0) accepted.qa_answers = qaAnswers
+				if (personalTags.length > 0) accepted.personal_tags = personalTags
+				const payload = { expected_revision: this.profileCardExpectedRevision, accepted: accepted, rejected: rejected, replace_existing: { self_intro: false } }
+				if (this.profileCardApplyKey == '') this.profileCardApplyKey = 'profile-card-apply-' + String(Date.now())
+				try {
+					const result = await applyProfileCardDraft(payload, this.profileCardApplyKey)
+					if (!result.success) throw new Error(String(result.message ?? '资料卡写入失败'))
+					this.profileCardVisible = false
+					uni.showToast({ title: '已按选择整理公开资料', icon: 'none' })
+				} catch (error: any) {
+					uni.showToast({ title: error?.message ?? '保存失败，请核对后重试', icon: 'none' })
+				} finally {
+					this.profileCardApplying = false
+				}
+			},
 			async onConfirmNarrative() {
 				if (!this.awaitingNarrativeConfirmation || this.confirming) return
 				this.confirming = true
@@ -435,6 +542,9 @@
 			},
 			onContinueChat() {
 				uni.redirectTo({ url: '/pagesSub/profileExtra/my-portrait-master?subject=' + this.subject })
+			},
+			onOpenSearchSuggestions() {
+				uni.navigateTo({ url: '/pagesSub/profileExtra/search?suggest=1' })
 			},
 			onBackToArchive() {
 				uni.redirectTo({ url: '/pagesSub/profileExtra/my-portrait-archive' })
@@ -872,4 +982,17 @@
 		font-weight: 700;
 	}
 
+	.mpr-btn-profile-card { background: var(--surface-warm); border-color: var(--primary); }
+	.mpr-btn-profile-card-text { color: var(--primary); font-size: 14px; font-weight: 700; }
+	.mpr-card-mask { position: fixed; z-index: 120; inset: 0; display: flex; align-items: flex-end; background: rgba(12, 19, 19, 0.36); }
+	.mpr-card-sheet { width: 100%; max-height: 82vh; box-sizing: border-box; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); border-radius: 20px 20px 0 0; background: var(--surface); display: flex; flex-direction: column; gap: 12px; }
+	.mpr-card-title { color: var(--ink); font-size: 20px; font-weight: 700; }
+	.mpr-card-copy, .mpr-card-row-value { color: var(--ink2); font-size: 13px; line-height: 1.55; }
+	.mpr-card-state { display: flex; flex-direction: column; gap: 12px; padding: 18px 0; color: var(--ink2); font-size: 14px; }
+	.mpr-card-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+	.mpr-card-row-copy { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+	.mpr-card-row-label { color: var(--ink); font-size: 14px; font-weight: 700; }
+	.mpr-card-row-toggle { color: var(--primary); font-size: 13px; font-weight: 700; }
+	.mpr-card-actions { display: flex; gap: 10px; margin-top: 4px; }
+	.mpr-card-actions .mpr-btn { flex: 1; }
 </style>

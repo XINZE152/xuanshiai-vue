@@ -31,12 +31,13 @@ function mapRecommendationCard(raw: any): any {
     engine: item.engine != null ? '' + item.engine : '',
     reasonCodes,
     reasonTexts,
+    card: item.card != null ? item.card : null,
     raw: item
   }
 }
 
 /**
- * 三类推荐只返回候选 ID 与推荐解释；公开名片由页面按 ID 调既有接口补齐。
+ * 三类推荐返回候选 ID、解释与可选公开名片；不会批量调用完整主页接口。
  * regenerating 仅作为后台重建状态返回，不附带 task_id，也不在客户端自行轮询。
  */
 export async function getAiRecommendations(view: RecommendationView | string = 'i_like', limit: number = 20): Promise<any> {
@@ -45,7 +46,7 @@ export async function getAiRecommendations(view: RecommendationView | string = '
   const res = await request({
     url: '/ai/recommendations',
     method: 'GET',
-    data: { view: normalizedView, limit: normalizedLimit },
+    data: { view: normalizedView, limit: normalizedLimit, include_card: true },
     mockData: { view: normalizedView, items: [], regenerating: false }
   })
   if (!res.success) return res

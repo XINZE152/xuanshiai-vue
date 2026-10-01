@@ -290,9 +290,9 @@
 		getAiAvatarConversation,
 		sendAiAvatarMessage,
 		resolveAiAvatarHandoffs,
-		clearAiAvatarConversation
+		clearAiAvatarConversation,
+		submitAdvisorFeedback
 	} from '@/api'
-
 	const messages = ref([] as any[])
 	const inputText = ref('')
 	const showMore = ref(false)
@@ -420,7 +420,6 @@
 		if (msg.handoffStatus === 'pending' || msg.handoff_status === 'pending') return '资料不足，待本人补充'
 		if (msg.source === 'real-ai' || msg.source === 'ai-avatar-server' || msg.source === 'system') return 'AI 分身'
 		return 'AI 分身'
-	}
 	}
 
 	// 气泡/标签语气：'owner' 走暖色（本人补充），'ai' 走主色（AI 分身），'' 表示非 AI 分身会话
@@ -1322,22 +1321,22 @@
 		aiAdvisorVisible.value = true
 	}
 
-	const applyAdvisorDraft = (content: string) => {
+	const applyAdvisorDraft = (content: string, messageId?: number) => {
 		const text = content != null ? String(content).trim() : ''
 		if (text.length == 0 || isParentMode.value || isAiAvatarMode.value) return
+		const markUsed = () => { if (messageId != null && Number(messageId) > 0) submitAdvisorFeedback(Number(messageId), 'used').then((_result: any) => {}); aiAdvisorVisible.value = false }
 		const current = inputText.value.trim()
 		if (current.length > 0 && current != text) {
 			uni.showModal({
 				title: '替换当前草稿',
 				content: '输入框已有内容。填入这条建议会替换它，不会自动发送。',
 				confirmText: '替换',
-				success: (result: any) => {
-					if (result.confirm === true) inputText.value = text
-				}
+				success: (result: any) => { if (result.confirm === true) { inputText.value = text; markUsed() } }
 			})
 			return
 		}
 		inputText.value = text
+		markUsed()
 	}
 
 	const scrollToBottom = () => {

@@ -25,13 +25,15 @@ check('推荐客户端使用 AI 推荐接口并传 view/limit', () => {
   assert.ok(api.includes("url: '/ai/recommendations'"), 'must use AI recommendation route')
   assert.ok(api.includes('view: normalizedView'), 'view must be sent as a query parameter')
   assert.ok(api.includes('limit: normalizedLimit'), 'limit must be sent as a query parameter')
+  assert.ok(api.includes('include_card: true'), 'new client must explicitly request public cards')
   assert.ok(api.includes("'i_like'") && api.includes("'likes_me'") && api.includes("'similar'"), 'all three views must be supported')
 })
 
-check('推荐卡只适配 target_user_id 与解释字段', () => {
+check('推荐卡适配 target_user_id、解释与公开名片', () => {
   assert.ok(api.includes('item.target_user_id'), 'candidate id must come from target_user_id')
   assert.ok(api.includes('item.reason_codes'), 'reason codes must be adapted')
   assert.ok(api.includes('item.reason_texts'), 'reason texts must be adapted')
+  assert.ok(api.includes('item.card'), 'public card must be preserved when returned')
   assert.ok(!api.includes('task_id:'), 'recommendation response must not invent task_id field')
 })
 
@@ -61,10 +63,10 @@ check('首页区分加载、重建中、正常空结果与失败重试', () => {
   assert.ok(page.includes('recommendationRegenerating && recommendUsers.length === 0'), 'regenerating gate must not hide already available cards')
 })
 
-check('首页按 target_user_id 装配公开名片并并行请求', () => {
-  assert.ok(page.includes('item.targetUserId'), 'home must use recommendation target id')
-  assert.ok(page.includes('Promise.all'), 'candidate cards should be assembled without serial detail waits')
-  assert.ok(page.includes('getUserDetail(item.targetUserId)'), 'home must reuse public profile detail API')
+check('首页消费服务端公开名片且不批量读取完整主页', () => {
+  assert.ok(page.includes('item.card'), 'home must consume the returned public card')
+  assert.ok(!page.includes('getUserDetail(item.targetUserId)'), 'home must not preload full profile detail')
+  assert.ok(!page.includes('Promise.all(items.map'), 'home must not batch-load full profile details')
   assert.ok(page.includes('recommendationReason'), 'recommendation explanation must remain separate from compatibility score')
 })
 

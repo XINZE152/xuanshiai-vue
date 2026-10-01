@@ -634,10 +634,6 @@
 			console.error('[EditProfile] thoughtfulness persist failed', e)
 		}
 	}
-		} catch (e) {
-			console.error('[EditProfile] thoughtfulness persist failed', e)
-		}
-	}
 
 	const loadThoughtfulness = async () => {
 		try {

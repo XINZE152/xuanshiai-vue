@@ -201,16 +201,17 @@
 		<XsaPaymentSheet :visible="spotlightPaymentVisible" :amount="SPOTLIGHT_AMOUNT" :loading="spotlightPaying" confirm-text="确认支付爆灯" notice="爆灯 9.9 元/次：确认后展示爆灯成功状态。" @close="closeSpotlightPayment" @confirm="confirmSpotlightPayment" />
 		<XsaSpotlightSuccessSheet :visible="spotlightSuccessVisible" :target="spotlightTarget" @close="closeSpotlightSuccess" />
 
-		<XsaSheet :visible="matchVisible" title="知遇 · 合拍度" @close="matchVisible = false">
-			<view class="match-sheet">
-				<view class="match-sheet-score"><text>{{ user.matchAvailable ? user.match + '%' : '暂无评分' }}</text></view>
-				<view class="match-interpret">
-					<view class="match-interpret-head"><text class="match-interpret-mark">✦</text><text class="match-interpret-title">AI 解读</text></view>
-					<text class="match-interpret-text">{{ detailInterpretation }}</text>
-				</view>
-				<view class="match-sheet-tip"><text>合拍度由系统按双方当前可见资料估算，供了解和破冰参考，不代表平台承诺结果。</text></view>
-			</view>
-		</XsaSheet>
+		<XsaAiMatchSheet
+			:visible="matchVisible"
+			:target-user-id="user.id"
+			my-name="你"
+			my-avatar=""
+			my-mbti=""
+			:other-name="user.name"
+			:other-avatar="user.avatar"
+			:other-mbti="user.mbti"
+			@close="matchVisible = false"
+		/>
 		<XsaZhiyuHub
 			:visible="zhiyuHubVisible"
 			:actions="zhiyuHubActions"
@@ -225,7 +226,7 @@ import { ref, computed } from 'vue'
 import XsaApplySheet from '@/components/XsaApplySheet.uvue'
 import XsaPaymentSheet from '@/components/XsaPaymentSheet.uvue'
 import XsaSpotlightSuccessSheet from '@/components/XsaSpotlightSuccessSheet.uvue'
-import XsaSheet from '@/components/XsaSheet.uvue'
+import XsaAiMatchSheet from '@/components/XsaAiMatchSheet.uvue'
 import XsaAiCatBubble from '@/components/XsaAiCatBubble.uvue'
 import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
 import XsaZhiyuHub from '@/components/XsaZhiyuHub.uvue'
@@ -698,16 +699,6 @@ const dismissAiGuide = () => {
 	uni.setStorageSync('xsa_ai_avatar_guide_shown', true)
 }
 
-const detailInterpretation = computed((): string => {
-	const score = Number(user.value.match || 0)
-	const tagList = user.value.tags as any[]
-	const interests = tagList != null && tagList.length > 0 ? tagList.join('、') : ''
-	const parts: string[] = []
-	if (interests != '') parts.push('在' + interests + '上你们交集明显，很适合作为第一次聊天的切入点')
-	if (score >= 80) parts.push('整体契合度较高，建议先从共同话题开始慢慢了解')
-	else parts.push('契合度还有上升空间，多聊聊彼此的生活节奏会更清楚')
-	return parts.join('。') + '。'
-})
 const openAiAvatar = () => {
 	dismissAiGuide()
 	if (isOwnProfile.value) return

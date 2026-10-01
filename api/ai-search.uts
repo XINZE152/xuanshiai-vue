@@ -57,6 +57,15 @@ export async function getSearchSuggestions(): Promise<any> {
   return request({ url: '/ai/search-suggestions', method: 'GET' })
 }
 
+export async function generateSearchSuggestions(idempotencyKey: string = ''): Promise<any> {
+  const key = idempotencyKey.trim().length >= 8 ? idempotencyKey.trim() : createSearchIdempotencyKey('search-suggest')
+  return request({
+    url: '/ai/search-suggestions/generate',
+    method: 'POST',
+    headers: { 'Idempotency-Key': key }
+  })
+}
+
 export function searchResultItems(response: any): any[] {
   const payload = response != null && response.data != null ? response.data : response
   const rows = payload != null && Array.isArray(payload.items) ? payload.items as any[] : []

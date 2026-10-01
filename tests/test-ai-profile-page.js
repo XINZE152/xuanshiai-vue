@@ -10,6 +10,7 @@ const moxiangApi = read('api/ai-moxiang.uts')
 const apiIndex = read('api/index.uts')
 const masterPage = read('pagesSub/profileExtra/my-portrait-master.uvue')
 const resultPage = read('pagesSub/profileExtra/my-portrait-result.uvue')
+const profileCardApi = read('api/ai-profile-card.uts')
 const ws = read('api/voice-master-ws.uts')
 
 // AI profile API: idempotency, consent, task polling and stable field contracts.
@@ -63,6 +64,17 @@ assert.match(resultPage, /pollTaskUntilTerminal/, 'result page must wait for asy
 assert.match(resultPage, /pending_confirmation/, 'narrative must remain pending until the user confirms it')
 assert.match(resultPage, /confirmPortraitNarrative\(this\.subject\)/, 'narrative confirmation must be an explicit user action')
 assert.match(resultPage, /this\.pageAlive = false/, 'result-page task polling must stop when the page unloads')
+
+// Confirmed narrative can be proposed to the existing profile-card draft contract.
+assert.match(profileCardApi, /\/ai\/profile-card\/summarize/, 'profile-card summarize must use the backend contract')
+assert.match(profileCardApi, /Idempotency-Key/, 'profile-card writes must use idempotency keys')
+assert.match(profileCardApi, /waitForProfileCardTask/, 'profile-card summarize must poll the accepted task')
+assert.match(resultPage, /canPrepareProfileCard/, 'profile-card entry must require a confirmed personal narrative')
+assert.match(resultPage, /expected_revision/, 'profile-card apply must preserve the server revision')
+assert.match(resultPage, /accepted/, 'profile-card apply must submit explicit user selections')
+assert.match(resultPage, /rejected/, 'profile-card apply must preserve skipped fields')
+assert.match(resultPage, /applyProfileCardDraft/, 'profile-card apply must use the existing draft endpoint')
+assert.match(resultPage, /search\?suggest=1/, 'ideal-partner narrative must enter the existing editable search-suggestion flow')
 
 // The response adapter keeps transport envelopes and persisted turn field names out of the UI.
 assert.match(moxiangApi, /function unwrapMoxiangResponse\(/, 'moxiang API must unwrap the shared request envelope')

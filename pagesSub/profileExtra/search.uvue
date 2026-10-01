@@ -27,6 +27,7 @@
 					<view v-for="(condition, index) in aiConditions" :key="index" class="ai-condition-row">
 						<view class="ai-condition-copy"><text class="ai-condition-name">{{ conditionLabel(condition) }}</text><text class="ai-condition-kind">{{ condition.kind == 'hard' ? '硬条件' : '软偏好' }} · {{ condition.confidence != null ? '置信度 ' + Math.round(Number(condition.confidence) * 100) + '%' : '后端返回' }}</text></view>
 						<input class="ai-condition-input" :value="condition.localValueText" @input="onAiConditionValueInput(index, $event)" />
+						<text v-if="condition.localValueInvalid" class="ai-condition-invalid">请输入有效的 {{ condition.localValueType == 'array' ? 'JSON 数组' : 'JSON 对象' }}</text>
 						<view class="ai-condition-actions"><button :class="{ selected: condition.localAction == 'confirmed' }" @tap="setAiConditionAction(index, 'confirmed')">确认</button><button :class="{ selected: condition.localAction == 'removed' }" @tap="setAiConditionAction(index, 'removed')">移除</button></view>
 					</view>
 					<view v-if="aiUnknown.length > 0" class="ai-result-notice"><text class="ai-result-notice-title">暂未识别</text><text v-for="item in aiUnknown" :key="item">{{ item }}</text></view>
@@ -175,7 +176,7 @@
 <script setup lang="uts">
 	import XsaSheet from '@/components/XsaSheet.uvue'
 	import XsaTag from '@/components/XsaTag.uvue'
-	import { getOwnProfile, getEmotionLabSummary, setMyMbtiType, getDiscoveryRecommendations, createSearchDraft, getSearchDraft, patchSearchDraft, confirmSearchDraft, waitForSearchTask, getSearchSnapshotResults, getSearchSuggestions, searchResultItems, searchNextCursor, searchDraftConditions, searchDraftUnknown, searchDraftConflicts, searchDraftRevision } from '@/api'
+	import { getOwnProfile, getEmotionLabSummary, setMyMbtiType, getDiscoveryRecommendations, createSearchDraft, getSearchDraft, patchSearchDraft, confirmSearchDraft, waitForSearchTask, getSearchSnapshotResults, getSearchSuggestions, generateSearchSuggestions, searchResultItems, searchNextCursor, searchDraftConditions, searchDraftUnknown, searchDraftConflicts, searchDraftRevision } from '@/api'
 
 	const systemInfo = uni.getSystemInfoSync()
 	const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
@@ -232,6 +233,7 @@
 	const aiDraftStatus = ref('')
 	const aiDraftTaskStage = ref('等待解析')
 	const aiDraftError = ref('')
+	const aiDraftKeyQuery = ref('')
 	const aiDraftIdempotencyKey = ref('')
 	const aiPatchIdempotencyKey = ref('')
 	const aiConfirmIdempotencyKey = ref('')
@@ -241,16 +243,21 @@
 	const aiUnknown = ref<string[]>([])
 	const aiConflicts = ref<string[]>([])
 	const aiSuggestions = ref<string[]>([])
+	const aiSuggestionGenerating = ref(false)
+	const aiSuggestionIdempotencyKey = ref('')
 	const aiTaskStage = ref('正在等待后端任务完成')
 	const aiDraftStatusLabel = computed(() => aiDraftStatus.value == 'awaiting_confirmation' ? '待确认' : (aiDraftStatus.value == 'confirmed' ? '已确认' : (aiDraftStatus.value == 'failed' ? '解析失败' : '解析中')))
-	const resetAiDraftState = () => {
+	const resetAiDraftState = (preserveDraftKey: boolean = false) => {
 		aiDraft.value = null
 		aiDraftId.value = ''
 		aiDraftTaskId.value = ''
 		aiDraftStatus.value = ''
 		aiDraftTaskStage.value = '等待解析'
 		aiDraftError.value = ''
-		aiDraftIdempotencyKey.value = ''
+		if (!preserveDraftKey) {
+			aiDraftIdempotencyKey.value = ''
+			aiDraftKeyQuery.value = ''
+		}
 		aiPatchIdempotencyKey.value = ''
 		aiConfirmIdempotencyKey.value = ''
 		aiConfirming.value = false
@@ -259,12 +266,22 @@
 		aiUnknown.value = []
 		aiConflicts.value = []
 	}
+	const conditionValueText = (value: any): string => {
+		if (value == null) return ''
+		if (Array.isArray(value) || (typeof value == 'object' && value != null)) return JSON.stringify(value)
+		return String(value)
+	}
 	const setAiDraftResponse = (response: any) => {
 		const payload = response != null && response.data != null ? response.data : response
 		aiDraft.value = payload
 		aiDraftStatus.value = payload != null && payload.status != null ? String(payload.status) : 'awaiting_confirmation'
 		aiDraftId.value = payload != null && payload.draft_id != null ? String(payload.draft_id) : aiDraftId.value
-		aiConditions.value = searchDraftConditions(payload).map((condition: any) => ({ ...condition, localValueText: condition.value == null ? '' : String(condition.value), localAction: condition.user_action == 'removed' ? 'removed' : (condition.user_action == 'confirmed' ? 'confirmed' : 'pending') }))
+		const sourceConditions = searchDraftConditions(payload)
+		aiConditions.value = sourceConditions.map((condition: any, index: number) => {
+			const rawValue = condition != null ? condition.value : null
+			const hasConditionNo = condition != null && condition.condition_no != null && String(condition.condition_no).trim() != '' && !isNaN(Number(condition.condition_no))
+			return { ...condition, sourceConditionIndex: index, actionConditionNo: hasConditionNo ? Number(condition.condition_no) : index, localValueType: rawValue == null ? 'null' : (Array.isArray(rawValue) ? 'array' : (typeof rawValue == 'object' ? 'object' : typeof rawValue)), localValueText: conditionValueText(rawValue), localAction: condition.user_action == 'removed' ? 'removed' : (condition.user_action == 'confirmed' ? 'confirmed' : 'pending'), localValueInvalid: false }
+		})
 		aiUnknown.value = searchDraftUnknown(payload)
 		aiConflicts.value = searchDraftConflicts(payload)
 	}
@@ -276,14 +293,25 @@
 	}
 	const aiConditionValue = (condition: any): any => {
 		if (condition == null) return null
-		const value = condition.localValueText != null ? String(condition.localValueText) : ''
-		if (condition.value != null && typeof condition.value == 'number' && value != '' && !isNaN(Number(value))) return Number(value)
-		return value
+		const text = condition.localValueText != null ? String(condition.localValueText) : ''
+		if (condition.localValueType == 'number') return text.trim() == '' || isNaN(Number(text)) ? null : Number(text)
+		if (condition.localValueType == 'boolean') return text.trim().toLowerCase() == 'true'
+		if (condition.localValueType == 'array' || condition.localValueType == 'object') return JSON.parse(text)
+		return text
 	}
 	const onAiConditionValueInput = (index: number, event: any) => {
 		if (index < 0 || index >= aiConditions.value.length) return
-		aiConditions.value[index].localValueText = toText(event.detail.value)
-		if (aiConditions.value[index].localAction != 'removed') aiConditions.value[index].localAction = 'confirmed'
+		const condition = aiConditions.value[index]
+		condition.localValueInvalid = false
+		if (condition.localValueType == 'number') condition.localValueInvalid = condition.localValueText.trim() == '' || isNaN(Number(condition.localValueText))
+		if (condition.localValueType == 'boolean') condition.localValueInvalid = condition.localValueText.trim().toLowerCase() != 'true' && condition.localValueText.trim().toLowerCase() != 'false'
+		if (condition.localValueType == 'array' || condition.localValueType == 'object') {
+			try {
+				const parsed = JSON.parse(condition.localValueText)
+				condition.localValueInvalid = condition.localValueType == 'array' ? !Array.isArray(parsed) : Array.isArray(parsed) || parsed == null || typeof parsed != 'object'
+			} catch (error) { condition.localValueInvalid = true }
+		}
+		if (condition.localAction != 'removed') condition.localAction = 'confirmed'
 		aiPatchIdempotencyKey.value = ''
 	}
 	const setAiConditionAction = (index: number, action: string) => {
@@ -296,11 +324,25 @@
 		if (response != null && response.success && response.data != null && Array.isArray(response.data.items)) aiSuggestions.value = response.data.items as string[]
 	}
 	const onAiSuggestTap = async () => {
-		if (aiSuggestions.value.length > 0) return
+		if (aiSuggestions.value.length > 0 || aiSuggestionGenerating.value) return
+		aiSuggestionGenerating.value = true
+		if (aiSuggestionIdempotencyKey.value == '') aiSuggestionIdempotencyKey.value = 'search-suggest-' + String(Date.now())
 		try {
 			await loadAiSuggestions()
+			if (aiSuggestions.value.length == 0) {
+				const generated = await generateSearchSuggestions(aiSuggestionIdempotencyKey.value)
+				if (generated != null && generated.success && generated.data != null) {
+					const taskId = generated.data.task_id != null ? String(generated.data.task_id) : ''
+					if (taskId != '') {
+						const task = await waitForSearchTask(taskId)
+						if (!task.done || task.status != 'succeeded') throw new Error(task.error != null ? String(task.error) : '建议生成未完成')
+					}
+					await loadAiSuggestions()
+				}
+			}
 			if (aiSuggestions.value.length == 0) uni.showToast({ title: '暂时没有可编辑建议，请直接描述期待', icon: 'none' })
-		} catch (error) { uni.showToast({ title: '建议暂时无法读取', icon: 'none' }) }
+		} catch (error) { uni.showToast({ title: '建议暂时无法读取，请直接描述期待', icon: 'none' })
+		} finally { aiSuggestionGenerating.value = false }
 	}
 
 	const hometownOptions = ['不限', '江苏', '浙江', '上海', '安徽']
@@ -395,9 +437,10 @@
 	const handleBack = () => { if (resultState.value != 'idle') openSearchEditor(); else goBack() }
 	const onAiInput = (event: any) => {
 		const next = toText(event.detail.value)
-		if (next != aiQuery.value && aiDraft.value != null) resetAiDraftState()
+		if (next == aiQuery.value) return
+		searchRunId += 1
+		resetAiDraftState()
 		aiQuery.value = next
-		aiDraftIdempotencyKey.value = ''
 	}
 	const stopAiTyping = () => {
 		if (aiTypingTimer != null) {
@@ -407,6 +450,7 @@
 	}
 	const typeAiText = (value: string) => {
 		stopAiTyping()
+		searchRunId += 1
 		aiQuery.value = ''
 		resetAiDraftState()
 		let index = 0
@@ -425,10 +469,14 @@
 		nextCursor.value = ''
 		hasMore.value = false
 		resultError.value = 'AI 搜索任务暂时无法完成，请稍后重试'
-		resetAiDraftState()
+		const reuseDraftKey = aiDraftKeyQuery.value == query && aiDraftIdempotencyKey.value.length > 0
+		resetAiDraftState(reuseDraftKey)
 		aiGenerating.value = true
 		aiDraftTaskStage.value = '正在解析你的搜索期待'
-		if (aiDraftIdempotencyKey.value.length == 0) aiDraftIdempotencyKey.value = 'search-draft-' + String(Date.now()) + '-' + String(Math.floor(Math.random() * 1000000))
+		if (!reuseDraftKey) {
+			aiDraftIdempotencyKey.value = 'search-draft-' + String(Date.now()) + '-' + String(Math.floor(Math.random() * 1000000))
+			aiDraftKeyQuery.value = query
+		}
 		try {
 			const created = await createSearchDraft(query, 'search_page', 'zh-CN', aiDraftIdempotencyKey.value)
 			if (runId != searchRunId) return
@@ -442,6 +490,7 @@
 			if (!task.done || task.status != 'succeeded') { aiDraftError.value = task.error != null ? String(task.error) : '搜索期待解析未完成'; return }
 			aiDraftTaskStage.value = '解析完成，等待你确认条件'
 			const draft = await getSearchDraft(aiDraftId.value)
+			if (runId != searchRunId) return
 			if (!draft.success || draft.data == null) { aiDraftError.value = draft.message != null ? String(draft.message) : '解析条件读取失败'; return }
 			setAiDraftResponse(draft)
 			resultState.value = 'idle'
@@ -455,34 +504,45 @@
 		const actions: any[] = []
 		for (let index = 0; index < aiConditions.value.length; index++) {
 			const condition = aiConditions.value[index]
-			if (condition.localAction == 'removed') actions.push({ condition_no: index, action: 'remove' })
-			else if (condition.localValueText != null && String(condition.localValueText) != (condition.value == null ? '' : String(condition.value))) actions.push({ condition_no: index, action: 'edit', value: aiConditionValue(condition) })
-			else actions.push({ condition_no: index, action: 'confirm' })
+			if (condition.localValueInvalid) {
+				aiDraftError.value = '请先修正条件值格式后再确认'
+				return []
+			}
+			const conditionNo = condition.actionConditionNo
+			if (condition.localAction == 'removed') actions.push({ condition_no: conditionNo, action: 'remove' })
+			else if (condition.localValueText != null && conditionValueText(aiConditionValue(condition)) != conditionValueText(condition.value)) actions.push({ condition_no: conditionNo, action: 'edit', value: aiConditionValue(condition) })
+			else actions.push({ condition_no: conditionNo, action: 'confirm' })
 		}
 		return actions
 	}
-	const patchAiConditions = async (): Promise<boolean> => {
-		if (aiDraftId.value == '') return false
+	const patchAiConditions = async (runId: number, draftId: string): Promise<boolean> => {
+		if (draftId == '' || runId != searchRunId || draftId != aiDraftId.value) return false
 		if (aiPatchIdempotencyKey.value.length == 0) aiPatchIdempotencyKey.value = 'search-patch-' + String(Date.now()) + '-' + String(Math.floor(Math.random() * 1000000))
+		const actions = buildAiConditionActions()
+		if (actions.length == 0 || runId != searchRunId || draftId != aiDraftId.value) return false
 		const revision = searchDraftRevision(aiDraft.value)
-		const response = await patchSearchDraft(aiDraftId.value, buildAiConditionActions(), revision, aiPatchIdempotencyKey.value)
+		const response = await patchSearchDraft(draftId, actions, revision, aiPatchIdempotencyKey.value)
+		if (runId != searchRunId || draftId != aiDraftId.value) return false
 		if (response.success && response.data != null) { setAiDraftResponse(response); return true }
 		if (response.code == 409) {
-			const latest = await getSearchDraft(aiDraftId.value)
+			const latest = await getSearchDraft(draftId)
+			if (runId != searchRunId || draftId != aiDraftId.value) return false
 			if (latest.success && latest.data != null) setAiDraftResponse(latest)
 		}
-		aiDraftError.value = response.message != null ? String(response.message) : '条件版本已变化，请检查后重试'
+		if (runId == searchRunId && draftId == aiDraftId.value) aiDraftError.value = response.message != null ? String(response.message) : '条件版本已变化，请检查后重试'
 		return false
 	}
 	const confirmAiSearch = async () => {
 		if (aiConfirming.value || aiDraftId.value == '') return
+		const runId = searchRunId
+		const draftId = aiDraftId.value
 		aiConfirming.value = true
 		aiDraftError.value = ''
-		const runId = searchRunId
 		try {
-			if (!await patchAiConditions()) return
+			if (!await patchAiConditions(runId, draftId) || runId != searchRunId || draftId != aiDraftId.value) return
 			if (aiConfirmIdempotencyKey.value.length == 0) aiConfirmIdempotencyKey.value = 'search-confirm-' + String(Date.now()) + '-' + String(Math.floor(Math.random() * 1000000))
-			const accepted = await confirmSearchDraft(aiDraftId.value, searchDraftRevision(aiDraft.value), aiConfirmIdempotencyKey.value)
+			const accepted = await confirmSearchDraft(draftId, searchDraftRevision(aiDraft.value), aiConfirmIdempotencyKey.value)
+			if (runId != searchRunId || draftId != aiDraftId.value) return
 			if (!accepted.success || accepted.data == null) { aiDraftError.value = accepted.message != null ? String(accepted.message) : '条件确认失败，请检查条件后重试'; return }
 			const acceptedData = accepted.data
 			aiSnapshotId.value = acceptedData.snapshot_id != null ? String(acceptedData.snapshot_id) : ''
@@ -490,20 +550,21 @@
 			if (aiSnapshotId.value == '' || taskId == '') { aiDraftError.value = '搜索服务未返回有效执行任务'; return }
 			resultState.value = 'loading'
 			aiTaskStage.value = '正在执行已确认的搜索条件'
-			const task = await waitForSearchTask(taskId, () => runId == searchRunId)
-			if (runId != searchRunId) return
+			const task = await waitForSearchTask(taskId, () => runId == searchRunId && draftId == aiDraftId.value)
+			if (runId != searchRunId || draftId != aiDraftId.value) return
 			if (!task.done || task.status != 'succeeded') { resultState.value = 'error'; resultError.value = task.error != null ? String(task.error) : '搜索任务未完成'; return }
 			aiTaskStage.value = '正在读取最终候选'
 			const results = await getSearchSnapshotResults(aiSnapshotId.value, '', 20)
+			if (runId != searchRunId || draftId != aiDraftId.value) return
 			if (!results.success || results.data == null) { resultState.value = 'error'; resultError.value = results.message != null ? String(results.message) : '候选结果读取失败'; return }
 			resultCandidates.value = searchResultItems(results)
 			nextCursor.value = searchNextCursor(results)
 			hasMore.value = nextCursor.value.length > 0
 			resultState.value = resultCandidates.value.length > 0 ? 'success' : 'empty'
 		} catch (error) {
-			if (runId == searchRunId) { resultState.value = 'error'; resultError.value = '网络异常，搜索未完成' }
+			if (runId == searchRunId && draftId == aiDraftId.value) { resultState.value = 'error'; resultError.value = '网络异常，搜索未完成' }
 		} finally {
-			aiConfirming.value = false
+			if (runId == searchRunId && draftId == aiDraftId.value) aiConfirming.value = false
 		}
 	}
 	const onHometownChange = (event: any) => { hometownIndex.value = Number(event.detail.value) }
@@ -953,6 +1014,7 @@
 		activeTrait.value = trait
 	}
 
+	onLoad((options: any) => { if (options != null && String(options.suggest ?? '') == '1') setTimeout(() => { onAiSuggestTap() }, 120) })
 	onShow(() => { loadOwnMbti(); loadHistory() })
 	onUnmounted(() => { stopAiTyping() })
 </script>
