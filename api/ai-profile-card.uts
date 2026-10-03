@@ -5,12 +5,12 @@
 import { request } from './request.uts'
 import { pollTaskUntilTerminal } from './ai-profile.uts'
 
-function idempotencyKey(prefix: string): string {
+export function createProfileCardIdempotencyKey(prefix: string): string {
   return prefix + '-' + String(Date.now()) + '-' + String(Math.floor(Math.random() * 1000000))
 }
 
 export async function summarizeProfileCard(force: boolean = false, key: string = ''): Promise<any> {
-  const requestKey = key.trim().length >= 8 ? key.trim() : idempotencyKey('profile-card-summarize')
+  const requestKey = key.trim().length >= 8 ? key.trim() : createProfileCardIdempotencyKey('profile-card-summarize')
   return request({
     url: '/ai/profile-card/summarize',
     method: 'POST',
@@ -19,18 +19,45 @@ export async function summarizeProfileCard(force: boolean = false, key: string =
   })
 }
 
-export async function getProfileCardDraft(): Promise<any> {
-  return request({ url: '/ai/profile-card/draft', method: 'GET' })
+export async function getProfileCardDraft(draftId: string = ''): Promise<any> {
+  const query: any = {}
+  if (draftId.trim() != '') query.draft_id = draftId.trim()
+  return request({ url: '/ai/profile-card/draft', method: 'GET', data: query })
 }
 
-export async function applyProfileCardDraft(payload: any, key: string = ''): Promise<any> {
-  const requestKey = key.trim().length >= 8 ? key.trim() : idempotencyKey('profile-card-apply')
+function copyPayload(payload: any, optionalFields: any = null): any {
+  const result: any = {}
+  if (payload != null) {
+    const keys = Object.keys(payload)
+    for (let index = 0; index < keys.length; index++) result[keys[index]] = payload[keys[index]]
+  }
+  if (optionalFields != null) {
+    if (optionalFields.draft_id != null && String(optionalFields.draft_id).trim() != '') result.draft_id = String(optionalFields.draft_id)
+    if (optionalFields.source_revision_id != null) result.source_revision_id = Number(optionalFields.source_revision_id)
+    if (optionalFields.base_profile_revision != null) result.base_profile_revision = Number(optionalFields.base_profile_revision)
+    if (optionalFields.tag_apply_mode != null && String(optionalFields.tag_apply_mode).trim() != '') result.tag_apply_mode = String(optionalFields.tag_apply_mode)
+  }
+  return result
+}
+
+/** 旧后端拒绝新版约束时直接返回失败，禁止删掉草稿 ID 或版本约束重发。 */
+export async function applyProfileCardDraft(payload: any, key: string = '', optionalFields: any = null): Promise<any> {
+  const requestKey = key.trim().length >= 8 ? key.trim() : createProfileCardIdempotencyKey('profile-card-apply')
   return request({
     url: '/ai/profile-card/draft/apply',
     method: 'POST',
-    data: payload,
+    data: copyPayload(payload, optionalFields),
     headers: { 'Idempotency-Key': requestKey }
   })
+}
+
+export function isProfileCardVersionConflict(response: any): boolean {
+  if (response == null) return false
+  if (Number(response.code) == 409) return true
+  const data = response.data != null ? response.data : {}
+  const detail = data.detail != null ? data.detail : data
+  const dataCode = String(detail.code ?? detail.error_code ?? '')
+  return dataCode == 'DRAFT_VERSION_CONFLICT' || dataCode == 'RESULT_STALE'
 }
 
 export async function waitForProfileCardTask(taskId: string, shouldContinue: (() => boolean) | null = null): Promise<any> {

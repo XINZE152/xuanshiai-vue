@@ -20,6 +20,7 @@ const core = [
   'test-message-real-contract.js',
   'test-matchmaker-account-pages.js',
   'test-master-ws-error-contract.js',
+  'test-ai-profile-page.js',
   'test-console-hygiene.js'
 ]
 

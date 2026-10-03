@@ -161,13 +161,26 @@
 		<view v-if="profileCardVisible" class="mpr-card-mask" @tap="closeProfileCard">
 			<view class="mpr-card-sheet" @tap.stop>
 				<text class="mpr-card-title">整理为公开介绍</text>
-				<text class="mpr-card-copy">以下内容来自已确认成稿。请选择要写入公开资料的内容，未选择的不会发布。</text>
-				<view v-if="profileCardLoading" class="mpr-card-state"><text>正在整理公开介绍…</text></view>
-				<view v-else-if="profileCardError != ''" class="mpr-card-state"><text>{{ profileCardError }}</text><view class="mpr-btn" @tap="onPrepareProfileCard"><text class="mpr-btn-text">重试</text></view></view>
-				<view v-else>
-					<view v-for="row in profileCardRows" :key="row.key" class="mpr-card-row" @tap="toggleProfileCardField(row.key)"><view class="mpr-card-row-copy"><text class="mpr-card-row-label">{{ row.label }}</text><text class="mpr-card-row-value">{{ row.value }}</text></view><text class="mpr-card-row-toggle">{{ row.selected ? '采用' : '跳过' }}</text></view>
-					<view class="mpr-card-actions"><view class="mpr-btn mpr-btn-ghost" @tap="closeProfileCard"><text class="mpr-btn-text">取消</text></view><view class="mpr-btn mpr-btn-primary" :class="{ 'mpr-btn-disabled': profileCardApplying }" @tap="onApplyProfileCard"><text class="mpr-btn-primary-text">{{ profileCardApplying ? '正在保存…' : '确认采用' }}</text></view></view>
-				</view>
+				<scroll-view scroll-y class="mpr-card-scroll" enhanced :show-scrollbar="false">
+					<view class="mpr-card-content">
+						<text class="mpr-card-copy">确认画像只代表本人确认，不会自动公开。点击“确认采用”才会写入公开资料；未选择字段不写入。实际可见对象仍受现有隐私设置约束，这里不会扩大可见范围。</text>
+						<text class="mpr-card-copy mpr-card-boundary">这里不会修改长期择偶标准、发送消息或公开访谈原文。</text>
+						<view v-if="profileCardLoading" class="mpr-card-state"><text>正在整理公开介绍…</text></view>
+						<view v-else-if="profileCardError != ''" class="mpr-card-state"><text>{{ profileCardError }}</text><view class="mpr-btn" @tap="onPrepareProfileCard"><text class="mpr-btn-text">重新整理</text></view></view>
+						<view v-else>
+							<text v-if="profileCardApplyMessage != ''" class="mpr-card-limit">{{ profileCardApplyMessage }}</text>
+							<view v-for="row in profileCardRows" :key="row.key" class="mpr-card-row">
+								<view class="mpr-card-row-copy"><text class="mpr-card-row-label">{{ row.label }}</text></view><text class="mpr-card-row-toggle" @tap="toggleProfileCardField(row.key)">{{ row.selected ? '采用' : '跳过' }}</text>
+								<template v-if="row.key == 'self_intro'">
+									<textarea v-model="row.value" class="mpr-card-editor" maxlength="500" :disabled="profileCardApplying || profileCardApplyPayload != null" />
+									<view v-if="row.selected" class="mpr-card-replace" @tap="toggleReplaceExistingSelfIntro"><text>已有自我介绍默认保留</text><text class="mpr-card-replace-value">{{ replaceExistingSelfIntro ? '已确认替换已有介绍' : '不会替换已有介绍' }}</text></view>
+								</template>
+								<view v-else class="mpr-card-tags"><text class="mpr-card-limit">逐个选择，最多 3 个；已有标签默认保留</text><view v-for="tag in row.tags" :key="tag" class="mpr-card-tag" :class="{ 'mpr-card-tag-selected': profileCardSelectedTags.indexOf(tag) >= 0 }" @tap="toggleProfileCardTag(tag)"><text>{{ tag }}</text></view></view>
+							</view>
+						</view>
+					</view>
+				</scroll-view>
+				<view v-if="!profileCardLoading && profileCardError == '' && profileCardRows.length > 0" class="mpr-card-actions"><view class="mpr-btn mpr-btn-ghost" @tap="closeProfileCard"><text class="mpr-btn-text">{{ profileCardApplyPayload != null ? '返回' : '取消' }}</text></view><view class="mpr-btn mpr-btn-primary" :class="{ 'mpr-btn-disabled': profileCardApplying }" @tap="onRequestApplyProfileCard"><text class="mpr-btn-primary-text">{{ profileCardApplying ? '正在保存…' : (profileCardApplyPayload != null ? '重试核对' : '确认采用') }}</text></view></view>
 			</view>
 		</view>
 	</view>
@@ -176,7 +189,7 @@
 <script lang="uts">
 	import { createProfilePreview, getProfilePreview, type ProfilePreviewRecord } from '@/api/ai-moxiang.uts'
 	import { publishProfileDraft, pollTaskUntilTerminal, getPortraitNarrative, confirmPortraitNarrative, regeneratePortraitNarrative } from '@/api/ai-profile.uts'
-	import { summarizeProfileCard, getProfileCardDraft, applyProfileCardDraft, waitForProfileCardTask } from '@/api/ai-profile-card.uts'
+	import { summarizeProfileCard, getProfileCardDraft, applyProfileCardDraft, isProfileCardVersionConflict, waitForProfileCardTask, createProfileCardIdempotencyKey } from '@/api/ai-profile-card.uts'
 	import { getMeProfile, getOwnProfile } from '@/api/user.uts'
 	import MoxiangPosterSheet from '@/components/moxiang/MoxiangPosterSheet.uvue'
 	import type { MoxiangPosterData } from '@/utils/moxiang-poster-drawer.uts'
@@ -218,9 +231,19 @@
 				profileCardApplying: false,
 				profileCardError: '',
 				profileCardExpectedRevision: 0,
+				profileCardDraftId: '',
+				profileCardSourceRevisionId: null as any,
+				profileCardBaseProfileRevision: null as any,
+				profileCardSelectedTags: [] as string[],
+				profileCardTagApplyMode: '',
+				replaceExistingSelfIntro: false,
 				profileCardRows: [] as any[],
 				profileCardSummarizeKey: '',
 				profileCardApplyKey: '',
+				profileCardApplyPayload: null as any,
+				profileCardApplyContext: null as any,
+				profileCardApplyUncertain: false,
+				profileCardApplyMessage: '',
 				profileCardDraft: null as any,
 				posterIdentity: { nickname: '', ageText: '', cityText: '', verifiedBadge: '' }
 			}
@@ -292,37 +315,88 @@
 					rows.push({ key: key, label: label, value: value, selected: true, questionId: questionId, tags: candidates.map((item: any): string => String(item).trim()).filter((item: string): boolean => item != '') })
 				}
 				add('self_intro', '自我介绍')
-				add('qa_1_partner', '关于理想伴侣', 1)
-				add('qa_3_love', '关于亲密关系', 3)
-				add('qa_2_sports_candidates', '关于生活方式', 2)
 				add('interest_tag_candidates', '兴趣标签')
 				return rows
 			},
 			toggleProfileCardField(key: string) {
+				if (this.profileCardApplying || this.profileCardApplyPayload != null) return
 				for (let index = 0; index < this.profileCardRows.length; index++) if (this.profileCardRows[index].key == key) this.profileCardRows[index].selected = !this.profileCardRows[index].selected
+			},
+			toggleProfileCardTag(tag: string) {
+				if (this.profileCardApplying || this.profileCardApplyPayload != null) return
+				const index = this.profileCardSelectedTags.indexOf(tag)
+				if (index >= 0) this.profileCardSelectedTags.splice(index, 1)
+				else if (this.profileCardSelectedTags.length < 3) this.profileCardSelectedTags.push(tag)
+				else uni.showToast({ title: '最多采用 3 个标签', icon: 'none' })
+			},
+			toggleReplaceExistingSelfIntro() {
+				if (this.profileCardApplying || this.profileCardApplyPayload != null) return
+				this.replaceExistingSelfIntro = !this.replaceExistingSelfIntro
+			},
+			profileCardOptionalFields(): any {
+				const fields: any = {}
+				if (this.profileCardDraftId != '') fields.draft_id = this.profileCardDraftId
+				if (this.profileCardSourceRevisionId != null) fields.source_revision_id = this.profileCardSourceRevisionId
+				if (this.profileCardBaseProfileRevision != null) fields.base_profile_revision = this.profileCardBaseProfileRevision
+				if (this.profileCardTagApplyMode != '') fields.tag_apply_mode = this.profileCardTagApplyMode
+				return fields
+			},
+			resetProfileCardApply() {
+				this.profileCardApplyKey = ''
+				this.profileCardApplyPayload = null
+				this.profileCardApplyContext = null
+				this.profileCardApplyUncertain = false
 			},
 			closeProfileCard() {
 				if (!this.profileCardApplying) this.profileCardVisible = false
 			},
 			async onPrepareProfileCard() {
-				if (!this.canPrepareProfileCard || this.profileCardLoading) return
+				if (!this.canPrepareProfileCard || this.profileCardLoading || this.profileCardApplying) return
 				this.profileCardVisible = true
+				// 保存结果不明时重新打开原操作，不创建新草稿或丢弃幂等上下文。
+				if (this.profileCardApplyPayload != null) return
 				this.profileCardLoading = true
 				this.profileCardError = ''
-				if (this.profileCardSummarizeKey == '') this.profileCardSummarizeKey = 'profile-card-summarize-' + String(Date.now())
+				this.profileCardApplyMessage = ''
+				this.profileCardRows = []
+				this.profileCardSelectedTags = []
+				if (this.profileCardSummarizeKey == '') this.profileCardSummarizeKey = createProfileCardIdempotencyKey('profile-card-summarize')
 				try {
 					const accepted = await summarizeProfileCard(false, this.profileCardSummarizeKey)
 					if (!this.pageAlive) return
-					if (!accepted.success || accepted.data == null) throw new Error(String(accepted.message ?? '资料卡整理暂时不可用'))
+					if (!accepted.success || accepted.data == null) {
+						if (Number(accepted.code) == 409) this.profileCardSummarizeKey = ''
+						throw new Error(String(accepted.message ?? '资料卡整理暂时不可用'))
+					}
 					const taskId = String(accepted.data.task_id ?? '')
+					const cardDraftId = String(accepted.data.draft_id ?? '')
+					if (cardDraftId == '') throw new Error('服务版本不支持精确草稿，请稍后重试')
 					if (taskId == '') throw new Error('资料卡整理未返回有效任务')
 					const task = await waitForProfileCardTask(taskId, () => this.pageAlive)
-					if (!task.done || task.status != 'succeeded') throw new Error(task.error != '' ? task.error : '资料卡整理未完成')
-					const draft = await getProfileCardDraft()
 					if (!this.pageAlive) return
-					if (!draft.success || draft.data == null) throw new Error(String(draft.message ?? '资料卡草稿读取失败'))
+					if (!task.done || task.status != 'succeeded') {
+						if (task.done) this.profileCardSummarizeKey = ''
+						throw new Error(task.error != '' ? task.error : '资料卡整理未完成')
+					}
+					const draft = await getProfileCardDraft(cardDraftId)
+					if (!this.pageAlive) return
+					if (!draft.success || draft.data == null) {
+						if (Number(draft.code) == 404 || Number(draft.code) == 409) this.profileCardSummarizeKey = ''
+						throw new Error(String(draft.message ?? '资料卡草稿读取失败'))
+					}
+					if (String(draft.data.draft_id ?? '') != cardDraftId || draft.data.expected_revision == null || draft.data.base_profile_revision == null || draft.data.source_revision_id == null) throw new Error('草稿版本信息不完整，请重新整理')
+					if (draft.data.status != 'ready' && draft.data.status != 'partial') {
+						this.profileCardSummarizeKey = ''
+						throw new Error('草稿已采用或失效，请重新整理')
+					}
 					this.profileCardDraft = draft.data
+					this.profileCardDraftId = String(draft.data.draft_id ?? '')
 					this.profileCardExpectedRevision = Number(draft.data.expected_revision ?? 0)
+					this.profileCardSourceRevisionId = draft.data.source_revision_id != null ? Number(draft.data.source_revision_id) : null
+					this.profileCardBaseProfileRevision = Number(draft.data.base_profile_revision)
+					this.profileCardTagApplyMode = 'merge'
+					this.resetProfileCardApply()
+					this.replaceExistingSelfIntro = false
 					this.profileCardRows = this.buildProfileCardRows(draft.data.fields)
 				} catch (error: any) {
 					if (this.pageAlive) this.profileCardError = error?.message ?? String(error)
@@ -472,31 +546,83 @@
 					this.publishing = false
 				}
 			},
-			async onApplyProfileCard() {
+			onRequestApplyProfileCard() {
 				if (this.profileCardApplying || this.profileCardRows.length == 0) return
-				this.profileCardApplying = true
-				const accepted: any = {}
-				const qaAnswers: any[] = []
-				const personalTags: string[] = []
-				const rejected: string[] = []
-				for (let index = 0; index < this.profileCardRows.length; index++) {
-					const row = this.profileCardRows[index]
-					if (row.selected != true) { rejected.push(row.key); continue }
-					if (row.key == 'self_intro') accepted.self_intro = row.value
-					else if (row.key == 'interest_tag_candidates') for (let tagIndex = 0; tagIndex < row.tags.length && personalTags.length < 10; tagIndex++) if (row.tags[tagIndex] != '' && personalTags.indexOf(row.tags[tagIndex]) < 0) personalTags.push(row.tags[tagIndex])
-					else if (row.questionId > 0) qaAnswers.push({ question_id: row.questionId, answer: row.value })
+				if (this.profileCardSelectedTags.length > 3) return
+				uni.showModal({
+					title: this.profileCardApplyPayload != null ? '核对上次采用结果' : '确认写入公开资料',
+					content: this.profileCardApplyPayload != null ? '将使用同一幂等键和原先确认的内容重试，不会重复写入，也不会改用当前编辑值。' : '确认采用后，只有你选中的字段会写入公开资料；可见对象仍受现有隐私设置约束。不会修改长期择偶标准、发送消息或公开访谈原文。已有自我介绍默认不替换，需先明确勾选替换。',
+					success: (res: any) => {
+						if (res.confirm && this.pageAlive) this.applyProfileCard()
+					}
+				})
+			},
+			async applyProfileCard() {
+				if (!this.pageAlive || this.profileCardApplying || this.profileCardRows.length == 0) return
+				if (this.profileCardApplyPayload == null) {
+					if (this.profileCardDraftId == '' || this.profileCardSourceRevisionId == null || this.profileCardBaseProfileRevision == null) {
+						this.profileCardError = '草稿版本信息不完整，请重新整理'
+						return
+					}
+					const accepted: any = {}
+					const personalTags: string[] = []
+					const rejected: string[] = []
+					for (let index = 0; index < this.profileCardRows.length; index++) {
+						const row = this.profileCardRows[index]
+						if (row.selected != true) { rejected.push(row.key); continue }
+						if (row.key == 'self_intro') accepted.self_intro = row.value
+						else if (row.key == 'interest_tag_candidates') {
+							if (this.profileCardSelectedTags.length > 3) {
+								uni.showToast({ title: '最多采用 3 个标签', icon: 'none' })
+								return
+							}
+							for (let tagIndex = 0; tagIndex < this.profileCardSelectedTags.length; tagIndex++) personalTags.push(this.profileCardSelectedTags[tagIndex])
+						}
+					}
+					if (personalTags.length > 0) accepted.personal_tags = personalTags
+					// 快照与表单数组分离：响应丢失后的同键重试必须保持原 body 摘要。
+					this.profileCardApplyPayload = { expected_revision: this.profileCardExpectedRevision, accepted: accepted, rejected: rejected, replace_existing: { self_intro: this.replaceExistingSelfIntro } }
+					this.profileCardApplyContext = this.profileCardOptionalFields()
+					this.profileCardApplyKey = createProfileCardIdempotencyKey('profile-card-apply')
 				}
-				if (qaAnswers.length > 0) accepted.qa_answers = qaAnswers
-				if (personalTags.length > 0) accepted.personal_tags = personalTags
-				const payload = { expected_revision: this.profileCardExpectedRevision, accepted: accepted, rejected: rejected, replace_existing: { self_intro: false } }
-				if (this.profileCardApplyKey == '') this.profileCardApplyKey = 'profile-card-apply-' + String(Date.now())
+				this.profileCardApplying = true
 				try {
-					const result = await applyProfileCardDraft(payload, this.profileCardApplyKey)
-					if (!result.success) throw new Error(String(result.message ?? '资料卡写入失败'))
+					const result = await applyProfileCardDraft(this.profileCardApplyPayload, this.profileCardApplyKey, this.profileCardApplyContext)
+					if (!this.pageAlive) return
+					if (!result.success || result.data == null) {
+						if (isProfileCardVersionConflict(result)) {
+							this.profileCardSummarizeKey = ''
+							this.resetProfileCardApply()
+							this.profileCardError = '资料已变化，请重新整理/刷新；请先核对当前资料，不会自动覆盖'
+							uni.showToast({ title: '资料已变化，请重新整理/刷新', icon: 'none' })
+							return
+						}
+						const code = Number(result.code)
+						if ((code == 400 || code == 422) && !this.profileCardApplyUncertain) {
+							this.resetProfileCardApply()
+							this.profileCardApplyMessage = String(result.message ?? '内容校验未通过，请修改后再次确认')
+						} else {
+							this.profileCardApplyUncertain = true
+							this.profileCardApplyMessage = '保存结果尚未确认，内容已锁定。请同键重试核对，或到我的资料核对结果；不会重复写入。'
+						}
+						uni.showToast({ title: String(result.message ?? '保存结果尚未确认，请重试核对'), icon: 'none' })
+						return
+					}
+					const written = Array.isArray(result.data.written_fields) ? result.data.written_fields as any[] : []
+					const skipped = Array.isArray(result.data.skipped_fields) ? result.data.skipped_fields as any[] : []
+					this.profileCardDraft = result.data
+					this.profileCardExpectedRevision = Number(result.data.expected_revision)
+					this.profileCardSummarizeKey = ''
+					this.resetProfileCardApply()
+					this.profileCardApplyMessage = ''
 					this.profileCardVisible = false
-					uni.showToast({ title: '已按选择整理公开资料', icon: 'none' })
+					uni.showToast({ title: written.length > 0 ? '已按回执写入公开资料' : (skipped.length > 0 ? '已按回执跳过未选内容' : '公开资料未发生变化'), icon: 'none' })
 				} catch (error: any) {
-					uni.showToast({ title: error?.message ?? '保存失败，请核对后重试', icon: 'none' })
+					if (this.pageAlive) {
+						this.profileCardApplyUncertain = true
+						this.profileCardApplyMessage = '保存结果尚未确认，内容已锁定。请同键重试核对，或到我的资料核对结果；不会重复写入。'
+						uni.showToast({ title: error?.message ?? '保存结果尚未确认，请重试核对', icon: 'none' })
+					}
 				} finally {
 					this.profileCardApplying = false
 				}
@@ -985,14 +1111,25 @@
 	.mpr-btn-profile-card { background: var(--surface-warm); border-color: var(--primary); }
 	.mpr-btn-profile-card-text { color: var(--primary); font-size: 14px; font-weight: 700; }
 	.mpr-card-mask { position: fixed; z-index: 120; inset: 0; display: flex; align-items: flex-end; background: rgba(12, 19, 19, 0.36); }
-	.mpr-card-sheet { width: 100%; max-height: 82vh; box-sizing: border-box; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); border-radius: 20px 20px 0 0; background: var(--surface); display: flex; flex-direction: column; gap: 12px; }
-	.mpr-card-title { color: var(--ink); font-size: 20px; font-weight: 700; }
+	.mpr-card-sheet { width: 100%; height: 82vh; box-sizing: border-box; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); border-radius: 20px 20px 0 0; background: var(--surface); display: flex; flex-direction: column; gap: 12px; }
+	.mpr-card-title { flex-shrink: 0; color: var(--ink); font-size: 20px; font-weight: 700; }
+	.mpr-card-scroll { flex: 1; height: 0; min-height: 0; width: 100%; }
+	.mpr-card-content { display: flex; flex-direction: column; gap: 12px; padding-bottom: 12px; }
 	.mpr-card-copy, .mpr-card-row-value { color: var(--ink2); font-size: 13px; line-height: 1.55; }
 	.mpr-card-state { display: flex; flex-direction: column; gap: 12px; padding: 18px 0; color: var(--ink2); font-size: 14px; }
-	.mpr-card-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+	.mpr-card-boundary { margin-top: 4px; }
+	.mpr-card-limit { display: block; margin-top: 6px; color: var(--primary-dark); font-size: 12px; line-height: 1.5; }
+	.mpr-card-replace { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 8px; box-sizing: border-box; border-radius: 8px; background: var(--surface-warm); color: var(--ink2); font-size: 12px; }
+	.mpr-card-replace-value { color: var(--primary); font-weight: 700; }
+	.mpr-card-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+	.mpr-card-limit, .mpr-card-replace { width: 100%; }
 	.mpr-card-row-copy { flex: 1; display: flex; flex-direction: column; gap: 4px; }
 	.mpr-card-row-label { color: var(--ink); font-size: 14px; font-weight: 700; }
-	.mpr-card-row-toggle { color: var(--primary); font-size: 13px; font-weight: 700; }
-	.mpr-card-actions { display: flex; gap: 10px; margin-top: 4px; }
-	.mpr-card-actions .mpr-btn { flex: 1; }
+	.mpr-card-row-toggle { min-height: 44px; display: flex; align-items: center; color: var(--primary); font-size: 13px; font-weight: 700; }
+	.mpr-card-editor { width: 100%; min-height: 100px; padding: 8px; box-sizing: border-box; border-radius: 8px; background: var(--surface-warm); color: var(--ink2); font-size: 14px; line-height: 1.6; }
+	.mpr-card-tags { width: 100%; display: flex; flex-wrap: wrap; gap: 8px; }
+	.mpr-card-tag { min-height: 44px; box-sizing: border-box; display: flex; align-items: center; padding: 6px 10px; border-radius: 12px; background: var(--surface-warm); color: var(--ink2); font-size: 13px; }
+	.mpr-card-tag-selected { color: var(--primary); border: 1px solid var(--primary); }
+	.mpr-card-actions { flex-shrink: 0; display: flex; gap: 10px; margin-top: 4px; }
+	.mpr-card-actions .mpr-btn { flex: 1; min-width: 0; }
 </style>
