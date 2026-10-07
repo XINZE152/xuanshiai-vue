@@ -13,6 +13,13 @@
 // PRODUCT.md「情感气质透视」的四型口径对齐：secure / anxious / avoidant / fearful。
 // 后端装配前已把该值规整为四码之一，未命中会整块丢弃 emotional_insight，故未知
 // 编码属防御分支：宁可隐藏也不外漏裸码。
+//
+// 【角色文案】用户可见的 AI 引路人角色名统一为「知遇」，旧文案「墨相师」不再出现在
+// 任何 toast / 错误兜底 / 标题里（PRODUCT.md 生效日期 2026-10-06）。品牌视觉标识
+// （墨相心帖、知遇墨相印章）属 DESIGN.md 视觉 spec，不受本常量约束。
+
+/** 用户可见的角色名；供应商与模型名只存在于服务端调用与审计层。 */
+export const MASTER_ROLE_NAME = '知遇'
 
 /** 可对外展示的叙事层状态：confirmed 为用户确认后的当前值，published 为历史行兼容值。 */
 const NARRATIVE_VISIBLE_STATUSES: string[] = ['confirmed', 'published']

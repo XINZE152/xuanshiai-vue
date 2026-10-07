@@ -86,7 +86,7 @@ async function main() {
   const tagOptionsApi = userApi.split('export async function getProfileTagOptions()')[1].split('export async function updateOwnProfile')[0]
   assert.match(tagOptionsApi, /okRes\(mockProfileTagOptions\)/, 'the editor catalog must be bundled with the frontend')
   assert.doesNotMatch(tagOptionsApi, /request\(/, 'opening the editor must not fetch its catalog from the backend')
-  const backendRoot = process.env.XSA_BACKEND_ROOT || path.resolve(root, '../xuanshiai/xuanshiai')
+  const backendRoot = process.env.XSA_BACKEND_ROOT || path.resolve(root, '../xuanshiai-backend')
   require('node:child_process').execFileSync('python', [path.join(root, 'scripts/sync-profile-tags.py'), '--check', '--backend-root', backendRoot], { stdio: 'inherit' })
   assert.equal(catalog.categories.length, 17)
   assert.deepEqual(catalog.categories.map(category => category.label), ['性格特质', '运动', '阅读', '影视综', '音乐', '文艺创作', '二次元', '旅行户外', '美食', '咖啡茶酒', '游戏', '休闲娱乐', '宠物', '植物园艺', '汽车文化', '生活习惯', '知识成长'])

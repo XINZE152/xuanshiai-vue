@@ -17,7 +17,7 @@
 		</view>
 		<view v-if="!collapsed" class="mx-progress-details">
 			<view class="mx-progress-heading">
-				<text class="mx-progress-title">正在一起整理你的墨相</text>
+				<text class="mx-progress-title">正在一起整理你的真实画像</text>
 				<text class="mx-progress-note">每一次聊天都会让它更清晰，只有你确认过的内容才会保留。</text>
 			</view>
 			<view class="mx-progress-top">

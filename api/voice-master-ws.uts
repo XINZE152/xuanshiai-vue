@@ -8,12 +8,14 @@
  *   客户端可调用 acceptBuildInvite / snoozeBuildInvite 终结邀请
  */
 
-import { buildWsUrl, getAccessToken } from './config.uts'
+import { buildWsTicketUrl, getAccessToken } from './config.uts'
+import { request } from './request.uts'
 import { ProfileSubject } from './ai-profile.uts'
 import { debugLog } from '@/utils/debug-log.uts'
+import { MASTER_ROLE_NAME } from '@/utils/moxiang-badge.uts'
 
-/** 用户可见的对话角色名；供应商/模型名只存在于服务端调用与审计层。 */
-export const MASTER_ROLE_NAME = '知遇'
+// 角色名唯一来源在 utils/moxiang-badge.uts，这里只透传，避免两处「知遇」各自漂移。
+export { MASTER_ROLE_NAME }
 
 /** 旅程阶段枚举(Contract v1.1 §1.2) */
 export type JourneyStage = 'chatting' | 'building' | 'ready' | 'published'
@@ -176,14 +178,45 @@ export class MasterWS {
 		this.callbacks.onError?.('AI_INPUT_INVALID', '画像主体非法')
 	}
 
-	connect(): boolean {
+	async connect(): Promise<boolean> {
 		this.manuallyClosed = false
 		const token = getAccessToken()
 		if (token == '') {
 			this.callbacks.onError?.('AUTH_REQUIRED', '未登录,请先登录')
 			return false
 		}
-		const url = buildWsUrl('/voice/moxiang-master', token)
+
+		// WebSocket 端点只接受一次性 AI ticket；长期 JWT 仅用于下面的
+		// Bearer HTTP 请求，绝不进入连接 URL。
+		let ticketResponse: any = null
+		try {
+			ticketResponse = await request({
+				url: '/voice/ws-ticket',
+				method: 'POST',
+				data: {}
+			})
+		} catch (e) {
+			this.callbacks.onError?.('AI_TEMPORARILY_UNAVAILABLE', '凭证服务暂时不可用')
+			return false
+		}
+		if (this.manuallyClosed) return false
+		const ticket = ticketResponse != null && ticketResponse.success === true && ticketResponse.data != null
+			? String(ticketResponse.data.ticket != null ? ticketResponse.data.ticket : '')
+			: ''
+		if (ticket == '') {
+			const status = ticketResponse != null ? Number(ticketResponse.code != null ? ticketResponse.code : 0) : 0
+			if (status == 401) {
+				this.callbacks.onError?.('AUTH_REQUIRED', '登录状态已失效,请重新登录')
+			} else {
+				const message = ticketResponse != null && ticketResponse.message != null && String(ticketResponse.message) != ''
+					? String(ticketResponse.message)
+					: '凭证服务暂时不可用'
+				this.callbacks.onError?.('AI_TEMPORARILY_UNAVAILABLE', message)
+			}
+			return false
+		}
+
+		const url = buildWsTicketUrl('/voice/moxiang-master', ticket)
 		debugLog('[MasterWS] connecting /voice/moxiang-master')
 		this.socketTask = uni.connectSocket({
 			url: url,

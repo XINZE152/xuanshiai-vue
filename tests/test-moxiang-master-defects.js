@@ -36,7 +36,8 @@ test('flex layout reserves navigation and input bars', () => {
 })
 
 test('progress panel uses Chinese, compact, user-facing language', () => {
-  assert(progressSource.includes('正在一起整理你的墨相'), 'progress panel has no conversational heading')
+  // 标题保留口语化抬头；文案随「知遇」两个主体改名（我的真实画像 / 期待的长期关系），见 PRODUCT.md。
+  assert(progressSource.includes('正在一起整理你的真实画像'), 'progress panel has no conversational heading')
   assert(
     progressSource.includes("import { dimensionLabel } from '@/utils/moxiang-dimension.uts'"),
     'dimension labels are not translated via the shared util (#21 single mapping table)',

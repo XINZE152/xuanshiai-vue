@@ -15,6 +15,7 @@
 import { request } from './request.uts'
 import { buildApiUrl } from './config.uts'
 import type { ProfileSubject } from './ai-profile.uts'
+import { MASTER_ROLE_NAME } from '@/utils/moxiang-badge.uts'
 
 /** 旅程阶段枚举（Contract v1.1 §1.2）。 */
 export type JourneyStage = 'chatting' | 'building' | 'ready' | 'published'
@@ -89,7 +90,7 @@ export interface MoxiangTurnsResponse {
  */
 function unwrapMoxiangResponse(raw: any): any {
 	if (raw != null && typeof raw == 'object' && raw.success === false) {
-		const message = raw.message != null ? String(raw.message) : '墨相师数据加载失败'
+		const message = raw.message != null ? String(raw.message) : MASTER_ROLE_NAME + '数据加载失败'
 		throw new Error(message)
 	}
 	if (raw != null && typeof raw == 'object' && raw.success === true) {

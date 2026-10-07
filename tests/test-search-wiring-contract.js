@@ -84,5 +84,108 @@ check('mapPage 透传 next_cursor 供游标分页', () => {
   assert.ok(discoveryApi.includes('nextCursor: body.next_cursor'), 'cursor passthrough required')
 })
 
+// ===== R6/D11 行为回归：真实函数沙箱执行，不只检查源码字符串 =====
+
+// 从页面源码截取一段顶层声明（start 起到 endMarker 止）。
+const sliceDecl = (src, startMarker, endMarker) => {
+  const start = src.indexOf(startMarker)
+  assert.ok(start >= 0, 'source must contain: ' + startMarker)
+  const end = endMarker != null ? src.indexOf(endMarker, start + startMarker.length) : -1
+  assert.ok(end > start, 'source must contain end marker: ' + endMarker)
+  return src.slice(start, end)
+}
+
+check('条件输入事件先回写新值再校验（执行 onAiConditionValueInput）', () => {
+  let fnSrc = sliceDecl(page, 'const onAiConditionValueInput', 'const setAiConditionAction')
+  fnSrc = fnSrc
+    .replace('const onAiConditionValueInput = (index: number, event: any)', 'const onAiConditionValueInput = (index, event)')
+    .replace(/: any/g, '')
+  const condition = {
+    localValueType: 'number',
+    localValueText: '25',
+    localValueInvalid: false,
+    localAction: 'pending',
+    value: 25,
+    actionConditionNo: 0
+  }
+  const aiConditions = { value: [condition] }
+  const aiPatchIdempotencyKey = { value: '' }
+  const onAiConditionValueInput = new Function(
+    'aiConditions',
+    'aiPatchIdempotencyKey',
+    fnSrc + '\nreturn onAiConditionValueInput;'
+  )(aiConditions, aiPatchIdempotencyKey)
+  // 用户把 25 改成 32：本地状态必须真的变成 32。
+  onAiConditionValueInput(0, { detail: { value: '32' } })
+  assert.equal(condition.localValueText, '32', 'input event must write back the typed value')
+  assert.equal(condition.localValueInvalid, false, '32 is a valid number')
+  assert.equal(condition.localAction, 'confirmed', 'editing implies confirm intent')
+  assert.ok(aiPatchIdempotencyKey.value == '', 'edit must drop the stale patch idempotency key')
+  // 非法输入仍被拦截
+  onAiConditionValueInput(0, { detail: { value: 'abc' } })
+  assert.equal(condition.localValueInvalid, true, 'non-numeric must be marked invalid')
+})
+
+check('确认动作请求体携带编辑后的新值（执行 buildAiConditionActions）', () => {
+  const condValueText = sliceDecl(page, 'const conditionValueText', 'const setAiDraftResponse')
+    .replace('const conditionValueText = (value: any): string =>', 'const conditionValueText = (value) =>')
+  const aiCondValue = sliceDecl(page, 'const aiConditionValue', 'const onAiConditionValueInput')
+    .replace('const aiConditionValue = (condition: any): any =>', 'const aiConditionValue = (condition) =>')
+  let buildActions = sliceDecl(page, 'const buildAiConditionActions', 'const patchAiConditions')
+    .replace('const buildAiConditionActions = (): any[] =>', 'const buildAiConditionActions = () =>')
+  buildActions = buildActions.replace(/: any\[\]/g, '').replace(/: any/g, '')
+  const sandbox = condValueText + '\n' + aiCondValue + '\n' + buildActions + '\nreturn buildAiConditionActions;'
+  const condition = {
+    localValueType: 'number',
+    localValueText: '32',
+    localValueInvalid: false,
+    localAction: 'confirmed',
+    value: 25,
+    actionConditionNo: 3
+  }
+  const removedCondition = {
+    localValueType: 'number',
+    localValueText: '',
+    localValueInvalid: true,
+    localAction: 'removed',
+    value: null,
+    actionConditionNo: 4
+  }
+  const aiConditions = { value: [condition, removedCondition] }
+  const aiDraftError = { value: '' }
+  const buildAiConditionActions = new Function('aiConditions', 'aiDraftError', sandbox)(aiConditions, aiDraftError)
+  const actions = buildAiConditionActions()
+  // 请求体必须携带新值 32（修复前永远发旧值 25）；已移除条件只发 remove，不被旧非法值阻断。
+  assert.deepEqual(actions, [
+    { condition_no: 3, action: 'edit', value: 32 },
+    { condition_no: 4, action: 'remove' }
+  ])
+})
+
+check('非法保留条件阻断确认并给出可修正提示（执行 buildAiConditionActions）', () => {
+  const condValueText = sliceDecl(page, 'const conditionValueText', 'const setAiDraftResponse')
+    .replace('const conditionValueText = (value: any): string =>', 'const conditionValueText = (value) =>')
+  const aiCondValue = sliceDecl(page, 'const aiConditionValue', 'const onAiConditionValueInput')
+    .replace('const aiConditionValue = (condition: any): any =>', 'const aiConditionValue = (condition) =>')
+  let buildActions = sliceDecl(page, 'const buildAiConditionActions', 'const patchAiConditions')
+    .replace('const buildAiConditionActions = (): any[] =>', 'const buildAiConditionActions = () =>')
+  buildActions = buildActions.replace(/: any\[\]/g, '').replace(/: any/g, '')
+  const sandbox = condValueText + '\n' + aiCondValue + '\n' + buildActions + '\nreturn buildAiConditionActions;'
+  const invalidCondition = {
+    localValueType: 'number',
+    localValueText: 'abc',
+    localValueInvalid: true,
+    localAction: 'confirmed',
+    value: 25,
+    actionConditionNo: 0
+  }
+  const aiConditions = { value: [invalidCondition] }
+  const aiDraftError = { value: '' }
+  const buildAiConditionActions = new Function('aiConditions', 'aiDraftError', sandbox)(aiConditions, aiDraftError)
+  const actions = buildAiConditionActions()
+  assert.deepEqual(actions, [], 'invalid kept condition must block the whole submit')
+  assert.notEqual(aiDraftError.value, '', 'user must see the fix-it message')
+})
+
 console.log('====================================')
 console.log('搜索接线契约测试：' + passed + ' 项全部通过')

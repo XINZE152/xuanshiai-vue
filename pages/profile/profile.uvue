@@ -198,7 +198,7 @@ import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
 import XsaZhiyuHub from '@/components/XsaZhiyuHub.uvue'
 import { getProfileOverview, getProfileCompletion, getMembershipStatus, getPortraitNarrative } from '@/api'
 import { resolveMediaUrl } from '@/api/config.uts'
-import { attachmentStyleLabel, narrativeBadgeVisible } from '@/utils/moxiang-badge.uts'
+import { attachmentStyleLabel, narrativeBadgeVisible, MASTER_ROLE_NAME } from '@/utils/moxiang-badge.uts'
 
 const systemInfo = uni.getSystemInfoSync()
 const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
@@ -366,7 +366,7 @@ const onAiAvatar = () => {
 const onMoxiangMaster = () => {
 	uni.navigateTo({
 		url: '/pagesSub/profileExtra/my-portrait-master',
-		fail: () => { uni.showToast({ title: '墨相师页面打开失败，请重试', icon: 'none' }) }
+		fail: () => { uni.showToast({ title: MASTER_ROLE_NAME + '页面打开失败，请重试', icon: 'none' }) }
 	})
 }
 

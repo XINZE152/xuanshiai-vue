@@ -58,9 +58,18 @@ assert.match(
   /journeyStage == 'building' && inviteId != ''[\s\S]{0,220}maybePromptBuild\(subject, inviteId\)/,
   'a restored pending invite must prompt after the journey socket is ready'
 )
+// 主体切换回调内必须重新核对待构建邀请。按回调边界取块判断，不用字符预算：
+// 注释变长不该误报，同时也不会匹配到后续回调里的同类判断。
+const subjectChangeStart = page.indexOf('onSubjectChanged:')
+const subjectChangeEnd = page.indexOf('onJourneyReady:', subjectChangeStart)
+const subjectChangeBlock = page.slice(
+  subjectChangeStart,
+  subjectChangeEnd > subjectChangeStart ? subjectChangeEnd : subjectChangeStart + 3000
+)
+assert(subjectChangeStart >= 0, 'master page must wire the onSubjectChanged callback')
 assert.match(
-  page,
-  /onSubjectChanged:[\s\S]{0,900}summary\.journeyStage == 'building' && inviteId != ''[\s\S]{0,180}maybePromptBuild\(subject, inviteId\)/,
+  subjectChangeBlock,
+  /summary\.journeyStage == 'building' && inviteId != ''[\s\S]{0,180}maybePromptBuild\(subject, inviteId\)/,
   'a background subject invite must prompt when the user switches back to it'
 )
 

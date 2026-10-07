@@ -410,15 +410,15 @@
         },
         {
           "path": "my-portrait-master",
-          "style": { "navigationBarTitleText": "墨相师", "navigationStyle": "custom" }
+          "style": { "navigationBarTitleText": "知遇", "navigationStyle": "custom" }
         },
         {
           "path": "my-portrait-result",
-          "style": { "navigationBarTitleText": "画像成稿", "navigationStyle": "custom" }
+          "style": { "navigationBarTitleText": "我的画像成稿", "navigationStyle": "custom" }
         },
         {
           "path": "my-portrait-archive",
-          "style": { "navigationBarTitleText": "我的墨相档案", "navigationStyle": "custom" }
+          "style": { "navigationBarTitleText": "我的画像档案", "navigationStyle": "custom" }
         }
       ]
     },

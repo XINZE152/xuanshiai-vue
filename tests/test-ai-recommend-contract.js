@@ -48,26 +48,67 @@ check('统一 API 导出推荐客户端', () => {
   assert.ok(index.includes('getAiRecommendations'), 'getAiRecommendations must be exported')
 })
 
-check('首页三个视图分别映射后端枚举', () => {
-  assert.ok(page.includes("key: 'i_like'"), 'i_like view tab must exist')
-  assert.ok(page.includes("key: 'likes_me'"), 'likes_me view tab must exist')
-  assert.ok(page.includes("key: 'similar'"), 'similar view tab must exist')
-  assert.ok(page.includes('getAiRecommendations'), 'home must call AI recommendations')
+check('首页主候选回到发现推荐链路，不再依赖三分类改造', () => {
+  assert.ok(page.includes('getDiscoveryRecommendations'), 'home must call the existing discovery recommendations')
+  assert.ok(!page.includes('getAiRecommendations'), 'home must not depend on the three-view AI recommend client')
+  assert.ok(!page.includes("key: 'i_like'"), 'home must not render three-view tabs')
+  assert.ok(!page.includes('item.card'), 'home must not require an item.card field the backend does not return')
+  assert.ok(!page.includes('公开介绍需主动查看完整资料'), 'home must not overwrite real intro with fixed copy')
 })
 
-check('首页区分加载、重建中、正常空结果与失败重试', () => {
-  assert.ok(page.includes('recommendationLoading'), 'loading state must exist')
-  assert.ok(page.includes('recommendationRegenerating'), 'regenerating state must exist')
-  assert.ok(page.includes('演示模式没有正式推荐结果'), 'mock state must not claim formal recommendations')
-  assert.ok(page.includes('重新加载'), 'error/empty states need a retry entry')
-  assert.ok(page.includes('recommendationRegenerating && recommendUsers.length === 0'), 'regenerating gate must not hide already available cards')
+check('发现接口响应形状能组装出首页可用名片（行为验证）', () => {
+  const discoverySrc = read('api/discovery.uts')
+  const start = discoverySrc.indexOf('function mapCard')
+  const end = discoverySrc.indexOf('function mapPage')
+  assert.ok(start >= 0 && end > start, 'discovery client must ship a real card mapper')
+  let mapCardSrc = discoverySrc.slice(start, end)
+  mapCardSrc = mapCardSrc
+    .replace(/ as any\[\]/g, '')
+    .replace(/: any\[\]/g, '')
+    .replace(/: string\[\]/g, '')
+    .replace(/: any/g, '')
+  const mapCard = new Function('resolveMediaUrl', mapCardSrc + '\nreturn mapCard;')(
+    (value) => (value != null && value !== '' ? 'media:' + value : '')
+  )
+  // 模拟 /discovery/recommendations 真实返回行（snake_case 后端字段）。
+  const backendRow = {
+    user_id: 42,
+    nickname: '真实候选',
+    avatar: '/storage/a.webp',
+    age: 29,
+    height_cm: 172,
+    weight_kg: 60,
+    gender: 'female',
+    education_level: '本科',
+    occupation: '设计师',
+    city_code: '320100',
+    hometown: '南京',
+    income: '20-30万',
+    bio: '喜欢长跑与看展',
+    online_status: 1,
+    mbti: 'INFJ',
+    personal_tags: ['跑步', '看展'],
+    certification_tags: ['实名认证'],
+    distance_km: 3.5,
+    match_score: 87,
+    view_count: 12
+  }
+  const card = mapCard(backendRow)
+  assert.equal(card.id, 42, 'card id must come from user_id')
+  assert.equal(card.name, '真实候选', 'card name must come from nickname')
+  assert.equal(card.bio, '喜欢长跑与看展', 'real intro must survive mapping')
+  assert.deepEqual(card.interestTags, ['跑步', '看展'], 'tags must survive mapping')
+  assert.equal(card.certificationTags.length, 1, 'certification tags must survive mapping')
+  assert.equal(card.online, true, 'online must be derived from online_status')
+  assert.equal(card.distance, 3.5, 'distance must survive mapping')
+  assert.equal(card.education, '本科', 'education must survive mapping')
 })
 
-check('首页消费服务端公开名片且不批量读取完整主页', () => {
-  assert.ok(page.includes('item.card'), 'home must consume the returned public card')
-  assert.ok(!page.includes('getUserDetail(item.targetUserId)'), 'home must not preload full profile detail')
+check('首页仅补全当前展示对象的资料，合拍入口使用真实结果', () => {
+  assert.ok(page.includes('getUserDetail'), 'home enriches only the currently displayed card via detail API')
   assert.ok(!page.includes('Promise.all(items.map'), 'home must not batch-load full profile details')
-  assert.ok(page.includes('recommendationReason'), 'recommendation explanation must remain separate from compatibility score')
+  assert.ok(page.includes(':target-user-id="recommendUserId"'), 'compatibility sheet must read the real compatibility result')
+  assert.ok(!page.includes('aiScoreText'), 'home must not restore the fake recommendation-score ring')
 })
 
 check('regenerating 不触发任务地址拼接或无限轮询', () => {

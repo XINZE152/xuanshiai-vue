@@ -80,6 +80,25 @@ export function buildWsUrl(path: string, token: string): string {
   return base + API_PREFIX + p + sep + 'token=' + encodeURIComponent(token)
 }
 
+/**
+ * Build an AI WebSocket URL with the short-lived, single-use ticket issued
+ * by /voice/ws-ticket. Long-lived access tokens must never be placed in this
+ * URL because WebSocket URLs can be retained by client/network diagnostics.
+ */
+export function buildWsTicketUrl(path: string, ticket: string): string {
+  let p = path != null ? ('' + path) : ''
+  if (p.indexOf('ws://') == 0 || p.indexOf('wss://') == 0) return p
+  if (p.charAt(0) != '/') p = '/' + p
+  let base = API_BASE_URL
+  if (base.indexOf('https://') == 0) {
+    base = 'wss://' + base.substring(8)
+  } else if (base.indexOf('http://') == 0) {
+    base = 'ws://' + base.substring(7)
+  }
+  const sep = p.indexOf('?') >= 0 ? '&' : '?'
+  return base + API_PREFIX + p + sep + 'ticket=' + encodeURIComponent(ticket)
+}
+
 export function resolveMediaUrl(value: any): string {
   if (value == null) return ''
   const p = '' + value

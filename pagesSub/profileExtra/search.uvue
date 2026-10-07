@@ -19,6 +19,8 @@
 					<view v-if="aiSuggestions.length > 0" class="ai-suggestion-row"><text v-for="item in aiSuggestions" :key="item" class="ai-suggestion-chip" @tap="typeAiText(item)">{{ item }}</text></view>
 					<text class="panel-note">先把期待解析成条件，再由你确认后执行搜索；不会自动改写长期偏好。</text>
 					<text v-if="aiGenerating" class="ai-task-inline">{{ aiDraftTaskStage }}</text>
+					<!-- 解析失败时草稿区可能尚不存在：错误放在无草稿也可见的位置。 -->
+					<text v-if="aiDraft == null && aiDraftError != ''" class="panel-error">{{ aiDraftError }}</text>
 				</view>
 
 				<view v-if="aiDraft != null" class="ai-draft-panel">
@@ -195,6 +197,8 @@
 	const resultCandidates = ref<any[]>([])
 	const resultError = ref('请检查网络后再试一次')
 	let searchRunId = 0
+	// 页面存活：退出后建议/任务回调不再更新界面。
+	let searchPageAlive = true
 	const nextCursor = ref('')
 	const hasMore = ref(false)
 	const loadingMore = ref(false)
@@ -302,6 +306,9 @@
 	const onAiConditionValueInput = (index: number, event: any) => {
 		if (index < 0 || index >= aiConditions.value.length) return
 		const condition = aiConditions.value[index]
+		// 先回写真实输入，再校验：不回写会让校验和后续 PATCH 都拿着旧值执行。
+		const inputValue = event != null && event.detail != null && event.detail.value != null ? String(event.detail.value) : ''
+		condition.localValueText = inputValue
 		condition.localValueInvalid = false
 		if (condition.localValueType == 'number') condition.localValueInvalid = condition.localValueText.trim() == '' || isNaN(Number(condition.localValueText))
 		if (condition.localValueType == 'boolean') condition.localValueInvalid = condition.localValueText.trim().toLowerCase() != 'true' && condition.localValueText.trim().toLowerCase() != 'false'
@@ -329,19 +336,21 @@
 		if (aiSuggestionIdempotencyKey.value == '') aiSuggestionIdempotencyKey.value = 'search-suggest-' + String(Date.now())
 		try {
 			await loadAiSuggestions()
-			if (aiSuggestions.value.length == 0) {
-				const generated = await generateSearchSuggestions(aiSuggestionIdempotencyKey.value)
-				if (generated != null && generated.success && generated.data != null) {
-					const taskId = generated.data.task_id != null ? String(generated.data.task_id) : ''
-					if (taskId != '') {
-						const task = await waitForSearchTask(taskId)
-						if (!task.done || task.status != 'succeeded') throw new Error(task.error != null ? String(task.error) : '建议生成未完成')
-					}
-					await loadAiSuggestions()
+			if (!searchPageAlive || aiSuggestions.value.length > 0) return
+			const generated = await generateSearchSuggestions(aiSuggestionIdempotencyKey.value)
+			if (!searchPageAlive) return
+			if (generated != null && generated.success && generated.data != null) {
+				const taskId = generated.data.task_id != null ? String(generated.data.task_id) : ''
+				if (taskId != '') {
+					const task = await waitForSearchTask(taskId, () => searchPageAlive)
+					if (!searchPageAlive) return
+					if (!task.done || task.status != 'succeeded') throw new Error(task.error != null ? String(task.error) : '建议生成未完成')
 				}
+				await loadAiSuggestions()
 			}
+			if (!searchPageAlive) return
 			if (aiSuggestions.value.length == 0) uni.showToast({ title: '暂时没有可编辑建议，请直接描述期待', icon: 'none' })
-		} catch (error) { uni.showToast({ title: '建议暂时无法读取，请直接描述期待', icon: 'none' })
+		} catch (error) { if (searchPageAlive) uni.showToast({ title: '建议暂时无法读取，请直接描述期待', icon: 'none' })
 		} finally { aiSuggestionGenerating.value = false }
 	}
 
@@ -468,7 +477,7 @@
 		resultCandidates.value = []
 		nextCursor.value = ''
 		hasMore.value = false
-		resultError.value = 'AI 搜索任务暂时无法完成，请稍后重试'
+		resultError.value = ''
 		const reuseDraftKey = aiDraftKeyQuery.value == query && aiDraftIdempotencyKey.value.length > 0
 		resetAiDraftState(reuseDraftKey)
 		aiGenerating.value = true
@@ -504,13 +513,18 @@
 		const actions: any[] = []
 		for (let index = 0; index < aiConditions.value.length; index++) {
 			const condition = aiConditions.value[index]
+			// 已移除的条件不再因其旧非法值阻断其余条件，也不进入最终搜索；
+			// 只对仍保留的条件做值校验。
+			if (condition.localAction == 'removed') {
+				actions.push({ condition_no: condition.actionConditionNo, action: 'remove' })
+				continue
+			}
 			if (condition.localValueInvalid) {
 				aiDraftError.value = '请先修正条件值格式后再确认'
 				return []
 			}
 			const conditionNo = condition.actionConditionNo
-			if (condition.localAction == 'removed') actions.push({ condition_no: conditionNo, action: 'remove' })
-			else if (condition.localValueText != null && conditionValueText(aiConditionValue(condition)) != conditionValueText(condition.value)) actions.push({ condition_no: conditionNo, action: 'edit', value: aiConditionValue(condition) })
+			if (condition.localValueText != null && conditionValueText(aiConditionValue(condition)) != conditionValueText(condition.value)) actions.push({ condition_no: conditionNo, action: 'edit', value: aiConditionValue(condition) })
 			else actions.push({ condition_no: conditionNo, action: 'confirm' })
 		}
 		return actions
@@ -552,7 +566,15 @@
 			aiTaskStage.value = '正在执行已确认的搜索条件'
 			const task = await waitForSearchTask(taskId, () => runId == searchRunId && draftId == aiDraftId.value)
 			if (runId != searchRunId || draftId != aiDraftId.value) return
-			if (!task.done || task.status != 'succeeded') { resultState.value = 'error'; resultError.value = task.error != null ? String(task.error) : '搜索任务未完成'; return }
+			if (!task.done || task.status != 'succeeded') {
+				resultState.value = 'error'
+				resultError.value = task.error != null ? String(task.error) : '搜索任务未完成'
+				if (task.done) {
+					// 任务明确失败：解除幂等键，用户主动重试时才产生新操作，不回放死任务。
+					aiConfirmIdempotencyKey.value = ''
+				}
+				return
+			}
 			aiTaskStage.value = '正在读取最终候选'
 			const results = await getSearchSnapshotResults(aiSnapshotId.value, '', 20)
 			if (runId != searchRunId || draftId != aiDraftId.value) return
@@ -1016,7 +1038,11 @@
 
 	onLoad((options: any) => { if (options != null && String(options.suggest ?? '') == '1') setTimeout(() => { onAiSuggestTap() }, 120) })
 	onShow(() => { loadOwnMbti(); loadHistory() })
-	onUnmounted(() => { stopAiTyping() })
+	onUnmounted(() => {
+		// 退出页面后作废请求上下文：建议/任务回调不再更新界面。
+		searchPageAlive = false
+		stopAiTyping()
+	})
 </script>
 
 <style scoped>

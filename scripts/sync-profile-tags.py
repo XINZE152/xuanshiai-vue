@@ -11,7 +11,7 @@ from pathlib import Path
 def main():
     frontend = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend-root", type=Path, default=frontend.parent / "xuanshiai" / "xuanshiai")
+    parser.add_argument("--backend-root", type=Path, default=frontend.parent / "xuanshiai-backend")
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     tree = ast.parse((args.backend_root / "app/core/profile_tags.py").read_text(encoding="utf-8"))

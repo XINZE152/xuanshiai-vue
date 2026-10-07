@@ -20,8 +20,15 @@ const core = [
   'test-message-real-contract.js',
   'test-matchmaker-account-pages.js',
   'test-master-ws-error-contract.js',
+  'test-moxiang-ws-ticket-contract.js',
   'test-ai-profile-page.js',
-  'test-console-hygiene.js'
+  'test-console-hygiene.js',
+  'test-role-copy-consistency.js',
+  'test-profile-card-tag-consistency.js',
+  'test-portrait-resync-contract.js',
+  'test-moxiang-tts-round-immutability.js',
+  'test-search-retry-idempotency.js',
+  'test-home-recommend-display.js'
 ]
 
 function discover() {

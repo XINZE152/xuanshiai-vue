@@ -260,7 +260,7 @@ import MoxiangBuildInviteCard from '@/components/moxiang/MoxiangBuildInviteCard.
 import XsaMoxiangTrace from '@/components/XsaMoxiangTrace.uvue'
 import { MasterWS, MASTER_ROLE_NAME, ConfirmCardPayload, ConfirmCardItem, BuildInvitePayload, JourneyStage, JourneyProgress, ExtractionStatus, classifyMasterWSError } from '@/api/voice-master-ws.uts'
 import { resolveMediaUrl } from '@/api/config.uts'
-import { ProfileSubject, getProfileDraft, patchProfileDraft, fieldAction, getAiConsents, grantProfileTextConsent } from '@/api/ai-profile.uts'
+import { ProfileSubject, getProfileDraft, patchProfileDraft, fieldAction, getAiConsents, grantProfileTextConsent, synthesizeSpeech } from '@/api/ai-profile.uts'
 import { getMoxiangState, getSessionTurns, getMoxiangArchive, MoxiangStateResponse, MoxiangSubjectSummary, MoxiangTurn, MoxiangArchiveResponse, ArchiveSubject } from '@/api/ai-moxiang.uts'
 import { displayFieldValue } from '@/utils/profile-field-display.uts'
 import { categoryLabel } from '@/utils/moxiang-dimension.uts'
@@ -376,7 +376,7 @@ function maybePromptBuild(subject: ProfileSubject, inviteId: string = '') {
 	if (buildPromptShown.value[subject]) return
 	if (subject != currentSubject.value) return
 	buildPromptShown.value[subject] = true
-	const title = subject == 'personal' ? '我的墨相可以开始构建了' : '愿遇之相可以开始构建了'
+	const title = subject == 'personal' ? '我的真实画像可以开始构建了' : '期待的长期关系可以开始构建了'
 	uni.showModal({
 		title,
 		content: '我们已经收集到足够内容。现在开始构建画像吗？构建后会先给你一份可审阅的预览，确认后才会发布。',
@@ -464,6 +464,14 @@ let audioContext: any = null
 let chunkSeq = 0
 let isRecording = false
 let typingMsgId = 0
+// 连接世代号：旧连接迟到的回调（journey_ready/close 等）不得改动新连接状态。
+let connectionSeq = 0
+// 每个主体最后一次 journey_ready 绑定的服务端会话，onShow 时与 state 核对。
+const activeSessionBySubject = ref<{ personal: string; ideal_partner: string }>({ personal: '', ideal_partner: '' })
+// 播报合成互斥：同一时刻只允许一条消息合成/播放，重复点击不并发合成多份。
+const ttsBusy = ref(false)
+// 页面存活：离开页面后迟到的合成回调不再更新界面。
+let masterPageAlive = true
 
 // ===== 实时语音 v2（SenseAudio,开发开关默认关;开启后走 PCM 流式播放链路）=====
 const MOXIANG_REALTIME_V2_DEV = false
@@ -525,7 +533,7 @@ function stageCardClass(subject: ProfileSubject): string {
 function stageCardSub(subject: ProfileSubject): string {
 	if (stateResponse.value == null) return '加载中...'
 	const isPartner = subject == 'ideal_partner'
-	if (isPartner && !stateResponse.value.canStartIdealPartner) return '请先完成我的墨相'
+	if (isPartner && !stateResponse.value.canStartIdealPartner) return '请先完成我的真实画像'
 	const summary = isPartner ? stateResponse.value.idealPartner : stateResponse.value.personal
 	if (summary == null) return '还没有开始'
 	if (summary.publishedRevisionId != null) return '已发布'
@@ -583,10 +591,19 @@ function connectWS() {
 	connecting.value = true
 	connectError.value = ''
 	sessionStartFailed.value = false
+	const connId = ++connectionSeq
 	ws = new MasterWS({
 		onSubjectChanged: (subject: ProfileSubject, sessionId?: string) => {
+			if (connId != connectionSeq) return
 			currentSubject.value = subject
+			// 主体切换后旧回复不再代表服务端当前回复：清缓存并停止旧音频，
+			// 避免对另一主体误用 listen 播报错内容。
+			lastReplyText.value = ''
+			stopAudioPlayback()
 			setSessionIdForSubject(subject, String(sessionId ?? ''))
+			if (sessionId != null && String(sessionId) != '') {
+				activeSessionBySubject.value[subject] = String(sessionId)
+			}
 			removeVisibleCardMessages()
 			const cached = cardBySubject(subject)
 			if (cached != null) addCardMessage(cached)
@@ -604,6 +621,7 @@ function connectWS() {
 			}
 		},
 		onJourneyReady: (subject: ProfileSubject, sessionId: string, journeyStage: JourneyStage, resumed: boolean, protocolVersion?: number) => {
+			if (connId != connectionSeq) return
 			connecting.value = false
 			// 实时语音 v2:仅当服务端确认 protocol_version=2 才启用 PCM 播放链路。
 			realtimeV2Active = protocolVersion != null && protocolVersion == 2
@@ -614,6 +632,7 @@ function connectWS() {
 			sessionStarted.value = true
 			buildMode.value = true
 			if (sessionId != '') {
+				activeSessionBySubject.value[subject] = sessionId
 				setSessionIdForSubject(subject, sessionId)
 				loadSessionHistory(sessionId, null, subject)
 			}
@@ -765,9 +784,26 @@ function connectWS() {
 			playAudio(audioUrl)
 		},
 		onConfirmCard: (card: ConfirmCardPayload) => {
-			// REST 兜底可能已按同一草稿重建过卡片；WS 重放同 draftId 时不再重复入流。
+			// 同草稿按版本去重：同版本/旧版本重放不重复插入，也不被旧缓存挡住新版本。
 			const cached = cardBySubject(card.subject)
-			if (cached != null && cached.draftId == card.draftId) return
+			if (cached != null && cached.draftId == card.draftId) {
+				if (card.expectedRevision <= cached.expectedRevision) return
+				setDraftBySubject(card.subject, card)
+				setCardBySubject(card.subject, card)
+				editingKey.value = ''
+				editText.value = ''
+				const idx = findCardMsgIndexByDraftId(card.draftId)
+				if (idx >= 0) {
+					const msg = messages.value[idx]
+					msg.card = card
+					msg.collapsed = false
+					msg.confirmIndex = 0
+					msg.confirming = false
+				} else if (card.subject == currentSubject.value && sessionStarted.value) {
+					addCardMessage(card)
+				}
+				return
+			}
 			setDraftBySubject(card.subject, card)
 			setCardBySubject(card.subject, card)
 			editingKey.value = ''
@@ -775,6 +811,8 @@ function connectWS() {
 			if (card.subject == currentSubject.value) addCardMessage(card)
 		},
 		onError: (code: string, message: string) => {
+			// 旧连接迟到的错误不得改动新连接状态（尤其不得在重连窗口内误杀新 socket）。
+			if (connId != connectionSeq) return
 			if (connecting.value) {
 				sessionStartFailed.value = true
 				connectError.value = message
@@ -870,9 +908,13 @@ function connectWS() {
 			currentGenerationId = ''
 		},
 		onClose: () => {
+			if (connId != connectionSeq) return
 			inviteBusy.value = false
 			pcmPlayer.stopAll()
 			if (!connecting.value && sessionStarted.value) {
+				// 断线后撤销"可发送"状态，但保留已显示的消息；
+				// 只有当前连接重新收到 journey_ready 才恢复发送。
+				sessionStarted.value = false
 				uni.showToast({ title: masterRoleName + '已离开', icon: 'none' })
 			}
 		}
@@ -948,6 +990,14 @@ function findCardMsgIndex(cardId: string) : number {
 	for (let i = 0; i < messages.value.length; i++) {
 		const m = messages.value[i]
 		if (m.role == 'card' && m.card != null && m.card.cardId == cardId) return i
+	}
+	return -1
+}
+
+function findCardMsgIndexByDraftId(draftId: string) : number {
+	for (let i = messages.value.length - 1; i >= 0; i--) {
+		const m = messages.value[i]
+		if (m.role == 'card' && m.card != null && m.card.draftId == draftId) return i
 	}
 	return -1
 }
@@ -1104,7 +1154,7 @@ async function confirmCardItem(msg: any) {
 		} else {
 			removeCardMessage(card.cardId)
 			setCardBySubject(card.subject, null)
-			addMessage('master', '这一组内容已经逐一确认完成。我会把它整理成最后的总结,确认后就会出现在“我的墨相”。', true, card.subject)
+			addMessage('master', '这一组内容已经逐一确认完成。我会把它整理成最后的总结,确认后就会出现在“我的真实画像”。', true, card.subject)
 			// 与 confirmAll 同口径：逐条确认走完也要接上发布出口。
 			goPortrait()
 		}
@@ -1199,17 +1249,17 @@ async function goPortrait(subjectArg?: string) {
 // Phase 2 P2-02 / P2-04 —— 双阶段卡入口
 function onEnterSubject(subject: ProfileSubject) {
 	if (subject == 'ideal_partner' && stateResponse.value != null && !stateResponse.value.canStartIdealPartner) {
-		uni.showToast({ title: '请先完成我的墨相', icon: 'none' })
+		uni.showToast({ title: '请先完成我的真实画像', icon: 'none' })
 		return
 	}
 	if (subject == 'ideal_partner' && stateResponse.value != null && stateResponse.value.canStartIdealPartner) {
 		// 老用户恢复路径:理想伴侣已经有会话/草稿 → 直接进入该主体的 master session。
-		currentSubject.value = 'ideal_partner'
+		// 不提前改 currentSubject：先记录目标主体并发出既有切换请求，
+		// 服务端确认（subject_changed）后才更新当前主体与消息区；失败保留原主体。
 		pendingSubject.value = ''
 		enterSubjectSession('ideal_partner')
 		return
 	}
-	currentSubject.value = subject
 	pendingSubject.value = subject
 	// 如果已经有会话(state 显示 sessionId),直接进入 buildMode;否则等用户在 MoxiangEntryState 点开始。
 	loadMoxiangState().then(() => {
@@ -1378,12 +1428,34 @@ function requestTTS() {
 	}
 }
 
+/**
+ * "听它读"只做语音合成/播放，绝不发送 revise_text：revise 在服务端是一轮
+ * 真实用户输入（会新建用户轮次、触发候选抽取并重新生成回复）。
+ * - 最新回复：复用会话内 listen，后端只合成当前服务端持有的这条回复；
+ * - 历史/指定消息：走既有 POST /voice/synthesize，与对话链路完全隔离。
+ */
 function playTTS(text: string) {
-	// 从消息流中点击"听它读":发送 revise 让后端重新合成
-	if (ws != null && ws.isConnected() && text != '') {
-		ws.sendReviseText(text)
+	if (text == '' || ttsBusy.value) return
+	if (text == lastReplyText.value && ws != null && ws.isConnected()) {
 		ws.sendListen()
+		return
 	}
+	ttsBusy.value = true
+	synthesizeSpeech(text).then((res: any) => {
+		ttsBusy.value = false
+		if (!masterPageAlive) return
+		if (res != null && res.success == true && res.audioUrl != null && ('' + res.audioUrl) != '') {
+			lastTTSUrl.value = '' + res.audioUrl
+			masterState.value = 'speaking'
+			playAudio('' + res.audioUrl)
+		} else {
+			const message = res != null && res.error != null && ('' + res.error) != '' ? ('' + res.error) : '播报失败，请稍后重试'
+			uni.showToast({ title: message, icon: 'none' })
+		}
+	}).catch((_e: any) => {
+		ttsBusy.value = false
+		if (masterPageAlive) uni.showToast({ title: '播报失败，请稍后重试', icon: 'none' })
+	})
 }
 
 /**
@@ -1436,6 +1508,8 @@ function stopAudioPlayback() {
 		} catch (e) {}
 		audioContext = null
 	}
+	// 旧音频地址一并失效：主体切换/授权撤回后"重听"不得重放错内容。
+	lastTTSUrl.value = ''
 	masterState.value = 'idle'
 }
 
@@ -1548,11 +1622,13 @@ async function restoreConfirmCardFromRest(subject: ProfileSubject) {
 			items.push(item)
 		}
 		if (items.length == 0) return
+		// 版本以最新草稿响应为准：档案快照只用于找到草稿，不能用其旧版本覆盖最新读取结果。
+		const latestRevision = data.expected_revision != null ? Number(data.expected_revision) : Number(draft.expectedRevision ?? 0)
 		const card: ConfirmCardPayload = {
 			subject: subject,
 			cardId: 'rest-' + draft.draftId,
 			draftId: draft.draftId,
-			expectedRevision: Number(draft.expectedRevision ?? 0),
+			expectedRevision: latestRevision,
 			items: items
 		}
 		setDraftBySubject(subject, card)
@@ -1572,7 +1648,7 @@ async function loadSessionHistory(sessionId: string, beforeTurnNo: number | null
 			if (restoredTurnIds.value.has(t.turnId)) continue
 			restoredTurnIds.value.add(t.turnId)
 			if (t.role == 'assistant') {
-				addMessage('master', t.content, false, subject)
+				addMessage('master', t.content, true, subject)
 			} else {
 				addMessage('user', t.content, false, subject)
 			}
@@ -1585,12 +1661,17 @@ async function loadSessionHistory(sessionId: string, beforeTurnNo: number | null
 
 // 用户从 entry 点 "开始聊聊" / "继续上次对话" → 切换到聊天视图并建立 WS
 function startChatFlow() {
+	// pendingSubject 是用户在双阶段卡明确选择、但旅程尚未绑定的主体；
+	// 优先于 currentSubject，避免无会话新开启时走错主体。
+	if (pendingSubject.value != '') {
+		return startChatFlowFor(pendingSubject.value)
+	}
 	return startChatFlowFor(currentSubject.value)
 }
 
 function startChatFlowFor(subject: ProfileSubject) {
 	if (subject == 'ideal_partner' && stateResponse.value != null && !stateResponse.value.canStartIdealPartner) {
-		uni.showToast({ title: '请先完成我的墨相', icon: 'none' })
+		uni.showToast({ title: '请先完成我的真实画像', icon: 'none' })
 		pendingSubject.value = ''
 		return
 	}
@@ -1675,6 +1756,59 @@ function navBack() {
 }
 
 // ===== 生命周期 =====
+// 首次显示与 onLoad 共用一次状态核对，避免重复请求、重复取凭证或建两条连接。
+let pageFirstShow = true
+
+onShow(() => {
+	if (pageFirstShow) {
+		pageFirstShow = false
+		return
+	}
+	resyncOnShow()
+})
+
+/**
+ * 页面再次显示（从结果页/档案返回等）时，用现有 state 接口核对：
+ * 当前主体是否还有活动会话、会话 ID 是否变化、是否已完成。
+ * 不依据旧的 sessionStarted 布尔值直接允许发送。
+ */
+async function resyncOnShow() {
+	if (connecting.value) return
+	await loadMoxiangState()
+	// 读不到 state ≠ 没有会话：网络抖动时保留现有连接与聊天视图，不误断。
+	if (stateError.value != '' || stateResponse.value == null) return
+	syncGateFromState(currentSubject.value)
+	const subject = currentSubject.value
+	const stateSessionId = sessionIdForSubject(subject)
+	const connSessionId = activeSessionBySubject.value[subject] != null ? activeSessionBySubject.value[subject] : ''
+	if (stateSessionId == '') {
+		// 服务端已无该主体活动会话（已完成/失效释放/被查看）：断开旧连接，回到入口核对视图。
+		sessionStarted.value = false
+		if (ws != null) {
+			ws.disconnect()
+			ws = null
+		}
+		connecting.value = false
+		return
+	}
+	if (connSessionId != '' && connSessionId != stateSessionId) {
+		// 服务端会话与本地连接绑定的会话不一致（旧会话失效后重建等）：丢弃旧连接，按 state 恢复。
+		sessionStarted.value = false
+		if (ws != null) {
+			ws.disconnect()
+			ws = null
+		}
+		setSessionIdForSubject(subject, stateSessionId)
+		connectWS()
+		return
+	}
+	if (ws == null || !ws.isConnected()) {
+		// 会话仍有效但连接已断：重建连接恢复同一会话。
+		sessionStarted.value = false
+		connectWS()
+	}
+}
+
 onLoad((options: any) => {
 	if (options != null && String(options.subject != null ? options.subject : '') == 'ideal_partner') {
 		currentSubject.value = 'ideal_partner'
@@ -1688,6 +1822,7 @@ onLoad((options: any) => {
 })
 
 onUnmounted(() => {
+	masterPageAlive = false
 	pcmPlayer.stopAll()
 	pcmPlayer.destroy()
 	if (isRecording) stopRecording()
