@@ -3,7 +3,9 @@ const path = require('node:path')
 const { spawnSync } = require('node:child_process')
 
 const testDir = __dirname
-// 无运行中外部服务依赖；真实契约测试需相邻后端源码或 XSA_BACKEND_ROOT，--all 执行全部测试。
+// 源码组不依赖编译产物，任何环境都必须跑；artifact 组要求 mp-weixin 实物，
+// 只在取得真实产物的环境执行（AGENTS §6.1：产物由 HBuilderX 生成）。
+// 跨仓契约测试统一通过 tests/helpers/cross-repo.cjs 解析后端路径。
 const core = [
   'test-ai-avatar-request.js',
   'test-ai-search-proxy-contract.js',
@@ -34,7 +36,21 @@ const core = [
   'test-moxiang-poster-public-source.js',
   'test-moxiang-build-confirmation.js',
   'test-search-retry-idempotency.js',
-  'test-home-recommend-display.js'
+  'test-home-recommend-display.js',
+  // 本轮遗漏的源码级契约：首页状态诚实性、匹配固定话术、文档一致性、兴趣标签。
+  'test-home-profile-state-honesty.js',
+  'test-home-no-profile-completion-banner.js',
+  'test-match-interpretation-fixed-copy.js',
+  'test-moxiang-doc-consistency.js',
+  'test-moxiang-role-identity.js',
+  'test-personal-tags.js',
+  'test-moxiang-continuous-crosspage.js',
+]
+
+// 要求 unpackage/dist/dev/mp-weixin 实物的测试；缺产物时各自按 SKIP 协议降级。
+const artifact = [
+  'test-mp-subpackage-assets.js',
+  'test-wechat-project-config.js',
 ]
 
 function discover() {
@@ -49,6 +65,7 @@ function run(files, execute = (file) => spawnSync(process.execPath, [path.join(t
 })) {
   let failed = 0
   let skipped = 0
+  const warnings = []
   for (const file of files) {
     if (!fs.existsSync(path.join(testDir, file))) {
       console.error(`FAIL ${file}: test file missing`)
@@ -72,6 +89,15 @@ function run(files, execute = (file) => spawnSync(process.execPath, [path.join(t
     }
     if (result.status === 0 && !result.error) {
       console.log(`PASS ${file}`)
+      // 通过用例的诊断行同样要保留：受保护文件的导航栏旧称、后端源码不可达等
+      // 只能在 WARN 里暴露。退出码 0 不该让这些待确认项从摘要里消失。
+      for (const line of output.split(/\r?\n/)) {
+        const trimmed = line.trim()
+        if (trimmed.startsWith('WARN')) {
+          console.log(`  ${trimmed}`)
+          warnings.push(`${file}: ${trimmed}`)
+        }
+      }
     } else {
       failed++
       console.error(`FAIL ${file} (exit ${result.status ?? 'spawn error'})`)
@@ -83,17 +109,22 @@ function run(files, execute = (file) => spawnSync(process.execPath, [path.join(t
   console.log(
     `${files.length - failed - skipped}/${files.length} passed, ${skipped} skipped, ${failed} failed`
   )
+  if (warnings.length > 0) {
+    console.log(`WARN 汇总（${warnings.length} 条，需人工确认，不计失败）：`)
+    for (const warning of warnings) console.log(`  ${warning}`)
+  }
   return failed === 0 ? 0 : 1
 }
 
 if (require.main === module) {
   const mode = process.argv[2]
-  if (mode && mode !== '--all') {
-    console.error('Usage: node tests/run-tests.cjs [--all]')
+  if (mode && mode !== '--all' && mode !== '--artifact') {
+    console.error('Usage: node tests/run-tests.cjs [--all|--artifact]')
     process.exitCode = 2
   } else {
-    process.exitCode = run(mode === '--all' ? discover() : core)
+    const files = mode === '--all' ? discover() : mode === '--artifact' ? artifact : core
+    process.exitCode = run(files)
   }
 }
 
-module.exports = { core, discover, run }
+module.exports = { core, artifact, discover, run, frontendRoot: path.resolve(__dirname, '..') }

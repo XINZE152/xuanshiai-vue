@@ -5,12 +5,18 @@ const path = require('node:path')
 const frontendRoot = path.resolve(__dirname, '..')
 const messageSource = fs.readFileSync(path.join(frontendRoot, 'api/message.uts'), 'utf8')
 const messageCenterSource = fs.readFileSync(path.join(frontendRoot, 'components/XsaMessageCenter.uvue'), 'utf8')
-const backendRoot = process.env.XSA_BACKEND_ROOT != null && process.env.XSA_BACKEND_ROOT !== ''
-  ? path.resolve(frontendRoot, process.env.XSA_BACKEND_ROOT)
-  : path.resolve(frontendRoot, '..', 'xuanshiai-backend')
-const socialRoutes = fs.readFileSync(path.join(backendRoot, 'app/api/routes/social.py'), 'utf8')
-const discoveryRoutes = fs.readFileSync(path.join(backendRoot, 'app/api/routes/discovery.py'), 'utf8')
-const socialSchemas = fs.readFileSync(path.join(backendRoot, 'app/schemas/social.py'), 'utf8')
+// 跨仓路径统一走 tests/helpers/cross-repo.cjs；后端源码不可达时显式 SKIP
+// （runner 的 SKIP 协议），不静默假装通过。
+const { readBackend } = require('./helpers/cross-repo.cjs')
+if (readBackend('app/api/routes/social.py') == null
+  || readBackend('app/api/routes/discovery.py') == null
+  || readBackend('app/schemas/social.py') == null) {
+  console.log('SKIP test-message-real-contract.js 后端源码不可达（设置 XSA_BACKEND_ROOT 可启用跨仓断言）')
+  process.exit(0)
+}
+const socialRoutes = readBackend('app/api/routes/social.py')
+const discoveryRoutes = readBackend('app/api/routes/discovery.py')
+const socialSchemas = readBackend('app/schemas/social.py')
 
 assert.match(messageSource, /export const MESSAGE_USE_MOCK = false/, '普通用户消息中心必须使用真实接口')
 assert.match(messageSource, /export const CHAT_USE_MOCK = false/, '聊天详情必须使用真实接口')

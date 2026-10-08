@@ -19,6 +19,13 @@ const expectedProfileExtraAssets = [
   path.join('pagesSub', 'profileExtra', 'static', 'poster-templates', 'v4EFK.webp')
 ]
 
+// SKIP 协议：产物缺失（干净检出、CI）时显式降级，不把「没跑」记作失败或通过。
+// 产物由 HBuilderX 生成（AGENTS §6.1），发布验收须在有产物的环境跑 npm run test:artifact。
+if (!fs.existsSync(artifactRoot)) {
+  console.log('SKIP test-mp-subpackage-assets.js: compiled artifact missing unpackage/dist/dev/mp-weixin — regenerate via HBuilderX per AGENTS §6.1; artifact gate inactive')
+  process.exit(0)
+}
+
 for (const asset of expectedAssets) {
   assert.ok(fs.existsSync(path.join(artifactRoot, asset)), `missing generated matchmaker asset: ${asset}`)
 }

@@ -15,7 +15,8 @@ const vm = require('node:vm')
 const babel = require('@babel/core')
 
 const root = path.resolve(__dirname, '..')
-const backendRoot = process.env.XSA_BACKEND_ROOT || path.resolve(root, '..', 'xuanshiai-backend')
+const { backendRoot: resolveBackendRoot } = require('./helpers/cross-repo.cjs')
+const backendRoot = resolveBackendRoot()
 
 /** 从 source 的 startIndex 起按花括号配平切出一段声明，供沙箱执行 */
 function sliceBalanced(source, startIndex) {

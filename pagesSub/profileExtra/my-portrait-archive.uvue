@@ -166,10 +166,16 @@ export default {
 		openContinuousResult(subject: string, item: ContinuousSubjectState, published: boolean) {
 			if (!this.archivePageAlive || !this.archivePageVisible || this.continuousState == null || !this.continuousState.consent_granted) return
 			let url = '/pagesSub/profileExtra/my-portrait-result?flow_version=continuous_v2&subject=' + subject
-			if (item.draft_id != null) url += '&draft_id=' + encodeURIComponent(item.draft_id)
-			if (item.expected_revision != null) url += '&expected_revision=' + item.expected_revision
-			if (item.preview_id != null) url += '&preview_id=' + encodeURIComponent(item.preview_id)
-			if (published) url += '&published=1'
+			if (published) {
+				// 已确认分支只读正式版本。后端 confirmed 状态仍带已发布草稿的 draft_id，
+				// 再传 draft_id/preview_id 会把结果页导向草稿预览并触发 DRAFT_VERSION_CONFLICT。
+				url += '&published=1'
+				if (item.published_revision_id != null) url += '&revision_id=' + encodeURIComponent(item.published_revision_id)
+			} else {
+				if (item.draft_id != null) url += '&draft_id=' + encodeURIComponent(item.draft_id)
+				if (item.expected_revision != null) url += '&expected_revision=' + item.expected_revision
+				if (item.preview_id != null) url += '&preview_id=' + encodeURIComponent(item.preview_id)
+			}
 			uni.navigateTo({ url })
 		},
 		goMaster(subject: string) { uni.redirectTo({ url: '/pagesSub/profileExtra/my-portrait-master?flow_version=continuous_v2&subject=' + subject }) },

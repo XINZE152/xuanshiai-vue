@@ -6,8 +6,16 @@ on:
   pull_request:
     branches: [main]
 
+# 跨仓契约基线与前端源码组、产物组的分工，见 2026-10-08 验收报告 C2/C3/C5：
+#   - 后端契约固定在可审查的 SHA 上，不再随后端 main 漂移；配套修改时一起更新。
+#   - 普通 source job 只跑不依赖编译产物的用例，并显式说明产物组为何不在此运行。
+#   - 产物组要求该提交的真实 mp-weixin 产物，缺产物必须失败/阻塞，不能记作发布通过。
+env:
+  # 与本次前端改动配套验证通过的后端契约提交（2026-10-08）。
+  BACKEND_CONTRACT_SHA: bc1ebdb9e6c84f6623792a9c6e7c4505a3804ac9
+
 jobs:
-  build:
+  source:
     runs-on: ubuntu-latest
 
     steps:
@@ -16,6 +24,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: kx-learn/xuanshiai
+          ref: ${{ env.BACKEND_CONTRACT_SHA }}
           path: backend-contract
 
       - uses: actions/setup-node@v4
@@ -26,7 +35,38 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # 两个仓库的 HEAD 必须出现在日志里：跨仓断言失败时能立刻分辨是前端改了
+      # 还是后端契约 SHA 换了。
+      - name: Record both repository HEADs
+        run: |
+          echo "frontend HEAD: $(git rev-parse HEAD)"
+          echo "backend contract HEAD: $(git -C backend-contract rev-parse HEAD)"
+          echo "backend contract requested: $BACKEND_CONTRACT_SHA"
+          test "$(git -C backend-contract rev-parse HEAD)" = "$BACKEND_CONTRACT_SHA"
+
       - name: Validate frontend source
         env:
           XSA_BACKEND_ROOT: backend-contract
         run: npm test
+
+  # 产物组：要求该提交经 HBuilderX 生成的 unpackage/dist/dev/mp-weixin 实物。
+  # 干净检出必然没有 unpackage（已 gitignore），所以这里显式失败并给出获取途径，
+  # 而不是静默跳过、把「没跑」记作「通过」。发布前在具备产物的环境执行：
+  #   npm run verify:mp && npm run test:artifact
+  artifact-gate:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || vars.XSA_RUN_ARTIFACT_GATE == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Refuse to fake an artifact run
+        run: |
+          echo "产物门禁需要 HBuilderX 生成的 mp-weixin 产物（AGENTS §6.1）。"
+          echo "CI 上不生成该产物：请在有产物的环境跑 npm run verify:mp && npm run test:artifact，"
+          echo "并把记录附到发布验收里；本 job 不产生「发布已通过」的结论。"
+          exit 1

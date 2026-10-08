@@ -16,6 +16,9 @@ const assert = require('assert')
 
 const root = path.join(__dirname, '..')
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8')
+// 跨仓路径统一走 tests/helpers/cross-repo.cjs：CI 把后端检出到 backend-contract，
+// 硬编码 ../xuanshiai-backend 在干净检出里必然读不到。
+const { readBackend } = require('./helpers/cross-repo.cjs')
 
 let passed = 0
 const check = (name, fn) => {
@@ -25,10 +28,11 @@ const check = (name, fn) => {
 }
 
 const sheet = read('components/XsaAiMatchSheet.uvue')
-const backend = fs.readFileSync(
-  path.join(root, '..', 'xuanshiai-backend', 'app', 'services', 'ai', 'compatibility.py'),
-  'utf8'
-)
+const backend = readBackend('app/services/ai/compatibility.py')
+if (backend == null) {
+  console.log('SKIP test-match-interpretation-fixed-copy.js 后端源码不可达（设置 XSA_BACKEND_ROOT 可启用跨仓断言）')
+  process.exit(0)
+}
 
 check('停止展示生成式 reason_texts', () => {
   // 只允许注释里提到旧字段名，不得再有任何读取代码。

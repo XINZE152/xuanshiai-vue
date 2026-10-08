@@ -11,6 +11,7 @@
     "verify:mp:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-mp-weixin.ps1 -MainPackageLimitBytes 3145728 -SubpackageLimitBytes 3145728 -MediaLimitBytes 307200",
     "test": "node tests/run-tests.cjs",
     "test:core": "node tests/run-tests.cjs",
+    "test:artifact": "node tests/run-tests.cjs --artifact",
     "test:all": "node tests/run-tests.cjs --all"
   },
   "dependencies": {

@@ -3,12 +3,20 @@ const path = require('path')
 const assert = require('assert')
 
 const vueRoot = path.join(__dirname, '..')
-const backendRoot = path.join(vueRoot, '..', 'xuanshiai-backend')
 const read = (root, relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
+// 跨仓路径统一走 tests/helpers/cross-repo.cjs（XSA_BACKEND_ROOT 优先）。
+const { backendRoot, readBackend } = require('./helpers/cross-repo.cjs')
 
-const prompt = read(backendRoot, 'app/services/ai/prompts/moxiang_master.py')
-const sharedPrompt = read(backendRoot, 'app/services/ai/prompts/moxiang_ip.py')
-const route = read(backendRoot, 'app/api/routes/voice_moxiang.py')
+// 后端源码不可达时显式 SKIP（runner 的 SKIP 协议），不静默假装通过。
+const backendFiles = ['app/services/ai/prompts/moxiang_master.py', 'app/services/ai/prompts/moxiang_ip.py', 'app/api/routes/voice_moxiang.py']
+if (backendRoot == null || backendFiles.some(file => readBackend(file) == null)) {
+  console.log('SKIP test-moxiang-role-identity.js 后端源码不可达（设置 XSA_BACKEND_ROOT 可启用跨仓断言）')
+  process.exit(0)
+}
+
+const prompt = readBackend('app/services/ai/prompts/moxiang_master.py')
+const sharedPrompt = readBackend('app/services/ai/prompts/moxiang_ip.py')
+const route = readBackend('app/api/routes/voice_moxiang.py')
 const ws = read(vueRoot, 'api/voice-master-ws.uts')
 const page = read(vueRoot, 'pagesSub/profileExtra/my-portrait-master.uvue')
 const badge = read(vueRoot, 'utils/moxiang-badge.uts')

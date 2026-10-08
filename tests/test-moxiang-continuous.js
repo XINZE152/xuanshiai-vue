@@ -13,23 +13,33 @@ const source = parse(page).descriptor.scriptSetup.content
 function declarations(src, names) {
   const nodes = parser.parse(src, { sourceType: 'module', plugins: ['typescript'] }).program.body
   return names.map(name => {
-    const n = nodes.map(n => n.declaration || n).find(n => n.id?.name === name)
+    const n = nodes.map(n => n.declaration || n).find(n => n.id?.name === name || n.declarations?.some(d => d.id?.name === name))
     assert.ok(n, `缺少真实声明 ${name}`)
     return src.slice(n.start, n.end)
   }).join('\n')
 }
-function run(src, names, ctx) {
-  const code = babel.transformSync(declarations(src, names), {
+// F1：生命周期回调同样是页面真实定义（onHide/onUnmounted 里注册的箭头函数），
+// 测试必须执行它们，不能只断言轮询函数存在。
+function lifecycleCallbacks(src, names) {
+  const nodes = parser.parse(src, { sourceType: 'module', plugins: ['typescript'] }).program.body
+  return names.map(name => {
+    const call = nodes.map(n => n.expression).find(e => e?.type === 'CallExpression' && e.callee?.name === name)
+    assert.ok(call && call.arguments.length == 1, `缺少真实 ${name} 注册`)
+    return `const ${name}Callback = ${src.slice(call.arguments[0].start, call.arguments[0].end)}`
+  }).join('\n')
+}
+function run(src, names, ctx, extraCode = '', extraExpose = '') {
+  const code = babel.transformSync(declarations(src, names) + (extraCode == '' ? '' : '\n' + extraCode), {
     filename: 'runtime.ts', configFile: false, babelrc: false, plugins: ['@babel/plugin-transform-typescript']
   }).code
-  return vm.runInNewContext(`${code}\n;({${names.join(',')}})`, ctx)
+  return vm.runInNewContext(`${code}\n;({${names.join(',')}${extraExpose}})`, ctx)
 }
 const ref = value => ({ value })
 const turn = (id, role = 'user', text = '相同表达') => ({ turnId: id, role, content: text, clientTurnId: `c-${id}` })
 const subject = name => ({ subject: name, status: 'collecting', overall_percent: 0, dimensions: {} })
 const state = consent => ({ flow_version: 'continuous_v2', consent_granted: consent, session_id: 's1', personal: subject('personal'), ideal_partner: subject('ideal_partner') })
 function sandbox() {
-  const calls = { connected: 0, stopped: 0, audio: 0, history: 0, sent: [] }
+  const calls = { connected: 0, audio: 0, history: 0, sent: [], timers: new Map(), cleared: 0, timerSeq: 0 }
   const ctx = {
     masterPageAlive: true, masterPageVisible: true, continuousFlow: ref(true),
     continuousLoadSeq: 0, continuousSnapshotSeq: 0, connectionSeq: 0,
@@ -39,17 +49,24 @@ function sandbox() {
     lastReplyText: ref('原回复'), lastTTSUrl: ref('private-url'), lastTTSDuration: ref(100), partialText: ref('转写'), inputText: ref(''),
     sessionStarted: ref(false), connecting: ref(false), connectError: ref(''), stateError: ref(''),
     masterState: ref('idle'), currentSubject: ref('personal'), typingMsgId: 0,
-    isRecording: false, recorderManager: null, ws: null,
-    pcmPlayer: { stopAll: () => calls.audio++ },
-    stopAudioPlayback: () => calls.audio++, stopContinuousPolling: () => calls.stopped++,
-    scheduleContinuousPolling: () => {}, scrollToBottom: () => {},
-    connectWS: () => calls.connected++,
+    isRecording: false, recorderManager: null, ws: null, audioContext: null,
+    pcmPlayer: { stopAll: () => { calls.audio++ }, destroy: () => {} },
+    stopAudioPlayback: () => { calls.audio++ }, scrollToBottom: () => {},
+    connectWS: () => { calls.connected++ },
+    // 定时器替身：断言必须落在「有没有残留任务」上，而不是只统计函数被调用几次。
+    // 触发时先移除自身条目：真实 setTimeout 触发后不再挂起。
+    setTimeout: (fn, ms) => { const id = ++calls.timerSeq; calls.timers.set(id, { ms, fn: async () => { calls.timers.delete(id); return fn() } }); return id },
+    clearTimeout: id => { calls.cleared++; calls.timers.delete(id) },
     getContinuousMoxiangState: async () => state(true),
     getContinuousTurns: async () => { calls.history++; return { turns: [turn('1'), turn('2', 'assistant')], next_before_id: '1' } },
     uni: { showToast: () => {}, showModal: o => o.success({ confirm: true }), navigateTo: o => calls.sent.push(o.url) }, masterRoleName: '知遇',
     addMessage: (role, text) => ctx.messages.value.push({ role, text })
   }
-  const fns = run(source, ['clearContinuousPrivateCache', 'applyContinuousState', 'refreshContinuousState', 'continuousTurnMessages', 'loadContinuousConversation', 'loadOlderContinuousHistory', 'sendText', 'openContinuousPortrait'], ctx)
+  const names = ['continuousPollTimer', 'clearContinuousPrivateCache', 'applyContinuousState', 'refreshContinuousState', 'continuousTurnMessages',
+    'loadContinuousConversation', 'loadOlderContinuousHistory', 'sendText', 'openContinuousPortrait', 'stopContinuousPolling', 'scheduleContinuousPolling', 'closeTTS']
+  // pollTimer 用函数读取：对象展开会把 getter 求值成一次性快照。
+  const fns = run(source, names, ctx, lifecycleCallbacks(source, ['onHide', 'onUnmounted']),
+    ', onHide: onHideCallback, onUnmounted: onUnmountedCallback, readPollTimer: () => continuousPollTimer')
   return { ctx, calls, ...fns }
 }
 async function main() {
@@ -266,6 +283,65 @@ async function main() {
       assert.equal(t.calls.connected, 0)
     }
   }
-  console.log('PASS continuous_v2: 恢复/隐私/去重/WS/生成幂等（19场景）')
+  {
+    // F1：轮询是真实实现（无替身）。进入对话后应排下一次核对；离场必须清干净。
+    const t = sandbox()
+    await t.loadContinuousConversation()
+    assert.equal(t.calls.connected, 1)
+    assert.equal(t.calls.timers.size, 1, '恢复历史后应排下一次状态核对')
+    assert.notEqual(t.readPollTimer(), -1)
+    assert.equal([...t.calls.timers.values()][0].ms, 5000)
+    t.onHide()
+    assert.equal(t.calls.timers.size, 0, '页面隐藏必须清除轮询定时器')
+    assert.equal(t.readPollTimer(), -1)
+    t.onUnmounted()
+    assert.equal(t.calls.timers.size, 0, '页面卸载后不得留有悬空定时器')
+  }
+  {
+    // F1：链式调度内每次回调只重新校验守卫，页面不可见时不再续排。
+    const t = sandbox()
+    await t.loadContinuousConversation()
+    const first = [...t.calls.timers.values()][0].fn
+    t.ctx.masterPageVisible = false
+    await first()
+    assert.equal(t.calls.timers.size, 0, '不可见时不得续排下一次轮询')
+  }
+  {
+    // F1：定时器触发时必须真的核对一次状态，并在前台继续链式排下一次。
+    const t = sandbox()
+    await t.loadContinuousConversation()
+    let loads = 0
+    t.ctx.getContinuousMoxiangState = async () => { loads++; return state(true) }
+    const first = [...t.calls.timers.values()][0].fn
+    await first()
+    assert.equal(loads, 1, '轮询触发时必须真的核对一次状态')
+    assert.equal(t.calls.timers.size, 1, '仍在前台时继续链式排下一次')
+    t.onHide()
+    assert.equal(t.calls.timers.size, 0)
+  }
+  {
+    // F1：撤权时必须停轮询，不能在后台继续请求已撤权状态。
+    const t = sandbox()
+    await t.loadContinuousConversation()
+    t.applyContinuousState(state(false))
+    assert.equal(t.calls.timers.size, 0, '撤权清缓存同时必须停轮询')
+    assert.equal(t.readPollTimer(), -1)
+  }
+  {
+    // F1：关闭朗读只退出播报职责，不得清空会话、断连或停轮询。
+    const t = sandbox()
+    await t.loadContinuousConversation()
+    const before = t.calls.timers.size
+    const messages = t.ctx.messages.value.length
+    t.ctx.sessionStarted.value = true
+    t.closeTTS()
+    assert.equal(t.ctx.lastTTSUrl.value, '')
+    assert.equal(t.ctx.masterState.value, 'idle')
+    assert.equal(t.ctx.messages.value.length, messages, '关闭朗读不得清空聊天会话')
+    assert.equal(t.ctx.sessionStarted.value, true, '关闭朗读不得改写会话状态')
+    assert.equal(t.calls.timers.size, before, '关闭朗读不得停止状态核对')
+    assert.equal(t.ctx.ws, null, '关闭朗读不得改动连接对象')
+  }
+  console.log('PASS continuous_v2: 恢复/隐私/去重/WS/生成幂等/轮询生命周期（24场景）')
 }
 main().catch(e => { console.error(e); process.exitCode = 1 })

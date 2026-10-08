@@ -1666,23 +1666,14 @@ function replayTTS() {
 	}
 }
 
+// 收起朗读只负责播报职责：不得清空聊天会话，也不得触发会话重连或轮询。
 function closeTTS() {
 	lastTTSUrl.value = ''
+	lastTTSDuration.value = 0
 	if (audioContext != null) {
 		try { audioContext.stop() } catch (e) {}
 	}
-	partialText.value = ''
-	inputText.value = ''
-	transcriptPreviewVisible.value = false
-	transcriptPreview.value = { transcriptId: '', clientTurnId: '', sessionId: '', text: '' }
-	sessionStarted.value = false
-	stopContinuousPolling()
-	if (!masterPageAlive || !masterPageVisible || continuousState.value?.consent_granted != true) return
-	continuousPollTimer = setTimeout(async () => {
-		continuousPollTimer = -1
-		await refreshContinuousState()
-		scheduleContinuousPolling()
-	}, 4000)
+	masterState.value = 'idle'
 }
 
 function clearContinuousPrivateCache() {
@@ -1712,6 +1703,27 @@ function clearContinuousPrivateCache() {
 function applyContinuousState(state: ContinuousMoxiangState) {
 	continuousState.value = state
 	if (!state.consent_granted) clearContinuousPrivateCache()
+}
+
+// 连续性轮询只是 WS 推送的兜底：页面隐藏/卸载、退出连续流程或撤权后必须停止，
+// 否则会在后台持续请求，并把已撤权的状态留在内存里。
+function stopContinuousPolling() {
+	if (continuousPollTimer != -1) {
+		clearTimeout(continuousPollTimer)
+		continuousPollTimer = -1
+	}
+}
+
+// 单次链式调度：回调内重新校验守卫后再排下一次，页面离场即自然停止。
+function scheduleContinuousPolling() {
+	stopContinuousPolling()
+	if (!masterPageAlive || !masterPageVisible || !continuousFlow.value) return
+	if (continuousState.value?.consent_granted != true) return
+	continuousPollTimer = setTimeout(async () => {
+		continuousPollTimer = -1
+		await refreshContinuousState()
+		scheduleContinuousPolling()
+	}, 5000)
 }
 
 async function refreshContinuousState(): Promise<boolean> {

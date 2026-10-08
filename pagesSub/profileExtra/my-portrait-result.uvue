@@ -82,9 +82,9 @@
 			<view class="mpr-btn mpr-btn-ghost" @tap="onBackToArchive"><text class="mpr-btn-text">先返回档案</text></view>
 		</view>
 
-		<!-- 完整画像：pending_confirmation / confirmed / 历史 published。 -->
 		<scroll-view v-else-if="narrativeReady" scroll-y class="mpr-scroll" enhanced :show-scrollbar="false">
 			<view class="mpr-body">
+				<view v-if="narrativeNotice != ''" class="mpr-paper mpr-version-notice"><text class="mpr-state-copy">{{ narrativeNotice }}</text></view>
 				<view class="mpr-paper">
 					<text class="mpr-kicker">{{ narrativeStatusLabel }}</text>
 					<text v-if="narrative.persona_title != null && narrative.persona_title != ''" class="mpr-title">{{ narrative.persona_title }}</text>
@@ -262,6 +262,7 @@
 				continuousFlow: false,
 				continuousPreview: null as ContinuousProfilePreview | null,
 				continuousRows: [] as any[],
+				publishedRevisionId: 0,
 				continuousConfirmKey: '',
 				continuousConfirmPending: false,
 				continuousEditDirty: false,
@@ -285,6 +286,7 @@
 				stateMessage: '正在整理成稿…',
 				errorMessage: '',
 				narrativeFailure: '',
+				narrativeNotice: '',
 				regenerating: false,
 				showPosterSheet: false,
 				openPosterOnReady: false,
@@ -397,10 +399,15 @@
 			this.continuousFlow = String(q.flow_version ?? '') == 'continuous_v2'
 			this.subject = String(q.subject ?? 'personal') == 'ideal_partner' ? 'ideal_partner' : 'personal'
 			this.subjectLabel = this.subject == 'ideal_partner' ? '期待的长期关系' : '我的真实画像'
-			this.draftId = String(q.draft_id ?? '')
-			this.expectedRevision = Number(q.expected_revision ?? 0)
-			this.previewId = String(q.preview_id ?? '')
-			this.publishedMode = this.draftId == '' && this.previewId == ''
+			// 已确认意图以 published 为准：后端 confirmed 状态仍会带已发布草稿的
+			// draft_id，若按 draft/preview 是否存在判定，会把「查看已确认稿」误送进
+			// 草稿预览并触发 DRAFT_VERSION_CONFLICT。published 只读正式版本。
+			const publishedIntent = String(q.published ?? '') == '1'
+			this.publishedRevisionId = Number(q.revision_id ?? 0)
+			this.draftId = publishedIntent ? '' : String(q.draft_id ?? '')
+			this.expectedRevision = publishedIntent ? 0 : Number(q.expected_revision ?? 0)
+			this.previewId = publishedIntent ? '' : String(q.preview_id ?? '')
+			this.publishedMode = publishedIntent || (this.draftId == '' && this.previewId == '')
 			if (q.openPoster == '1') {
 				this.openPosterOnReady = true
 			}
@@ -920,6 +927,14 @@
 					const res = await getPortraitNarrative(this.subject)
 					if (!this.pageAlive || !this.pageVisible || seq != this.continuousReadSeq) return
 					if (!res.success || res.data == null) throw res
+					const returnedRevision = Number(res.data.revision_id ?? 0)
+					// 每次读取先清旧提示：版本一致或本次未指定版本时不得残留上一轮的说明。
+					// 带 revision_id 进入时必须核对正式版本：读到别的版本就如实说明，
+					// 不能把另一版正文当作「你刚才确认的那一版」展示。
+					this.narrativeNotice = ''
+					if (this.publishedRevisionId > 0 && returnedRevision != this.publishedRevisionId) {
+						this.narrativeNotice = '这份画像已更新到第 ' + returnedRevision + ' 版，下面是你当前生效的正式版本。'
+					}
 					this.narrative = res.data
 					if (this.subject == 'personal') this.loadPosterIdentity()
 					if (this.openPosterOnReady && this.canPrepareProfileCard) {
