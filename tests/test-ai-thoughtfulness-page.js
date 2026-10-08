@@ -76,4 +76,10 @@ assert(card.includes('-webkit-line-clamp: 4'), '结果卡错误信息最多显�
 assert(!card.includes('ai-basis'), '结果态不应显示本次参考资料区块')
 assert(!firstAnalysis.match(/\.[\w-]+\s+(text|view)(?=\s|\{|\.)/), '小程序组件样式不应使用标签选择器')
 
+assert(page.includes('thoughtfulnessCacheKey'), '用心度本地缓存必须按当前账号命名空间隔离')
+assert(page.includes('aiFirstAnalysisVisible.value = false'), '读取到既有结果后必须直接展示结果卡')
+assert(page.includes('res.success && res.data == null'), '服务端 404 归一为未分析时必须清除失效缓存')
+assert(page.includes('guardThoughtfulnessSaveState'), '首次分析与重试必须共用未保存资料门槛')
+assert(page.includes('aiAnalysisBaselineJson'), '分析期间保存新资料后旧返回必须标记为过期')
+assert(api.includes("url: '/ai/profile/thoughtfulness'"), '用心度结果与分析必须使用现有服务端接口')
 console.log('AI 用心度首次分析与重试状态校验通过')

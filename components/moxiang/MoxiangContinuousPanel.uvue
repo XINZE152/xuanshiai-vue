@@ -1,0 +1,47 @@
+<template>
+	<view class="continuous-panel">
+		<view class="continuous-row">
+			<view v-for="item in portraits" :key="item.subject" class="portrait-state" @tap="open(item.subject)">
+				<text class="portrait-title">{{ item.title }}</text>
+				<text class="portrait-status">{{ item.label }}</text>
+				<text class="portrait-coverage">理解覆盖 {{ item.percent }}% · {{ item.action }}</text>
+				<text v-if="item.hasUpdates" class="portrait-update">有新补充，当前审阅稿保持不变</text>
+			</view>
+		</view>
+		<text class="continuous-note">自然聊就好，两份画像各自整理，整份确认后才生效。</text>
+	</view>
+</template>
+
+<script setup lang="uts">
+import type { ContinuousMoxiangState, ContinuousSubjectState } from '@/api/ai-moxiang.uts'
+const props = defineProps<{ state: ContinuousMoxiangState }>()
+const emit = defineEmits(['open'])
+function open(subject: string) { emit('open', subject) }
+function portraitView(item: ContinuousSubjectState): any {
+	let label = '整理中'
+	let action = '继续聊聊'
+	if (item.status == 'generating') { label = '生成中'; action = '查看任务' }
+	if (item.status == 'awaiting_confirmation') { label = '待确认'; action = '阅读成稿' }
+	if (item.status == 'confirmed') { label = '已确认'; action = '查看成稿' }
+	if (item.status == 'failed') { label = '生成未完成'; action = '重试' }
+	if (item.status == 'stale') { label = '版本已变化'; action = '重新整理' }
+	return {
+		subject: item.subject,
+		title: item.subject == 'personal' ? '我的真实画像' : '期待的长期关系',
+		label, action, percent: Math.round(item.overall_percent), hasUpdates: item.has_updates
+	}
+}
+const portraits = computed((): any[] => [portraitView(props.state.personal), portraitView(props.state.ideal_partner)])
+</script>
+
+<style scoped>
+.continuous-panel { margin: 6px 14px; flex-shrink: 0; }
+.continuous-row { display: flex; flex-direction: row; gap: 8px; }
+.portrait-state { flex: 1; min-width: 0; min-height: 64px; padding: 10px; border: 1px solid var(--border, var(--line)); border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; }
+.portrait-state:active { background: var(--surface-subtle, var(--paper)); }
+.portrait-title { color: var(--text-main, var(--ink)); font-size: 12px; font-weight: 600; }
+.portrait-status { color: var(--primary, var(--accent)); font-size: 14px; font-weight: 700; margin-top: 4px; }
+.portrait-coverage, .portrait-update, .continuous-note { color: var(--text-sub, var(--muted)); font-size: 11px; line-height: 1.5; }
+.portrait-coverage, .portrait-update { margin-top: 4px; }
+.continuous-note { display: block; margin-top: 6px; }
+</style>

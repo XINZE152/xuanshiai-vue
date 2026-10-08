@@ -339,6 +339,14 @@
 	let voiceRecorder: any = null
 	let discardVoiceRecording = false
 	let aiHandoffTimer: any = null
+	// 页面可见性：离开页面必须停止待补答轮询，返回时再恢复。
+	const aiAvatarPageVisible = ref(true)
+	// 同一条逻辑请求的幂等键与目标：响应丢失后重试必须复用，避免重复提问。
+	let aiAvatarRequestKey = ''
+	let aiAvatarRequestTargetId = 0
+	let aiAvatarRequestContent = ''
+	let aiAvatarRequestCounter = 0
+	let aiAvatarSendSequence = 0
 
 	onMounted(() => {
 		setupVoiceRecorder()
@@ -374,6 +382,7 @@
 	})
 
 	onShow(() => {
+		aiAvatarPageVisible.value = true
 		if (isAiAvatarMode.value) {
 			refreshAiAvatarHistory()
 			return
@@ -381,11 +390,14 @@
 		if (userId.value > 0) verifyChatPermission()
 	})
 
+	onHide(() => {
+		aiAvatarPageVisible.value = false
+		cancelAiHandoffPolling()
+	})
+
 	onUnmounted(() => {
-		if (aiHandoffTimer != null) {
-			clearTimeout(aiHandoffTimer)
-			aiHandoffTimer = null
-		}
+		aiAvatarPageVisible.value = false
+		cancelAiHandoffPolling()
 		if (voiceRecorder != null && voiceRecording.value) {
 			discardVoiceRecording = true
 			voiceRecorder.stop()
@@ -429,29 +441,40 @@
 		return 'ai'
 	}
 
-	const scheduleAiHandoff = (rows: any[]) => {
-		if (!isAiAvatarMode.value || aiAvatarProfile.value == null) return
-		if (aiHandoffTimer != null) clearTimeout(aiHandoffTimer)
-		let dueAt = 0
+	// 待本人补答的刷新调度：只在页面可见且确有未回答问题时才排程，离开页面立即取消。
+	// 现行接口只在消息上返回 handoffStatus（没有 dueAt），因此按固定间隔轮询现有 GET；
+	// 没有待补答项时不排程，避免后台空转。
+	const AI_HANDOFF_POLL_INTERVAL = 8000
+	const hasPendingOwnerHandoff = (rows: any[]): boolean => {
 		for (let index = 0; index < rows.length; index++) {
 			const message = rows[index]
-			if (message.handoffStatus === 'pending' && message.handoffDueAt != null) {
-				const candidate = Number(message.handoffDueAt)
-				if (dueAt == 0 || candidate < dueAt) dueAt = candidate
-			}
+			if (message == null || message.isMine == true) continue
+			if (message.handoffStatus === 'pending' || message.handoff_status === 'pending') return true
 		}
-		if (dueAt == 0) return
-		const delay = Math.max(350, dueAt - Date.now())
+		return false
+	}
+	const cancelAiHandoffPolling = () => {
+		if (aiHandoffTimer != null) {
+			clearTimeout(aiHandoffTimer)
+			aiHandoffTimer = null
+		}
+	}
+	const scheduleAiHandoff = (rows: any[]) => {
+		cancelAiHandoffPolling()
+		if (!isAiAvatarMode.value || aiAvatarProfile.value == null) return
+		if (aiAvatarPageVisible.value != true) return
+		if (!hasPendingOwnerHandoff(rows)) return
 		aiHandoffTimer = setTimeout(async () => {
 			aiHandoffTimer = null
 			if (!isAiAvatarMode.value || aiAvatarProfile.value == null) return
+			if (aiAvatarPageVisible.value != true) return
 			const resolved = await resolveAiAvatarHandoffs(userId.value, aiAvatarProfile.value)
 			if (resolved.success && resolved.data != null) {
 				messages.value = mapAiAvatarMessages(resolved.data as any[])
 				scrollToBottom()
 				scheduleAiHandoff(resolved.data as any[])
 			}
-		}, delay)
+		}, AI_HANDOFF_POLL_INTERVAL)
 	}
 
 	const loadAiAvatarMode = async () => {
@@ -507,14 +530,13 @@
 		if (!isAiAvatarMode.value || aiAvatarSending.value || aiAvatarProfile.value == null) return
 		uni.showModal({
 			title: '清空 AI 分身记录',
-			content: '清空后将无法在当前设备查看这段对话，确定继续吗？',
+			// 该操作删除的是服务端保存的会话记录（同账号在其他设备同样看不到），
+			// 不能只说"当前设备"，否则用户会以为只是本机缓存。
+			content: '清空后会同时删除服务端保存的这段对话记录，同一账号在其他设备也无法再查看，确定继续吗？',
 			confirmText: '清空',
-		success: async (result: any) => {
+			success: async (result: any) => {
 				if (result.confirm !== true) return
-				if (aiHandoffTimer != null) {
-					clearTimeout(aiHandoffTimer)
-					aiHandoffTimer = null
-				}
+				cancelAiHandoffPolling()
 				const cleared = await clearAiAvatarConversation(userId.value)
 				if (!cleared.success) {
 					uni.showToast({ title: responseMessage(cleared, '清空失败'), icon: 'none' })
@@ -523,6 +545,7 @@
 				const history = await getAiAvatarConversation(userId.value, aiAvatarProfile.value)
 				if (history.success && history.data != null) {
 					messages.value = mapAiAvatarMessages(history.data as any[])
+					scheduleAiHandoff(history.data as any[])
 					scrollToBottom()
 				}
 				uni.showToast({ title: '记录已清空', icon: 'success' })
@@ -540,19 +563,40 @@
 		if (!isAiAvatarMode.value || aiAvatarSending.value || aiAvatarProfile.value == null) return
 		const question = content.trim()
 		if (question.length == 0) return
+		// 同一逻辑请求固定目标、内容与幂等键：响应丢失后重试必须复用同一把键，
+		// 服务端才不会把它当成新问题重复回答。切换对象时作废该请求身份。
+		const targetId = userId.value
+		if (aiAvatarRequestKey == '' || aiAvatarRequestTargetId != targetId || aiAvatarRequestContent != question) {
+			// 逻辑请求身份用单调递增序号生成：同一逻辑请求复用同一把键，
+			// 新的逻辑请求必然取到新键；不在页面里使用随机数。
+			aiAvatarRequestCounter += 1
+			aiAvatarRequestKey = 'ai-avatar-' + targetId + '-' + String(aiAvatarRequestCounter)
+			aiAvatarRequestTargetId = targetId
+			aiAvatarRequestContent = question
+		}
+		const requestKey = aiAvatarRequestKey
+		aiAvatarSendSequence += 1
+		const sendSequence = aiAvatarSendSequence
 		aiAvatarSending.value = true
-		inputText.value = ''
 		try {
-			const res = await sendAiAvatarMessage(userId.value, question, aiAvatarProfile.value)
+			const res = await sendAiAvatarMessage(targetId, question, aiAvatarProfile.value, requestKey)
+			// 发送期间切换对象或页面已离开：旧响应不得写入新对象的会话。
+			if (sendSequence != aiAvatarSendSequence || userId.value != targetId || !isAiAvatarMode.value) return
 			if (!res.success || res.data == null) {
+				// 发送失败保留输入内容，保持同一幂等键，用户可直接重试。
+				inputText.value = question
 				uni.showToast({ title: responseMessage(res, '发送失败，请重试'), icon: 'none' })
 				return
 			}
+			aiAvatarRequestKey = ''
+			aiAvatarRequestContent = ''
+			inputText.value = ''
 			const rows = res.data.messages as any[]
 			messages.value = mapAiAvatarMessages(rows)
 			scheduleAiHandoff(rows)
 			scrollToBottom()
 		} catch (error) {
+			if (sendSequence == aiAvatarSendSequence && userId.value == targetId) inputText.value = question
 			uni.showToast({ title: '发送失败，请稍后重试', icon: 'none' })
 		} finally {
 			aiAvatarSending.value = false

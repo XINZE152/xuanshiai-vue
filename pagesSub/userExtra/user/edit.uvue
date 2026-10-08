@@ -302,7 +302,7 @@
 	import { getLatestThoughtfulness, analyzeProfileThoughtfulness, normalizeThoughtfulness, polishPaperPlaneText, ThoughtfulnessResult } from '@/api/ai-profile.uts'
 	import XsaProfileAiCard from '@/components/XsaProfileAiCard.uvue'
 	import XsaProfileAiFirstAnalysis from '@/components/XsaProfileAiFirstAnalysis.uvue'
-	import { resolveMediaUrl } from '@/api/config.uts'
+	import { resolveMediaUrl, CURRENT_USER_ID_KEY } from '@/api/config.uts'
 	import { sleep } from '@/utils/sleep.uts'
 	import locationJson from '@/data/location.json'
 
@@ -582,11 +582,25 @@
 
 	// ===== AI 用心度 =====
 	const AI_THOUGHTFULNESS_KEY = 'xsa_profile_ai_thoughtfulness'
+	// 用心度结果必须按当前账号隔离；旧版全局 key 会在切账号后串出上一账号结果。
+	const thoughtfulnessCacheKey = (): string => {
+		let scope = 'guest'
+		try {
+			const raw = uni.getStorageSync(CURRENT_USER_ID_KEY)
+			const id = Number(raw)
+			if (id > 0) scope = 'user-' + id
+		} catch (e) {}
+		return AI_THOUGHTFULNESS_KEY + '-' + scope
+	}
+	const clearThoughtfulnessCache = () => {
+		try { uni.removeStorageSync(thoughtfulnessCacheKey()) } catch (e) {}
+	}
 	const aiAnalyzing = ref(false)
 	const aiError = ref('')
 	const aiResult = ref<ThoughtfulnessResult | null>(null)
 	const aiAnalysisStartedAt = ref(0)
-	// AI 用心度默认先展示初次使用说明；分析成功后自动回到结果卡。
+	const aiAnalysisBaselineJson = ref('')
+	// AI 用心度默认先展示初次使用说明；分析成功或读取到既有结果后自动回到结果卡。
 	const aiFirstAnalysisVisible = ref(true)
 	const aiStale = ref(false)
 	const pendingAiEditedKeys = ref([] as string[])
@@ -623,7 +637,7 @@
 		const result = aiResult.value
 		if (result == null) return
 		try {
-			uni.setStorageSync(AI_THOUGHTFULNESS_KEY, {
+			uni.setStorageSync(thoughtfulnessCacheKey(), {
 				score: result.score,
 				summary: result.summary,
 				todos: result.todos,
@@ -637,10 +651,12 @@
 
 	const loadThoughtfulness = async () => {
 		try {
-			const cached = uni.getStorageSync(AI_THOUGHTFULNESS_KEY) as any
+			const cached = uni.getStorageSync(thoughtfulnessCacheKey()) as any
 			if (cached != null && typeof cached == 'object') {
 				aiResult.value = normalizeThoughtfulness(cached)
 				aiStale.value = cached.profile_hash != null && '' + cached.profile_hash != '' && '' + cached.profile_hash != savedProfileHash()
+				// 有同账号缓存只作为离线兜底，但它已经是结果态，不能再被首次说明卡遮住。
+				aiFirstAnalysisVisible.value = false
 			}
 		} catch (e) {
 			console.error('[EditProfile] thoughtfulness cache read failed', e)
@@ -651,12 +667,21 @@
 				aiResult.value = res.data as ThoughtfulnessResult
 				aiError.value = ''
 				aiStale.value = hasUnsavedProfileChanges()
+				aiFirstAnalysisVisible.value = false
 				persistThoughtfulness()
-			} else if (!res.success && aiResult.value == null) {
+			} else if (res.success && res.data == null) {
+				// 服务端明确说明当前账号没有结果时，本地缓存也不能冒充已生成。
+				aiResult.value = null
+				aiStale.value = false
+				aiError.value = ''
+				aiFirstAnalysisVisible.value = true
+				clearThoughtfulnessCache()
+			} else if (!res.success) {
+				// GET 失败保留旧结果，但必须把失败提示带到结果卡上，便于重试。
 				aiError.value = res.message != null ? '' + res.message : 'AI 用心度评审暂时不可用'
 			}
 		} catch (e) {
-			if (aiResult.value == null) aiError.value = '网络异常，AI 用心度评审暂时不可用'
+			aiError.value = '网络异常，AI 用心度评审暂时不可用'
 		}
 	}
 
@@ -664,6 +689,8 @@
 		if (aiAnalyzing.value) return false
 		aiAnalyzing.value = true
 		aiAnalysisStartedAt.value = Date.now()
+		// 固定本次请求开始时的资料快照；分析期间若用户保存新资料，旧返回不能冒充最新结果。
+		aiAnalysisBaselineJson.value = JSON.stringify(buildProfilePayload())
 		aiError.value = ''
 		try {
 			// 先让小程序完成 loading 视图渲染，再发起可能立即失败的请求。
@@ -674,7 +701,8 @@
 				return false
 			}
 			aiResult.value = res.data as ThoughtfulnessResult
-			aiStale.value = hasUnsavedProfileChanges()
+			aiStale.value = hasUnsavedProfileChanges() || JSON.stringify(buildProfilePayload()) != aiAnalysisBaselineJson.value
+			aiFirstAnalysisVisible.value = false
 			persistThoughtfulness()
 			if (trigger == 'manual') uni.showToast({ title: 'AI 分析已更新', icon: 'success' })
 			return true
@@ -689,11 +717,13 @@
 			aiAnalyzing.value = false
 		}
 	}
+	const guardThoughtfulnessSaveState = (): boolean => {
+		if (!hasUnsavedProfileChanges()) return true
+		uni.showToast({ title: '请先保存资料，再分析最新内容', icon: 'none' })
+		return false
+	}
 	const onAiRetry = () => {
-		if (hasUnsavedProfileChanges()) {
-			uni.showToast({ title: '请先保存资料，再分析最新内容', icon: 'none' })
-			return
-		}
+		if (!guardThoughtfulnessSaveState()) return
 		triggerThoughtfulness('manual', [])
 	}
 	const openAiFirstAnalysis = () => {
@@ -702,6 +732,7 @@
 	}
 	const closeAiFirstAnalysis = () => { if (!aiAnalyzing.value) aiFirstAnalysisVisible.value = false }
 	const startAiFirstAnalysis = async () => {
+		if (!guardThoughtfulnessSaveState()) return
 		const success = await triggerThoughtfulness('manual', [])
 		if (success) aiFirstAnalysisVisible.value = false
 	}

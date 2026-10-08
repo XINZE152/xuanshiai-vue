@@ -27,6 +27,12 @@ const core = [
   'test-profile-card-tag-consistency.js',
   'test-portrait-resync-contract.js',
   'test-moxiang-tts-round-immutability.js',
+  'test-moxiang-continuous.js',
+  'test-moxiang-continuous-result.js',
+  'test-moxiang-continuous-archive.js',
+  'test-moxiang-continuous-profile.js',
+  'test-moxiang-poster-public-source.js',
+  'test-moxiang-build-confirmation.js',
   'test-search-retry-idempotency.js',
   'test-home-recommend-display.js'
 ]

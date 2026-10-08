@@ -57,12 +57,16 @@
 			</view>
 			<!-- 推荐 Tab -->
 			<scroll-view v-if="currentTab === 0" scroll-y class="content-scroll" enhanced show-scrollbar="false" @touchstart="onTouchStart" @touchend="onTouchEnd">
+				<view v-if="recommendLoading && recommendUsers.length === 0" class="completion-gate">
+					<text class="completion-gate-title">正在加载推荐</text>
+					<text class="completion-gate-copy">正在读取公开推荐资料，请稍候。</text>
+				</view>
 				<view v-if="discoveryError != ''" class="completion-reminder completion-reminder-error">
-					<text class="completion-reminder-title">推荐暂时无法加载</text>
+					<text class="completion-reminder-title">{{ recommendUsers.length > 0 ? '推荐未刷新' : '推荐暂时无法加载' }}</text>
 					<text class="completion-reminder-copy">{{ discoveryError }}</text>
 					<view class="completion-gate-button" @tap="loadHomeDiscovery"><text>重新加载</text></view>
 				</view>
-				<view v-if="recommendUsers.length === 0 && discoveryError == ''" class="completion-gate">
+				<view v-if="!recommendLoading && recommendUsers.length === 0 && discoveryError == ''" class="completion-gate">
 					<text class="completion-gate-title">暂时没有新的推荐</text>
 					<text class="completion-gate-copy">我们正在更新公开推荐资料，请稍后再来看看。</text>
 				</view>
@@ -94,7 +98,7 @@
 							<view class="online-row" :class="{ offline: currentRecommendUser.online !== true }">
 								<view class="online-dot"></view>
 											<text class="online-text">{{ currentRecommendUser.online === true ? '在线' : '离线' }}</text>
-							<text v-if="hasPublicDistance(currentRecommendUser)" class="distance-text">· 距你 {{ currentRecommendUser.distance }}km · 近期活跃</text><text v-else class="distance-text">· 距离未公开</text>
+							<text class="distance-text">· {{ distanceLabel(currentRecommendUser) }} · 近期活跃</text>
 							</view>
 						</view>
 
@@ -236,7 +240,7 @@
 
 <!-- 动态区块结束 -->
 						<view class="activity-row">
-							<text class="ic ic-home ic-dingwei activity-dot"></text><text class="activity-text"> 近期活跃 · 距你 {{ currentRecommendUser.distance }}km</text>
+							<text class="ic ic-home ic-dingwei activity-dot"></text><text class="activity-text">{{ distanceLabel(currentRecommendUser) }} · 近期活跃</text>
 							<text class="viewed-text">{{ currentRecommendUser.viewCount > 0 ? currentRecommendUser.viewCount + '人看过' : '' }}</text>
 						</view>
 					</view>
@@ -263,6 +267,13 @@
 				</view>
 
 				<view class="square-feed">
+				<!-- H3：广场局部错误 / 未刷新提示 + 重试入口。有缓存时不伪装成已刷新。 -->
+				<view v-if="squareError != ''" class="completion-reminder completion-reminder-error">
+					<text class="completion-reminder-title">{{ squareUsers.length > 0 ? '广场未刷新' : '广场暂时无法加载' }}</text>
+					<text class="completion-reminder-copy">{{ squareError }}</text>
+					<view class="completion-gate-button" @tap="loadHomeDiscovery"><text>重新加载</text></view>
+				</view>
+
 					<view v-if="squareUsers.length > 0" class="square-user-card" @tap="goUserDetail(squareAt(0).id)">
 						<view class="sq-photo-wrap">
 							<image class="sq-photo" :src="squareAt(0).avatar" mode="aspectFill"></image>
@@ -275,7 +286,7 @@
 									<text class="sq-age">{{ squareAt(0).age }}岁</text>
 								</view>
 								<view class="sq-meta-row">
-									<text class="sq-meta-text"><text class="ic ic-home ic-dingwei sq-loc-icon"></text> 距你 {{ squareAt(0).distance }}km</text>
+									<text class="sq-meta-text"><text class="ic ic-home ic-dingwei sq-loc-icon"></text> {{ distanceLabel(squareAt(0)) }}</text>
 									<view class="sq-dot"></view>
 									<text class="sq-meta-text">{{ squareAt(0).job }} · {{ squareAt(0).city }}</text>
 								</view>
@@ -298,7 +309,7 @@
 									<text class="sq-age">{{ squareAt(1).age }}岁</text>
 								</view>
 								<view class="sq-meta-row">
-									<text class="sq-meta-text"><text class="ic ic-home ic-dingwei sq-loc-icon"></text> 距你 {{ squareAt(1).distance }}km</text>
+									<text class="sq-meta-text"><text class="ic ic-home ic-dingwei sq-loc-icon"></text> {{ distanceLabel(squareAt(1)) }}</text>
 									<view class="sq-dot"></view>
 									<text class="sq-meta-text">{{ squareAt(1).job }} · {{ squareAt(1).city }}</text>
 								</view>
@@ -359,7 +370,7 @@
 									<text class="sq-age">{{ squareAt(4).age }}岁</text>
 								</view>
 								<view class="sq-meta-row">
-									<text class="sq-meta-text"><text class="ic ic-home ic-dingwei sq-loc-icon"></text> 距你 {{ squareAt(4).distance }}km</text>
+									<text class="sq-meta-text"><text class="ic ic-home ic-dingwei sq-loc-icon"></text> {{ distanceLabel(squareAt(4)) }}</text>
 									<view class="sq-dot"></view>
 									<text class="sq-meta-text">{{ squareAt(4).job }} · {{ squareAt(4).city }}</text>
 								</view>
@@ -382,7 +393,7 @@
 									<text class="sq-age">{{ squareAt(5).age }}岁</text>
 								</view>
 								<view class="sq-meta-row">
-									<text class="sq-meta-text"><text class="ic ic-home ic-dingwei sq-loc-icon"></text> 距你 {{ squareAt(5).distance }}km</text>
+									<text class="sq-meta-text"><text class="ic ic-home ic-dingwei sq-loc-icon"></text> {{ distanceLabel(squareAt(5)) }}</text>
 									<view class="sq-dot"></view>
 									<text class="sq-meta-text">{{ squareAt(5).job }} · {{ squareAt(5).city }}</text>
 								</view>
@@ -455,7 +466,7 @@
 									<text class="sq-age">{{ squareAt(8).age }}岁</text>
 								</view>
 								<view class="sq-meta-row">
-									<text class="sq-meta-text"><text class="ic ic-home ic-dingwei sq-loc-icon"></text> 距你 {{ squareAt(8).distance }}km</text>
+									<text class="sq-meta-text"><text class="ic ic-home ic-dingwei sq-loc-icon"></text> {{ distanceLabel(squareAt(8)) }}</text>
 									<view class="sq-dot"></view>
 									<text class="sq-meta-text">{{ squareAt(8).job }} · {{ squareAt(8).city }}</text>
 								</view>
@@ -478,7 +489,7 @@
 									<text class="sq-age">{{ squareAt(9).age }}岁</text>
 								</view>
 								<view class="sq-meta-row">
-									<text class="sq-meta-text"><text class="ic ic-home ic-dingwei sq-loc-icon"></text> 距你 {{ squareAt(9).distance }}km</text>
+									<text class="sq-meta-text"><text class="ic ic-home ic-dingwei sq-loc-icon"></text> {{ distanceLabel(squareAt(9)) }}</text>
 									<view class="sq-dot"></view>
 									<text class="sq-meta-text">{{ squareAt(9).job }} · {{ squareAt(9).city }}</text>
 								</view>
@@ -537,7 +548,7 @@
 					</view>
 					<view class="vip-zone-meta">
 						<text class="vip-zone-threshold">{{ currentVipZone.threshold }}</text>
-						<text class="vip-zone-count"><text :style="{ color: currentVipZone.iconColor }">{{ formatZoneCount(currentVipZone.count) }}</text> 人在册</text>
+						<text v-if="currentVipZone.count != null" class="vip-zone-count"><text :style="{ color: currentVipZone.iconColor }">{{ formatZoneCount(currentVipZone.count) }}</text> 人在册</text>
 					</view>
 					<text class="vip-zone-slogan">
 						{{ currentVipZone.sloganPrefix }}<text class="vip-zone-highlight" :style="{ color: currentVipZone.iconColor }">{{ currentVipZone.sloganHighlight }}</text>{{ currentVipZone.sloganSuffix }}
@@ -557,7 +568,7 @@
 									<text class="sq-age">{{ card.age }}岁</text>
 								</view>
 								<view class="sq-meta-row">
-									<text class="sq-meta-text"><text class="ic ic-home ic-dingwei sq-loc-icon"></text> 距你 {{ card.distance }}km</text>
+									<text class="sq-meta-text"><text class="ic ic-home ic-dingwei sq-loc-icon"></text> {{ distanceLabel(card) }}</text>
 									<view class="sq-dot"></view>
 									<text class="sq-meta-text">{{ card.job }} · {{ card.city }}</text>
 								</view>
@@ -880,19 +891,21 @@
 		const n2 = Number(str.replace(/[^\d]/g, ''))
 		return isNaN(n2) ? 0 : n2
 	}
+	// H4：在册人数与「曝光倍数」都没有服务端实测来源（曾是前端固定常量/营销文案），
+	// 置为 null 由模板隐藏，不拿首屏 20 条列表长度冒充平台总人数，也不编造倍数。
 	const vipZones = ref([
 		{
 			key: 'glamour', name: '高颜值专区', en: 'GLAMOUR', icon: '/static/icons/zone-glamour.svg',
 			iconColor: '#C97B7B', iconBg: '#F9EAEA',
-			threshold: '形象认证通过 · 真人核验', count: 1286,
+			threshold: '形象认证通过 · 真人核验', count: null,
 			sloganPrefix: '第一眼的心动值得被认真对待，',
 			sloganHighlight: '入驻后资料进入专区首屏',
-			sloganSuffix: '，被看见的机会是普通用户的 4 倍。'
+			sloganSuffix: '，被更多人看见。'
 		},
 		{
 			key: 'elite', name: '高收入专区', en: 'ELITE', icon: '/static/icons/zone-elite.svg',
 			iconColor: '#B89A5E', iconBg: '#F5ECD8',
-			threshold: '年收入 30w+ · 凭证核验', count: 842,
+			threshold: '年收入 30w+ · 凭证核验', count: null,
 			sloganPrefix: '不必为生活将就，也不必为钱解释，',
 			sloganHighlight: '同频的圈层里聊得来',
 			sloganSuffix: '的概率高得多。'
@@ -900,7 +913,7 @@
 		{
 			key: 'scholar', name: '高学历专区', en: 'SCHOLAR', icon: '/static/icons/zone-scholar.svg',
 			iconColor: '#5A8A6E', iconBg: '#E8F2EC',
-			threshold: '985/211 或硕士以上 · 学历认证', count: 1073,
+			threshold: '985/211 或硕士以上 · 学历认证', count: null,
 			sloganPrefix: '聊得来，比什么都难得，',
 			sloganHighlight: '相似的教育背景',
 			sloganSuffix: '意味着相近的表达方式与看待世界的方式。'
@@ -908,17 +921,21 @@
 		{
 			key: 'resonance', name: '同频专区', en: 'RESONANCE', icon: '/static/icons/zone-resonance.svg',
 			iconColor: '#8B7CB3', iconBg: '#EDEAF5',
-			threshold: '完成人格测试 · 资料完整 80%', count: 2415,
+			threshold: '完成人格测试 · 资料完整 80%', count: null,
 			sloganPrefix: '条件未必顶尖，但',
 			sloganHighlight: '聊得来这件事，比什么都难得',
 			sloganSuffix: '。按人格契合度推荐，先看懂你，再介绍你们认识。'
 		}
 	])
 	const currentVipZone = computed(() => vipZones.value[vipCatIndex.value] != null ? vipZones.value[vipCatIndex.value] : vipZones.value[0])
-
-	// ========== 推荐页过滤 + 配额 ==========
 	const recommendUsers = ref<any[]>([])
 	const discoveryError = ref('')
+	// H3：推荐区块的加载态与整体刷新代际。初次加载显示加载中，
+	// 只有最新一次刷新允许写列表，旧刷新不回灌。
+	const recommendLoading = ref(false)
+	let homeRefreshSeq = 0
+	// H3：广场区块独立的刷新失败提示（有缓存只提示未刷新，无缓存提示无法加载）。
+	const squareError = ref('')
 	const squareUsers = ref<any[]>([])
 	const squareTotal = ref(0)
 	const membershipPlans = ref<any[]>([])
@@ -972,12 +989,23 @@
 		const text = direct.trim() != '' ? direct : fallback
 		return text.trim()
 	}
-	// mapCard 会把缺失的 distance_km 压成 0，展示前必须回到原始字段判断，
-	// 否则未共享位置的候选会被说成「距你 0km」。
+	// H4：距离展示统一走这一对判断。mapCard 缺失 distance_km 时返回 null（不再压成 0），
+	// 这里再回到原始字段兜底，避免同页同时出现「距离未公开」与「距你 0km」；
+	// 真实 0km 与 null 必须区分：0 是已公开的确定值，null 是未共享位置。
 	const hasPublicDistance = (item: any): boolean => {
 		if (item == null) return false
+		const raw = item.raw != null ? item.raw as any : null
+		if (raw != null) return raw.distance_km != null
+		// 无 raw 的派生卡片（会员专区卡片）：只有 distance 是有效数字才算已公开。
+		if (item.distance == null) return false
+		return !isNaN(Number(item.distance))
+	}
+	const distanceLabel = (item: any): string => {
+		if (!hasPublicDistance(item)) return '距离未公开'
 		const raw = item.raw != null ? item.raw as any : {}
-		return raw.distance_km != null
+		const value = item.distance != null ? Number(item.distance) : Number(raw.distance_km)
+		if (isNaN(value)) return '距离未公开'
+		return '距你 ' + value + 'km'
 	}
 	const loadRecommendBackground = async () => {
 		const userId = Number(currentRecommendUser.value.id || 0)
@@ -1017,23 +1045,44 @@
 	}
 	const loadHomeDiscovery = async () => {
 		discoveryError.value = ''
-		const recommendRes = await getDiscoveryRecommendations({ page: 1, page_size: 20 })
-		if (recommendRes != null && recommendRes.success && recommendRes.data != null) {
-			recommendUsers.value = recommendRes.data.items as any[]
-			currentRecommendIndex.value = 0
-			loadRecommendBackground()
-			loadFeedDynamics(Number(currentRecommendUser.value.id || 0))
-		} else {
-			recommendUsers.value = []
-			recommendBackground.value = ''
-			const message = recommendRes != null && recommendRes.message != null ? String(recommendRes.message).trim() : ''
-			discoveryError.value = message != '' ? message : '请检查登录状态和网络后重试'
+		recommendLoading.value = true
+		// H2/H3：整体刷新带请求代际，只有最新一次刷新允许写列表，避免旧刷新覆盖新列表。
+		homeRefreshSeq += 1
+		const refreshSeq = homeRefreshSeq
+		try {
+			const recommendRes = await getDiscoveryRecommendations({ page: 1, page_size: 20 })
+			if (refreshSeq != homeRefreshSeq) return
+			if (recommendRes != null && recommendRes.success && recommendRes.data != null) {
+				recommendUsers.value = recommendRes.data.items as any[]
+				currentRecommendIndex.value = 0
+				loadRecommendBackground()
+				loadFeedDynamics(Number(currentRecommendUser.value.id || 0))
+			} else {
+				recommendUsers.value = []
+				recommendBackground.value = ''
+				feedDynamics.value = []
+				const message = recommendRes != null && recommendRes.message != null ? String(recommendRes.message).trim() : ''
+				discoveryError.value = message != '' ? message : '请检查登录状态和网络后重试'
+			}
+			// H3：推荐与广场各自记录独立结果，任一失败都要有局部提示并可重试；
+			// 广场失败保留上一轮已读数据，只提示「未刷新」，不假装已刷新。
+			const plazaRes = await getDiscoveryPlaza({ page: 1, page_size: 20 })
+			if (refreshSeq != homeRefreshSeq) return
+			if (plazaRes.success && plazaRes.data != null) {
+				squareUsers.value = plazaRes.data.items as any[]
+				squareTotal.value = plazaRes.data.total != null ? Number(plazaRes.data.total) : squareUsers.value.length
+				squareError.value = ''
+			} else {
+				const plazaMessage = plazaRes != null && plazaRes.message != null ? String(plazaRes.message).trim() : ''
+				squareError.value = plazaErrorText(squareUsers.value.length > 0, plazaMessage)
+			}
+		} finally {
+			if (refreshSeq == homeRefreshSeq) recommendLoading.value = false
 		}
-		const plazaRes = await getDiscoveryPlaza({ page: 1, page_size: 20 })
-		if (plazaRes.success && plazaRes.data != null) {
-			squareUsers.value = plazaRes.data.items as any[]
-			squareTotal.value = plazaRes.data.total != null ? Number(plazaRes.data.total) : squareUsers.value.length
-		}
+	}
+	const plazaErrorText = (hasCached: boolean, message: string): string => {
+		if (hasCached) return '广场暂时未刷新，当前展示的是上一次读取的资料'
+		return message != '' ? message : '广场暂时无法加载，请检查网络后重试'
 	}
 	const loadMembershipPlans = async () => {
 		const res = await getMembershipPackages()
@@ -1060,7 +1109,11 @@
 		if (!recordProfileView()) { showQuotaExhausted(); return }
 		const list = filteredRecommendUsers.value as any[]
 		if (list.length === 0) return
-			currentRecommendIndex.value = (currentRecommendIndex.value + 1) % list.length
+		// H2：切换对象先作废旧动态与旧背景，再按新的 targetId 发起读取；
+		// 新对象没有动态时保持空态，不残留上一位的动态。
+		invalidateFeedDynamics()
+		recommendBackground.value = ''
+		currentRecommendIndex.value = (currentRecommendIndex.value + 1) % list.length
 		loadRecommendBackground()
 		loadFeedDynamics(Number(currentRecommendUser.value.id || 0))
 	}
@@ -1117,12 +1170,26 @@
 
 	// Ta的动态
 	const feedDynamics = ref<any[]>([])
+	// H2：动态请求记录 targetId + 代际，每个 await 后和写入前都校验，
+	// 避免切换对象后 A 的慢响应仍覆盖 B 的动态（也不把 A 的动态放进 B 的快照）。
+	const feedDynamicsTargetId = ref(0)
+	let feedDynamicsSeq = 0
+	const invalidateFeedDynamics = () => {
+		feedDynamicsSeq += 1
+		feedDynamicsTargetId.value = 0
+		feedDynamics.value = []
+	}
+	const isFeedDynamicsAlive = (targetUserId: number, seq: number): boolean => {
+		return seq == feedDynamicsSeq && targetUserId == feedDynamicsTargetId.value
+	}
 	const loadFeedDynamics = async (targetUserId: number = 0) => {
-		if (targetUserId <= 0) {
-			feedDynamics.value = []
-			return
-		}
+		feedDynamicsSeq += 1
+		const seq = feedDynamicsSeq
+		feedDynamicsTargetId.value = targetUserId
+		feedDynamics.value = []
+		if (targetUserId <= 0) return
 		const res = await getDynamicList('discover', 1)
+		if (!isFeedDynamicsAlive(targetUserId, seq)) return
 		if (!res.success || res.data == null) return
 		const data = res.data as any
 		const rows = data.list != null && Array.isArray(data.list) ? data.list as any[] : (data.items != null && Array.isArray(data.items) ? data.items as any[] : [])
@@ -1136,12 +1203,15 @@
 		}
 		// 列表统计可能是旧快照，详情接口返回单条动态的最新统计。
 		for (let i = 0; i < mapped.length; i++) {
+			if (!isFeedDynamicsAlive(targetUserId, seq)) return
 			const detailRes = await getDynamicDetail(Number(mapped[i].id || 0))
+			if (!isFeedDynamicsAlive(targetUserId, seq)) return
 			if (!detailRes.success || detailRes.data == null) continue
 			const detail = detailRes.data as any
 			if (detail.likeCount != null) mapped[i].likeCount = Number(detail.likeCount)
 			if (detail.commentCount != null) mapped[i].commentCount = Number(detail.commentCount)
 		}
+		if (!isFeedDynamicsAlive(targetUserId, seq)) return
 		feedDynamics.value = mapped
 	}
 		const viewAllFeed = () => { goUserDetailAnchored(recommendUserId.value, 'anchor-dynamics') }
@@ -1176,15 +1246,20 @@
 	const myAvatar = ref('')
 	const aiProfileLoaded = ref(false)
 
-	// 自己的 MBTI 优先取情感实验室已确认的类型，头像取自己的资料
-	const loadMyAiProfile = async () => {
-		if (aiProfileLoaded.value) return
+	// 自己的 MBTI 优先取情感实验室已确认的类型，头像取自己的资料。
+	// H5：读取失败不得设为永久已加载，否则编辑头像后返回首页仍显示旧值；
+	// 只有两次读取都真正拿到数据（或明确成功）才算加载完成。
+	const loadMyAiProfile = async (force: boolean = false) => {
+		if (aiProfileLoaded.value && !force) return
+		let mbtiOk = false
+		let avatarOk = false
 		try {
 			const summaryRes = await getEmotionLabSummary()
 			if (summaryRes.success && summaryRes.data != null) {
 				const source = (summaryRes.data as any).profileSource
 				const mbtiType = source != null && source.mbtiType != null ? '' + source.mbtiType : ''
 				if (mbtiType.length == 4) myMbti.value = mbtiType.toUpperCase()
+				mbtiOk = true
 			}
 		} catch (error) { }
 		try {
@@ -1192,15 +1267,18 @@
 			if (profileRes.success && profileRes.data != null) {
 				const data = profileRes.data as any
 				const rawAvatar = data.avatar != null && data.avatar != '' ? '' + data.avatar : (data.profile != null && data.profile.avatar != null ? '' + data.profile.avatar : '')
-				if (rawAvatar != '') myAvatar.value = resolveMediaUrl(rawAvatar)
+				myAvatar.value = rawAvatar != '' ? resolveMediaUrl(rawAvatar) : ''
+				avatarOk = true
 			}
 		} catch (error) { }
-		aiProfileLoaded.value = true
+		// 任一来源读取失败都保留未加载状态，下次进入首页会重试，不把失败当成已加载。
+		aiProfileLoaded.value = mbtiOk && avatarOk
 	}
 
 	const showAiScore = () => {
 		aiVisible.value = true
-		loadMyAiProfile()
+		// H5：每次打开合拍面板都重读一次本人头像/MBTI，编辑资料返回后不再显示旧值。
+		loadMyAiProfile(true)
 	}
 
 	const aiOtherName = computed((): string => {
@@ -1248,7 +1326,8 @@
 				tags: user.interestTags,
 				intro: user.bio,
 				expectations: [],
-				dynamicSummary: feedDynamics.value.map((item: any) => '' + item.content)
+				// H2：快照只携带属于当前 targetId 的动态，避免把上一位对象的动态带进 B 的分身。
+				dynamicSummary: feedDynamicsTargetId.value == id ? feedDynamics.value.map((item: any) => '' + item.content) : []
 			}, false)
 			if (!snapshotRes.success) {
 				showToast('公开资料读取失败')
@@ -1399,6 +1478,9 @@
 			uni.removeStorageSync('xsa_skip_welcome_once')
 			welcomeVisible.value = false
 		}
+		// H5：返回首页时作废本人头像/MBTI 缓存，编辑资料后不再展示旧值；
+		// 下次打开合拍面板会重新读取（读取失败保留未加载状态）。
+		aiProfileLoaded.value = false
 		if (!welcomeVisible.value && getAccessToken() != '') loadHomeDiscovery()
 	})
 </script>

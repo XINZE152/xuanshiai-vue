@@ -59,6 +59,7 @@ function runResync(scenario) {
     disconnect: () => { calls.disconnects++ }
   }
   const ctx = {
+    continuousFlow: { value: false },
     connecting: { value: scenario.connecting === true },
     sessionStarted: { value: scenario.sessionStarted !== false },
     stateError: { value: scenario.stateError != null ? scenario.stateError : '' },

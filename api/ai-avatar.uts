@@ -197,7 +197,13 @@ function mapServerMessages(raw: any, profile: any): any[] {
     source: item.source != null ? String(item.source) : 'system',
     handoffStatus: item.handoffStatus != null
       ? String(item.handoffStatus)
-      : (item.handoff_status != null ? String(item.handoff_status) : 'not_requested')
+      : (item.handoff_status != null ? String(item.handoff_status) : 'not_requested'),
+    handoffQuestion: item.handoffQuestion != null
+      ? String(item.handoffQuestion)
+      : (item.handoff_question != null ? String(item.handoff_question) : ''),
+    handoffDueAt: item.handoffDueAt != null
+      ? Number(item.handoffDueAt)
+      : (item.handoff_due_at != null ? Number(item.handoff_due_at) : 0)
   }))
 }
 
@@ -219,7 +225,10 @@ function normalizeServerDashboard(raw: any): any {
       : (item.created_at != null ? String(item.created_at) : (item.time != null ? String(item.time) : '刚刚'))
   })
   return {
+    // 生产接口目前只提供问答看板，不提供访客对话摘要；空数组不能冒充“没有访客”。
     chatRecords: [],
+    chatRecordsAvailable: false,
+    chatRecordsStatus: 'unavailable',
     pendingQuestions: pendingSource.map(mapQuestion),
     myAnswers: answersSource.map(mapQuestion),
     enabled: value.enabled == true,
@@ -238,6 +247,10 @@ async function loadServerConversation(ownerId: number, profile: any): Promise<an
   if (rows.length == 0) rows.unshift(initialMessage(profile))
   return success(rows, res.message)
 }
+function avatarMessageIdempotencyKey(): string {
+  return 'ai-avatar-' + String(Date.now()) + '-' + String(Math.floor(Math.random() * 1000000))
+}
+
 
 async function sendServerMessage(ownerId: number, content: string, idempotencyKey: string): Promise<any> {
   return await request({
@@ -498,14 +511,19 @@ export async function getAiAvatarConversation(userId: number, profile: any): Pro
   return success(resolved)
 }
 
-export async function sendAiAvatarMessage(userId: number, content: string, profile: any): Promise<any> {
+/**
+ * 发送一条访客问题。
+ * requestKey 由页面持有：同一逻辑请求在超时/断线重试时必须复用同一幂等键，
+ * 否则服务端会把它当成新问题重复回答。未传时（旧调用方）才生成一次性键。
+ */
+export async function sendAiAvatarMessage(userId: number, content: string, profile: any, requestKey: string = ''): Promise<any> {
   const question = content != null ? String(content).trim() : ''
   if (question.length == 0) return failure('请输入问题', 'EMPTY_MESSAGE')
   if (question.length > 300) return failure('问题不能超过 300 个字', 'MESSAGE_TOO_LONG')
   if (userId <= 0 || profile == null || typeof profile != 'object') return failure('AI 分身资料暂时无法读取', 'PROFILE_REQUIRED')
 
   if (!USE_MOCK) {
-    const key = 'ai-avatar-' + userId + '-' + Date.now() + '-' + Math.floor(Math.random() * 100000)
+    const key = requestKey != '' ? requestKey : avatarMessageIdempotencyKey()
     const sendRes = await sendServerMessage(userId, question, key)
     if (!sendRes.success || sendRes.data == null) return sendRes
     const rows = mapServerMessages(sendRes.data, profile)

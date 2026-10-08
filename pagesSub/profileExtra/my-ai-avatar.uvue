@@ -38,25 +38,36 @@
 			<view v-else>
 			<!-- Tab 1：对话记录 -->
 			<view v-if="activeTab == 0">
-				<text class="aia-tip">{{ conversationTip }}</text>
-				<view v-if="chatRecords.length > 0">
-					<view class="aia-chat-item" v-for="item in chatRecords" :key="item.id">
-						<view class="aia-chat-avatar">
-							<text class="ic ic-social ic-touxiang aia-chat-avatar-icon"></text>
-						</view>
-						<view class="aia-chat-main">
-							<text class="aia-chat-name">匿名访客</text>
-							<text class="aia-chat-topic">{{ item.topic }}</text>
-							<text class="aia-chat-meta">{{ item.count }} 条对话 · {{ item.time }}</text>
-						</view>
-					</view>
-				</view>
-				<view v-else class="aia-empty">
+				<!-- 生产接口只提供问答看板，不提供访客对话摘要；这里如实说明，
+				     不能用"还没有访客"把"服务端未提供"伪装成"零访客"。 -->
+				<view v-if="!conversationAvailable" class="aia-empty">
 					<view class="aia-empty-icon">
 						<text class="ic ic-social ic-pinglun aia-empty-icon-text"></text>
 					</view>
-					<text class="aia-empty-title">还没有访客与你的分身对话</text>
-					<text class="aia-empty-sub">完善个人资料，分身会更好地替你回答访客的提问</text>
+					<text class="aia-empty-title">当前暂不提供对话记录</text>
+					<text class="aia-empty-sub">为保护双方隐私，访客身份与完整聊天内容不对你展示。你可以到「待回答」和「我的回答」查看分身相关的问答。</text>
+				</view>
+				<view v-else>
+					<text class="aia-tip">{{ conversationTip }}</text>
+					<view v-if="chatRecords.length > 0">
+						<view class="aia-chat-item" v-for="item in chatRecords" :key="item.id">
+							<view class="aia-chat-avatar">
+								<text class="ic ic-social ic-touxiang aia-chat-avatar-icon"></text>
+							</view>
+							<view class="aia-chat-main">
+								<text class="aia-chat-name">匿名访客</text>
+								<text class="aia-chat-topic">{{ item.topic }}</text>
+								<text class="aia-chat-meta">{{ item.count }} 条对话 · {{ item.time }}</text>
+							</view>
+						</view>
+					</view>
+					<view v-else class="aia-empty">
+						<view class="aia-empty-icon">
+							<text class="ic ic-social ic-pinglun aia-empty-icon-text"></text>
+						</view>
+						<text class="aia-empty-title">还没有访客与你的分身对话</text>
+						<text class="aia-empty-sub">完善个人资料，分身会更好地替你回答访客的提问</text>
+					</view>
 				</view>
 			</view>
 
@@ -156,7 +167,7 @@
 				</view>
 				<view class="aia-sheet-foot">
 					<text class="aia-count">{{ answerText.length }}/500</text>
-					<view class="aia-submit" :class="{ 'aia-submit-ready': answerText.length > 0 }" @tap="submitAnswer">
+					<view class="aia-submit" :class="{ 'aia-submit-ready': answerText.length > 0 && !answerSubmitting, 'aia-submit-busy': answerSubmitting }" @tap="submitAnswer">
 						<text class="ic ic-sys ic-jiantou-you aia-submit-icon"></text>
 					</view>
 				</view>
@@ -180,13 +191,17 @@ const systemInfo = uni.getSystemInfoSync()
 const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
 
 const activeTab = ref(0)
+// 仅在服务端确实提供访客对话摘要时才会渲染；此处不声称摘要来自服务端，
+// 也不把"未提供"说成"零访客"（见对话记录 Tab 的如实状态）。
 const conversationTip = USE_MOCK
 	? '为保护双方隐私，访客身份与具体聊天内容对你不可见，仅展示匿名话题摘要。当前为演示数据，只保存在本设备。'
-	: '为保护双方隐私，访客身份与具体聊天内容对你不可见，仅展示匿名话题摘要。这些摘要来自服务端，不代表你能看到完整私人聊天。'
+	: '为保护双方隐私，访客身份与具体聊天内容对你不可见，仅展示匿名话题摘要。'
 const ownerId = ref(0)
 const loading = ref(true)
 const errorMessage = ref('')
 const chatRecords = ref<any[]>([])
+// 服务端是否真的提供了访客对话摘要；未提供时页面不得把空列表说成"还没有访客"。
+const conversationAvailable = ref(USE_MOCK)
 const pendingQuestions = ref<any[]>([])
 const myAnswers = ref<any[]>([])
 
@@ -195,10 +210,13 @@ const answerMode = ref('pending') // pending=回答转交问题 / edit=编辑已
 const answerQuestion = ref('')
 const answerText = ref('')
 const editingId = ref('')
+// 提交中锁定按钮，避免双击产生重复写入；失败时保留已输入答案与弹窗。
+const answerSubmitting = ref(false)
 
 const applyDashboard = (data: any) => {
 	const value = data != null && typeof data == 'object' ? data : {}
 	chatRecords.value = Array.isArray(value.chatRecords) ? value.chatRecords : []
+	conversationAvailable.value = value.chatRecordsAvailable === true
 	pendingQuestions.value = Array.isArray(value.pendingQuestions) ? value.pendingQuestions : []
 	myAnswers.value = Array.isArray(value.myAnswers) ? value.myAnswers : []
 }
@@ -259,6 +277,7 @@ const onQuestionInput = (e: any) => { answerQuestion.value = e.detail.value }
 const onAnswerInput = (e: any) => { answerText.value = e.detail.value }
 
 const submitAnswer = async () => {
+	if (answerSubmitting.value) return
 	const value = answerText.value != null ? String(answerText.value).trim() : ''
 	const question = answerQuestion.value != null ? String(answerQuestion.value).trim() : ''
 	if (answerMode.value == 'new' && question == '') {
@@ -269,30 +288,37 @@ const submitAnswer = async () => {
 		uni.showToast({ title: '先写点内容再提交', icon: 'none' })
 		return
 	}
-	if (answerMode.value == 'new') {
-		const res = await addAiAvatarOwnerAnswer(ownerId.value, question, value)
-		if (!res.success) {
-			uni.showToast({ title: res.message != null ? String(res.message) : '添加失败', icon: 'none' })
-			return
+	answerSubmitting.value = true
+	try {
+		if (answerMode.value == 'new') {
+			const res = await addAiAvatarOwnerAnswer(ownerId.value, question, value)
+			if (!res.success) {
+				// 失败不关闭弹窗、不清空答案，用户可直接重试。
+				uni.showToast({ title: res.message != null ? String(res.message) : '添加失败', icon: 'none' })
+				return
+			}
+			if (res.data != null) applyDashboard(res.data)
+			uni.showToast({ title: '已添加，将同步给你的分身', icon: 'none' })
+		} else if (answerMode.value == 'pending') {
+			const res = await submitAiAvatarOwnerAnswer(ownerId.value, editingId.value, value)
+			if (!res.success) {
+				uni.showToast({ title: res.message != null ? String(res.message) : '提交失败', icon: 'none' })
+				return
+			}
+			if (res.data != null) applyDashboard(res.data)
+			uni.showToast({ title: '已保存到 AI 分身', icon: 'none' })
+		} else {
+			// 编辑已有回答：服务端按本人名下 pending/answered 更新同一条记录。
+			const res = await submitAiAvatarOwnerAnswer(ownerId.value, editingId.value, value)
+			if (!res.success) {
+				uni.showToast({ title: res.message != null ? String(res.message) : '保存失败', icon: 'none' })
+				return
+			}
+			if (res.data != null) applyDashboard(res.data)
+			uni.showToast({ title: '已保存修改', icon: 'none' })
 		}
-		if (res.data != null) applyDashboard(res.data)
-		uni.showToast({ title: '已添加，将同步给你的分身', icon: 'none' })
-	} else if (answerMode.value == 'pending') {
-		const res = await submitAiAvatarOwnerAnswer(ownerId.value, editingId.value, value)
-		if (!res.success) {
-			uni.showToast({ title: res.message != null ? String(res.message) : '提交失败', icon: 'none' })
-			return
-		}
-		if (res.data != null) applyDashboard(res.data)
-		uni.showToast({ title: '已保存到 AI 分身', icon: 'none' })
-	} else {
-		const res = await submitAiAvatarOwnerAnswer(ownerId.value, editingId.value, value)
-		if (!res.success) {
-			uni.showToast({ title: res.message != null ? String(res.message) : '保存失败', icon: 'none' })
-			return
-		}
-		if (res.data != null) applyDashboard(res.data)
-		uni.showToast({ title: '已保存修改', icon: 'none' })
+	} finally {
+		answerSubmitting.value = false
 	}
 	answerText.value = ''
 	answerVisible.value = false
@@ -879,6 +905,11 @@ page {
 
 .aia-submit-ready {
 	background-color: var(--aia-dark);
+}
+
+/* 提交中：沿用既有深色底，仅降低不透明度表达不可重复点击，不引入新色值。 */
+.aia-submit-busy {
+	opacity: 0.55;
 }
 
 .aia-submit-icon {

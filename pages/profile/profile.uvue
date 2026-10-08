@@ -44,11 +44,13 @@
 						</view>
 						<text class="vip-tag-desc">{{ user.isVip ? '会员权益有效' : '开通会员解锁更多功能' }}</text>
 					</view>
+					<!-- H5：这里是资料完整度，不是会员进度；与下方会员权益文案区分开。 -->
 					<view class="progress-row">
+						<text class="progress-label">资料完整度</text>
 						<view class="progress-bar">
-							<view class="progress-fill" :style="{ width: user.vipProgress + '%' }"></view>
+							<view class="progress-fill" :style="{ width: (completionLoaded ? profileCompletion : 0) + '%' }"></view>
 						</view>
-						<text class="progress-percent">{{ user.vipProgress }}%</text>
+						<text class="progress-percent">{{ completionLoaded ? profileCompletion + '%' : '—' }}</text>
 					</view>
 				</view>
 				<view class="edit-profile-btn" @tap="onEditProfile">
@@ -63,6 +65,12 @@
 					<text class="stat-value">{{ stat.value }}</text>
 					<text class="stat-label">{{ stat.label }}</text>
 				</view>
+			</view>
+
+			<!-- H3：概览失败有独立提示与重试，不把昵称永久停在「加载中」，统计用「—」而非 0。 -->
+			<view v-if="overviewError != ''" class="overview-error-bar">
+				<text class="overview-error-text">{{ overviewError }}</text>
+				<view class="overview-error-retry" @tap="loadOverview"><text>重试</text></view>
 			</view>
 
 			<!-- 知遇专区：认识自己、了解对方、整理资料的统一入口 -->
@@ -197,8 +205,9 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
 import XsaZhiyuHub from '@/components/XsaZhiyuHub.uvue'
 import { getProfileOverview, getProfileCompletion, getMembershipStatus, getPortraitNarrative } from '@/api'
+import { getContinuousMoxiangState, type ContinuousMoxiangState } from '@/api/ai-moxiang.uts'
 import { resolveMediaUrl } from '@/api/config.uts'
-import { attachmentStyleLabel, narrativeBadgeVisible, MASTER_ROLE_NAME } from '@/utils/moxiang-badge.uts'
+import { attachmentStyleLabel, MASTER_ROLE_NAME } from '@/utils/moxiang-badge.uts'
 
 const systemInfo = uni.getSystemInfoSync()
 const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
@@ -207,7 +216,6 @@ const menuButtonSpacing = menuButtonInfo != null ? (systemInfo.windowWidth - men
 
 const user = ref({
 	nickname: '加载中',
-	vipProgress: 0,
 	isVip: false,
 	avatar: '',
 })
@@ -219,84 +227,196 @@ const stats = ref([
 	{ value: '0', label: '我的爆灯', route: '/pagesSub/profileExtra/spotlights' },
 ])
 
-const portraitTag = ref('点击开启')
-const portraitDesc = ref('自然对话，探索你的婚恋心相')
+const portraitTag = ref('状态读取中')
+const portraitDesc = ref('正在读取你的画像状态，请稍候。')
+// 双画像快照是入口状态的唯一来源，未确认稿不得冒充正式画像。
+const portraitState = ref('unknown')
+const portraitSnapshot = ref<ContinuousMoxiangState | null>(null)
+let portraitReadSeq = 0
+let portraitPageVisible = true
+const portraitHasResult = computed((): boolean => {
+	const state = portraitSnapshot.value
+	return state != null && state.consent_granted && [state.personal, state.ideal_partner].some((item) =>
+		item.draft_id != null || item.published_revision_id != null || item.status != 'collecting')
+})
+const portraitStateLoading = ref(false)
+const portraitStateError = ref('')
+// H3：概览区块独立的加载/错误态，失败给重试入口，不把昵称永久停在「加载中」。
+const overviewLoading = ref(false)
+const overviewError = ref('')
+// H5：资料完整度与会员权益区分开——progress 来自 getProfileCompletion，
+// 与 VIP 无关；读取失败显示「—」而不是 0%。
+const profileCompletion = ref(0)
+const completionLoaded = ref(false)
 const aiPersonaTitle = ref('')
 const aiPersonaTags = ref([] as string[])
 const aiAttachmentStyle = ref('')
 
 const aiAttachmentStyleLabel = computed((): string => attachmentStyleLabel(aiAttachmentStyle.value))
 
-const loadOverview = async () => {
-	try {
-		const membershipRes = await getMembershipStatus()
-		if (membershipRes.success && membershipRes.data != null) {
-			user.value.isVip = (membershipRes.data as any).is_vip === true
-		}
-	} catch (error) {
-		console.error('[Profile] membership refresh failed', error)
-	}
-	try {
-		const portraitRes = await getPortraitNarrative('personal')
-		if (portraitRes != null && portraitRes.success === true && portraitRes.data != null) {
-			const pData = portraitRes.data as any
-			portraitTag.value = '已生成'
-			portraitDesc.value = '专属心相与伴侣期待已就绪'
-			// 该接口透传 status 交前端驱动确认 UI：入口卡照常提示「已生成」并可进
-			// 确认页，但未确认的成稿不作为既成特质印在头部徽章区。
-			if (narrativeBadgeVisible(pData)) {
-				aiPersonaTitle.value = pData.persona_title != null ? String(pData.persona_title).trim() : ''
-				const rawTags = pData.persona_tags != null && Array.isArray(pData.persona_tags) ? pData.persona_tags as any[] : []
-				aiPersonaTags.value = rawTags.map((t: any): string => String(t).trim()).filter((t: string): boolean => t != '')
-				const ei = pData.emotional_insight != null ? pData.emotional_insight as any : null
-				aiAttachmentStyle.value = ei != null && ei.attachment_style != null ? String(ei.attachment_style).trim() : ''
-			} else {
-				aiPersonaTitle.value = ''
-				aiPersonaTags.value = []
-				aiAttachmentStyle.value = ''
-			}
-		} else {
-			portraitTag.value = '点击开启'
-			portraitDesc.value = '自然对话，探索你的婚恋心相'
-			aiPersonaTitle.value = ''
-			aiPersonaTags.value = []
-			aiAttachmentStyle.value = ''
-		}
-	} catch (e) {
+const clearPortraitBadge = () => {
+	aiPersonaTitle.value = ''
+	aiPersonaTags.value = []
+	aiAttachmentStyle.value = ''
+}
+
+const applyPortraitStateCopy = () => {
+	const state = portraitState.value
+	if (state == 'ready') {
+		portraitTag.value = '已有确认画像'
+		portraitDesc.value = '查看已确认内容，也可以继续聊聊微调'
+	} else if (state == 'confirming') {
+		portraitTag.value = '待你确认'
+		portraitDesc.value = '已有完整待确认稿，两份画像各自确认生效'
+	} else if (state == 'generating') {
+		portraitTag.value = '正在成稿'
+		portraitDesc.value = '后台正在生成，可到档案查看真实任务状态'
+	} else if (state == 'attention') {
+		portraitTag.value = '需要核对'
+		portraitDesc.value = '稿件生成失败或版本已变化，请到档案核对'
+	} else if (state == 'building') {
+		portraitTag.value = '继续整理'
+		portraitDesc.value = '一段自然对话，分别整理自己与伴侣期待'
+	} else if (state == 'consent') {
+		portraitTag.value = '待授权'
+		portraitDesc.value = '由你决定是否授权整理，不影响继续浏览'
+	} else if (state == 'idle') {
 		portraitTag.value = '点击开启'
-		portraitDesc.value = '自然对话，探索你的婚恋心相'
-		aiPersonaTitle.value = ''
-		aiPersonaTags.value = []
-		aiAttachmentStyle.value = ''
+		portraitDesc.value = '从你想聊的开始，不必先完成任何一份画像'
+	} else {
+		portraitTag.value = '状态暂未读取'
+		portraitDesc.value = '暂时无法确认画像状态，可稍后重试'
 	}
-	const res = await getProfileOverview()
-	if (!res.success || res.data == null) return
-	const data = res.data as any
-	const profile = data.profile != null && typeof data.profile === 'object' ? data.profile : {}
-	const account = data.user != null && typeof data.user === 'object' ? data.user : {}
-	const nickname = data.nickname != null && data.nickname != ''
-		? data.nickname
-		: (profile.nickname != null && profile.nickname != '' ? profile.nickname : account.nickname)
-	user.value.nickname = nickname != null && nickname != '' ? '' + nickname : '未设置昵称'
-	const avatar = data.avatar != null && data.avatar != '' ? data.avatar : (profile.avatar != null && profile.avatar != '' ? profile.avatar : account.avatar)
-	user.value.avatar = resolveMediaUrl(avatar)
-	user.value.vipProgress = 0
+}
+
+const loadPortraitState = async (): Promise<boolean> => {
+	const seq = ++portraitReadSeq
+	portraitStateLoading.value = true
+	portraitStateError.value = ''
+	clearPortraitBadge()
 	try {
-		const completion = await getProfileCompletion()
-		if (completion.success && completion.data != null) {
-			const completionData = completion.data as any
-			const score = completionData.score != null ? completionData.score : completionData.completion_score
-			if (score != null) user.value.vipProgress = Math.round(Number(score))
-		}
+		const state = await getContinuousMoxiangState()
+		if (!portraitPageVisible || seq != portraitReadSeq) return false
+		portraitSnapshot.value = state
+		const items = [state.personal, state.ideal_partner]
+		if (!state.consent_granted) portraitState.value = 'consent'
+		else if (items.some((item) => item.status == 'awaiting_confirmation')) portraitState.value = 'confirming'
+		else if (items.some((item) => item.status == 'failed' || item.status == 'stale')) portraitState.value = 'attention'
+		else if (items.some((item) => item.status == 'generating')) portraitState.value = 'generating'
+		else if (items.some((item) => item.status == 'confirmed' && item.published_revision_id != null)) portraitState.value = 'ready'
+		else if (state.session_id != null || items.some((item) => item.overall_percent > 0)) portraitState.value = 'building'
+		else portraitState.value = 'idle'
+		applyPortraitStateCopy()
+		return true
 	} catch (error) {
-		console.error('[Profile] completion refresh failed', error)
+		if (!portraitPageVisible || seq != portraitReadSeq) return false
+		portraitSnapshot.value = null
+		portraitState.value = 'unknown'
+		portraitStateError.value = '画像状态暂时无法读取'
+		applyPortraitStateCopy()
+		return false
+	} finally {
+		if (seq == portraitReadSeq) portraitStateLoading.value = false
 	}
-	const incoming = data.incoming_application_count != null ? Number(data.incoming_application_count) : 0
-	const outgoing = data.outgoing_application_count != null ? Number(data.outgoing_application_count) : 0
-	stats.value[0].value = '' + (incoming + outgoing)
-	stats.value[1].value = data.visitor_count != null ? '' + data.visitor_count : '0'
-	stats.value[2].value = data.favorite_count != null ? '' + data.favorite_count : '0'
-	stats.value[3].value = data.superlike_sent_count != null ? '' + data.superlike_sent_count : '0'
+}
+
+// 只展示与当前正式 personal revision 一致的已确认叙事；失败不沿用私密旧缓存。
+const loadPortraitNarrative = async () => {
+	const seq = portraitReadSeq
+	const snapshot = portraitSnapshot.value
+	clearPortraitBadge()
+	if (!portraitPageVisible || snapshot == null || !snapshot.consent_granted || snapshot.personal.published_revision_id == null) return
+	const revisionId = String(snapshot.personal.published_revision_id)
+	try {
+		const res = await getPortraitNarrative('personal')
+		if (!portraitPageVisible || seq != portraitReadSeq) return
+		if (res == null || res.success !== true || res.data == null) throw res
+		const data = res.data as any
+		if (data.subject != 'personal' || data.status != 'confirmed' || String(data.revision_id ?? '') != revisionId) return
+		aiPersonaTitle.value = String(data.persona_title ?? '').trim()
+		const tags = Array.isArray(data.persona_tags) ? data.persona_tags as any[] : []
+		aiPersonaTags.value = tags.map((t: any): string => String(t).trim()).filter((t: string): boolean => t != '')
+		const insight = data.emotional_insight as any
+		aiAttachmentStyle.value = insight != null ? String(insight.attachment_style ?? '').trim() : ''
+	} catch (e: any) {
+		if (!portraitPageVisible || seq != portraitReadSeq) return
+		clearPortraitBadge()
+		const code = Number(e?.code ?? e?.statusCode ?? 0)
+		if (code == 401 || code == 403) {
+			portraitReadSeq++
+			portraitSnapshot.value = null
+			portraitState.value = 'unknown'
+			applyPortraitStateCopy()
+		}
+	}
+}
+
+// H3：各区块独立反馈。overview 失败不再直接 return 让昵称停在「加载中」，
+// 统计未取到用「—」而不是 0；会员、画像、概览并行读取，慢项不拖住其它区块。
+// refreshSeq 由 onShow 传入：写入前校验，只有最新一次刷新允许落地。
+const loadOverview = async () => {
+	overviewLoading.value = true
+	const membershipTask = getMembershipStatus()
+		.then((membershipRes: any) => {
+			if (membershipRes != null && membershipRes.success && membershipRes.data != null) {
+				user.value.isVip = (membershipRes.data as any).is_vip === true
+			}
+		})
+		.catch((error: any) => { console.error('[Profile] membership refresh failed', error) })
+	// 画像状态与概览并行：画像读取慢不阻塞头像/昵称/统计的先到。
+	const portraitTask = loadPortraitState().then((ok) => { if (ok) return loadPortraitNarrative() })
+	const overviewTask = getProfileOverview()
+		.then((res: any) => {
+			if (res == null || !res.success || res.data == null) {
+				overviewError.value = res != null && res.message != null && String(res.message).trim() != ''
+					? String(res.message).trim()
+					: '资料概览暂时无法加载'
+				return
+			}
+			overviewError.value = ''
+			const data = res.data as any
+			const profile = data.profile != null && typeof data.profile === 'object' ? data.profile : {}
+			const account = data.user != null && typeof data.user === 'object' ? data.user : {}
+			const nickname = data.nickname != null && data.nickname != ''
+				? data.nickname
+				: (profile.nickname != null && profile.nickname != '' ? profile.nickname : account.nickname)
+			user.value.nickname = nickname != null && nickname != '' ? '' + nickname : '未设置昵称'
+			const avatar = data.avatar != null && data.avatar != '' ? data.avatar : (profile.avatar != null && profile.avatar != '' ? profile.avatar : account.avatar)
+			user.value.avatar = resolveMediaUrl(avatar)
+			// 统计缺失用「—」占位，不伪装成 0。
+			const incoming = data.incoming_application_count
+			const outgoing = data.outgoing_application_count
+			stats.value[0].value = incoming != null || outgoing != null
+				? '' + (Number(incoming != null ? incoming : 0) + Number(outgoing != null ? outgoing : 0))
+				: '—'
+			stats.value[1].value = data.visitor_count != null ? '' + data.visitor_count : '—'
+			stats.value[2].value = data.favorite_count != null ? '' + data.favorite_count : '—'
+			stats.value[3].value = data.superlike_sent_count != null ? '' + data.superlike_sent_count : '—'
+		})
+		.catch((error: any) => {
+			console.error('[Profile] overview refresh failed', error)
+			overviewError.value = '资料概览暂时无法加载'
+		})
+	// 资料完整度单独读写并单独失败：与会员权益区隔，读取失败显示「—」而不是 0%。
+	const completionTask = getProfileCompletion()
+		.then((completion: any) => {
+			if (completion != null && completion.success && completion.data != null) {
+				const completionData = completion.data as any
+				const score = completionData.score != null ? completionData.score : completionData.completion_score
+				if (score != null && !isNaN(Number(score))) {
+					profileCompletion.value = Math.round(Number(score))
+					completionLoaded.value = true
+					return
+				}
+			}
+			completionLoaded.value = false
+		})
+		.catch((error: any) => {
+			console.error('[Profile] completion refresh failed', error)
+			completionLoaded.value = false
+		})
+	await Promise.all([membershipTask, portraitTask, overviewTask, completionTask])
+	overviewLoading.value = false
 }
 
 const onSettings = () => {
@@ -337,19 +457,35 @@ const zhiyuHubActions = [
 ]
 const openZhiyuHub = () => { zhiyuHubVisible.value = true }
 
-const onAiPortrait = () => {
-	getPortraitNarrative('personal').then((res: any) => {
-		const hasPortrait = res != null && res.success == true && res.data != null
-		uni.navigateTo({
-			url: hasPortrait ? '/pagesSub/profileExtra/my-portrait-result?subject=personal' : '/pagesSub/profileExtra/my-portrait-master?subject=personal',
-			fail: () => { uni.showToast({ title: 'AI画像打开失败，请重试', icon: 'none' }) }
-		})
-	}).catch(() => {
-		uni.navigateTo({
-			url: '/pagesSub/profileExtra/my-portrait-master?subject=personal',
-			fail: () => { uni.showToast({ title: 'AI画像打开失败，请重试', icon: 'none' }) }
-		})
+// 两份待审阅/任务在档案中独立恢复；只有确认后的个人稿可以直达正式结果。
+const openPortraitDestination = () => {
+	if (!portraitPageVisible || portraitState.value == 'unknown') return
+	const snapshot = portraitSnapshot.value
+	let url = '/pagesSub/profileExtra/my-portrait-master?flow_version=continuous_v2'
+	if (portraitHasResult.value) url = '/pagesSub/profileExtra/my-portrait-archive?flow_version=continuous_v2'
+	if (portraitState.value == 'ready' && snapshot?.personal.status == 'confirmed' && !snapshot.personal.has_updates) {
+		url = '/pagesSub/profileExtra/my-portrait-result?flow_version=continuous_v2&subject=personal&published=1'
+	}
+	uni.navigateTo({
+		url,
+		fail: () => { uni.showToast({ title: 'AI画像打开失败，请重试', icon: 'none' }) }
 	})
+}
+const onAiPortrait = () => {
+	if (!portraitPageVisible || portraitStateLoading.value) return
+	if (portraitState.value == 'unknown') {
+		// 状态未知时不猜去向：先重试读取，仍失败则如实提示，不冒充新用户。
+		loadPortraitState().then((ok) => {
+			if (!portraitPageVisible) return
+			if (!ok || portraitState.value == 'unknown') {
+				uni.showToast({ title: '画像状态暂时无法读取，请稍后重试', icon: 'none' })
+				return
+			}
+			openPortraitDestination()
+		})
+		return
+	}
+	openPortraitDestination()
 }
 
 const onOpenVIP = () => {
@@ -365,14 +501,14 @@ const onAiAvatar = () => {
 
 const onMoxiangMaster = () => {
 	uni.navigateTo({
-		url: '/pagesSub/profileExtra/my-portrait-master',
+		url: '/pagesSub/profileExtra/my-portrait-master?flow_version=continuous_v2',
 		fail: () => { uni.showToast({ title: MASTER_ROLE_NAME + '页面打开失败，请重试', icon: 'none' }) }
 	})
 }
 
 const onMoxiangArchive = () => {
 	uni.navigateTo({
-		url: '/pagesSub/profileExtra/my-portrait-archive',
+		url: '/pagesSub/profileExtra/my-portrait-archive?flow_version=continuous_v2',
 		fail: () => { uni.showToast({ title: '档案页面打开失败，请重试', icon: 'none' }) }
 	})
 }
@@ -522,7 +658,26 @@ const bottomMenuItems = [
 	{ iconClass: 'ic ic-sys ic-shiming', iconBg: '#FEF3E4', label: '安全中心', url: '/pagesSub/profileExtra/security', action: onSecurity },
 ]
 
-onShow(() => { loadOverview() })
+// H3：页面级刷新代际——只允许最新一次刷新写入，避免旧响应覆盖新数据。
+let overviewRefreshSeq = 0
+onShow(() => {
+	portraitPageVisible = true
+	overviewRefreshSeq += 1
+	const seq = overviewRefreshSeq
+	loadOverview().then(() => {
+		if (seq != overviewRefreshSeq) return
+	})
+})
+const hidePortraitState = () => {
+	portraitPageVisible = false
+	portraitReadSeq++
+	portraitStateLoading.value = false
+	portraitSnapshot.value = null
+	portraitState.value = 'unknown'
+	clearPortraitBadge()
+}
+onHide(hidePortraitState)
+onUnload(hidePortraitState)
 </script>
 
 <style>
@@ -836,8 +991,43 @@ page {
 
 .progress-percent {
 	font-size: 12px;
-	font-weight: 600;
 	color: var(--profile-accent);
+}
+
+.overview-error-bar {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	width: 100%;
+	margin-top: 12px;
+	padding: 12px 16px;
+	border-radius: 12px;
+	background-color: var(--profile-card);
+}
+
+.overview-error-text {
+	flex: 1;
+	font-size: 12px;
+	color: var(--profile-text-secondary);
+}
+
+.overview-error-retry {
+	padding: 4px 12px;
+	border-radius: 999px;
+	background-color: var(--profile-accent);
+}
+
+.overview-error-retry text {
+	font-size: 12px;
+	color: var(--profile-text-inverse);
+}
+
+/* H5：资料完整度标签，复用既有 token，不新增色值。 */
+.progress-label {
+	font-size: 12px;
+	color: var(--profile-text-secondary);
 }
 
 /* ==================== 统计数据卡 ==================== */

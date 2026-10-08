@@ -31,7 +31,7 @@
 							<view v-if="myMbti != ''" class="pair-type-chip"><text class="pair-type-text">{{ myMbti }}</text></view>
 						</view>
 						<view class="pair-center">
-							<text class="pair-score-label">整体参考</text>
+							<text class="pair-score-label">双向资料合拍参考</text>
 							<text class="pair-score">{{ scoreText }}</text>
 						</view>
 						<view class="pair-side">
@@ -46,11 +46,12 @@
 					<view v-if="loading" class="state-unavailable"><text class="state-unavailable-title">正在读取资料合拍参考</text><text class="state-unavailable-desc">只根据当前可见且已确认的资料整理。</text></view>
 					<view v-else-if="errorMessage != ''" class="state-unavailable"><text class="state-unavailable-title">合拍参考暂时无法读取</text><text class="state-unavailable-desc">{{ errorMessage }}</text><view class="compatibility-retry" @click="loadCompatibility"><text>重试</text></view></view>
 					<view v-else-if="isDisplayReady" class="compatibility-result">
-						<view class="compatibility-overall"><text class="compatibility-overall-label">整体参考</text><text class="compatibility-overall-value">{{ scoreText }}</text><text class="compatibility-overall-copy">资料覆盖度 {{ coverageText }}</text></view>
-						<view class="compatibility-directions"><view class="compatibility-direction"><text>对方资料符合我期待的程度</text><text>{{ directionViewerText }}</text></view><view class="compatibility-direction"><text>我的资料符合对方期待的程度</text><text>{{ directionTargetText }}</text></view></view>
-						<view v-if="reasonLines.length > 0" class="compatibility-section"><text class="compatibility-section-title">依据与待了解信息</text><text v-for="(line, index) in reasonLines" :key="index" class="compatibility-line">{{ line }}</text></view>
-						<view v-if="evidenceItems.length > 0" class="compatibility-section"><text class="compatibility-section-title">可展示依据</text><text v-for="(item, index) in evidenceItems" :key="index" class="compatibility-line">{{ item.limitation }}</text></view>
+						<view class="compatibility-overall"><text class="compatibility-overall-label">整体参考</text><text class="compatibility-overall-value">{{ scoreText }}</text><text class="compatibility-overall-copy">本次可用资料覆盖度 {{ coverageText }}</text></view>
+						<view class="compatibility-directions"><view class="compatibility-direction"><text>对方资料符合我期待的参考</text><text>{{ directionViewerText }}</text></view><view class="compatibility-direction"><text>我的资料符合对方期待的参考</text><text>{{ directionTargetText }}</text></view></view>
+						<view v-if="reasonLines.length > 0" class="compatibility-section"><text class="compatibility-section-title">可展示依据</text><text v-for="(line, index) in reasonLines" :key="index" class="compatibility-line">{{ line }}</text></view>
 						<text class="compatibility-engine">{{ engineLabel }}</text>
+						<!-- §5：分数语义说明——规则指数不是关系成功率，也不加阈值结论。 -->
+						<text class="sheet-tip">仅依据双方当前可见且已确认的资料整理，供了解和破冰参考。分数为合拍参考指数（满分 100），不代表关系结果或成功概率。</text>
 						<text class="sheet-tip">{{ compatibility.disclaimer }}</text>
 					</view>
 					<view v-else class="state-unavailable"><text class="state-unavailable-title">{{ statusTitle }}</text><text class="state-unavailable-desc">{{ statusDescription }}</text></view>
@@ -115,28 +116,65 @@ const percentText = (value: any, multiplier: number = 1): string => {
 	if (isNaN(score) || score < 0 || score > 100) return '--'
 	return '' + Math.round(score) + '%'
 }
-const scoreText = computed((): string => isDisplayReady.value ? percentText(compatibility.value.compatibility_index) : '--')
+// §5：固定匹配解读。停止展示生成式 reason_texts，改由当前允许展示的
+// evidence（displayable=true）按 reason_code 输出固定话术。
+//
+// 白名单与后端 app/services/ai/compatibility.py 的 _EVIDENCE_LIMITATIONS 一一对应；
+// 未知码一律忽略（不反向推测「不满足」），不得在此新增后端没有的判断。
+const REASON_CODE_TEMPLATES: Record<string, string> = {
+	AGE_MUTUAL_WITHIN_RANGE: '双方年龄均在对方已确认的年龄期待范围内',
+	CITY_MUTUAL_ACCEPTED: '双方所在城市均在对方已确认的可接受范围内',
+	MARRIAGE_MUTUAL_ACCEPTED: '双方婚姻状态符合对方已确认的期待',
+	EDUCATION_MUTUAL_WITHIN_RANGE: '双方学历符合对方已确认的学历范围',
+	HEIGHT_MUTUAL_WITHIN_RANGE: '双方身高均在对方已确认的期待范围内',
+	INCOME_MUTUAL_WITHIN_RANGE: '双方收入档位符合对方已确认的期待范围',
+	INTEREST_OVERLAP: '双方兴趣标签存在交集',
+	RELATIONSHIP_GOAL_SHARED: '双方已确认的关系期待一致',
+}
+// 非相互满足码的固定状态话术；同样只在 evidence.displayable=true 时输出。
+const REASON_CODE_NOTES: Record<string, string> = {
+	DIMENSION_UNKNOWN: '部分资料尚不完整',
+}
+// 分数文案固定使用「分/100」，不把规则指数写成关系成功概率。
+const scoreText = computed((): string => {
+	if (!isDisplayReady.value) return '--'
+	const value = compatibility.value.compatibility_index
+	if (value == null) return '--'
+	const score = Number(value)
+	if (isNaN(score) || score < 0 || score > 100) return '--'
+	return '' + Math.round(score) + '分/100'
+})
 const coverageText = computed((): string => isDisplayReady.value ? percentText(compatibility.value.coverage, 100) : '--')
 const directionViewerText = computed((): string => isDisplayReady.value && compatibility.value.directions != null ? percentText(compatibility.value.directions.viewer_to_target) : '--')
 const directionTargetText = computed((): string => isDisplayReady.value && compatibility.value.directions != null ? percentText(compatibility.value.directions.target_to_viewer) : '--')
+// 固定原因清单：只输出白名单内且 evidence.displayable=true 的原因码。
 const reasonLines = computed((): string[] => {
-	if (!isDisplayReady.value || compatibility.value.reason_texts == null) return []
-	const result: string[] = []
-	const reasons = compatibility.value.reason_texts
-	const keys = Object.keys(reasons)
-	for (let i = 0; i < keys.length; i++) {
-		const lines = reasons[keys[i]]
-		if (!Array.isArray(lines)) continue
-		const prefix = keys[i] == 'viewer_to_target' ? '我的期待：' : (keys[i] == 'target_to_viewer' ? '对方的期待：' : '')
-		for (let j = 0; j < lines.length; j++) {
-			if (typeof lines[j] == 'string' && lines[j].trim() != '') result.push(prefix + lines[j])
-		}
+	if (!isDisplayReady.value || !Array.isArray(compatibility.value.evidence)) return []
+	const lines: string[] = []
+	const seen: string[] = []
+	const items = compatibility.value.evidence
+	for (let i = 0; i < items.length; i++) {
+		const item = items[i]
+		if (item == null || item.displayable != true) continue
+		const code = item.reason_code != null ? '' + item.reason_code : ''
+		if (code == '' || seen.indexOf(code) >= 0) continue
+		seen.push(code)
+		// 未知码忽略：不在白名单内的一律不输出，也不反推「不满足」。
+		const template = REASON_CODE_TEMPLATES[code] != null ? REASON_CODE_TEMPLATES[code] : REASON_CODE_NOTES[code]
+		if (template == null || template == '') continue
+		lines.push(template)
 	}
-	return result
+	return lines
 })
+// 展示用的证据条目同样只保留白名单内、displayable=true 的项，避免未知码经 limitation 泄漏。
 const evidenceItems = computed((): any[] => {
 	if (!isDisplayReady.value || !Array.isArray(compatibility.value.evidence)) return []
-	return compatibility.value.evidence.filter((item: any): boolean => item != null && item.displayable == true && typeof item.limitation == 'string' && item.limitation.trim() != '')
+	return compatibility.value.evidence.filter((item: any): boolean => {
+		if (item == null || item.displayable != true) return false
+		const code = item.reason_code != null ? '' + item.reason_code : ''
+		if (code == '' || (REASON_CODE_TEMPLATES[code] == null && REASON_CODE_NOTES[code] == null)) return false
+		return typeof item.limitation == 'string' && item.limitation.trim() != ''
+	})
 })
 const engineLabel = computed((): string => {
 	if (!isDisplayReady.value) return ''

@@ -87,6 +87,69 @@ export async function patchProfileDraft(draftId: string, actions: any[], expecte
     headers: { 'Idempotency-Key': genIdempotencyKey() }
   })
 }
+/** PATCH 草稿并允许调用方复用幂等键，保证编辑请求超时后可安全重试。 */
+export async function patchProfileDraftWithKey(draftId: string, actions: any[], expectedRevision: number, idempotencyKey: string = ''): Promise<any> {
+  return request({
+    url: '/ai/profile-drafts/' + draftId,
+    method: 'PATCH',
+    data: { expected_revision: expectedRevision, actions: actions },
+    headers: { 'Idempotency-Key': idempotencyKey != '' ? idempotencyKey : genIdempotencyKey() }
+  })
+}
+
+/** 连续画像整份确认；结果页持有同一幂等键，超时重试不会产生第二个 revision。 */
+export async function confirmProfilePreview(previewId: string, expectedRevision: number, idempotencyKey: string): Promise<any> {
+  return request({
+    url: '/ai/profile-previews/' + previewId + '/confirm',
+    method: 'POST',
+    data: { expected_revision: expectedRevision },
+    headers: { 'Idempotency-Key': idempotencyKey }
+  })
+}
+
+/** 海报公开导出：只取当前 personal 正式版本已采用的公开字段（不含心理洞察）。 */
+export async function getPublicProfileCardExport(revisionId: number): Promise<any> {
+  return request({
+    url: '/ai/profile-card/export?revision_id=' + revisionId,
+    method: 'GET'
+  })
+}
+
+/** 将编辑器字符串恢复为字段原有 value_json 类型，无法安全恢复时返回 null。 */
+export function coerceProfileFieldValue(valueJson: any, editorText: string): any {
+  const text = editorText != null ? String(editorText) : ''
+  if (typeof valueJson == 'number') {
+    if (text.trim() == '') return null
+    const n = Number(text)
+    return Number.isFinite(n) ? n : null
+  }
+  if (typeof valueJson == 'boolean') {
+    if (text == 'true' || text == '是' || text == '有') return true
+    if (text == 'false' || text == '否' || text == '无') return false
+    return null
+  }
+  if (Array.isArray(valueJson)) {
+    if (text.trim() == '') return []
+    if (text.trim().charAt(0) == '[') {
+      try {
+        const parsed = JSON.parse(text)
+        return Array.isArray(parsed) ? parsed : null
+      } catch (e) {
+        return null
+      }
+    }
+    return text.split(/[,，、\n]/).map((item: string): string => item.trim()).filter((item: string): boolean => item != '')
+  }
+  if (valueJson != null && typeof valueJson == 'object') {
+    try {
+      const parsed = JSON.parse(text)
+      return parsed != null && typeof parsed == 'object' && !Array.isArray(parsed) ? parsed : null
+    } catch (e) {
+      return null
+    }
+  }
+  return text
+}
 
 /** 构造单个字段确认动作 */
 export function fieldAction(fieldKey: string, action: string, value: any = null, expectedRevision: number = 0): any {
@@ -97,8 +160,8 @@ export function fieldAction(fieldKey: string, action: string, value: any = null,
 
 /**
  * 发布已确认字段。
- * expected_revision 走 query 参数；新版结果页同时传入用户实际确认过的 preview_id。
- * previewId 为空时保留旧调用链兼容。
+ * expected_revision 走 query 参数；仅旧兼容结果页可发布。
+ * continuous_v2 必须走 confirmProfilePreview，服务端拒绝旧接口绕过。
  */
 export async function publishProfileDraft(draftId: string, expectedRevision: number, previewId: string = ''): Promise<any> {
   return request({

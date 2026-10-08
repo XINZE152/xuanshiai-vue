@@ -8,8 +8,8 @@
  * 不重复声明 WS 客户端，也不修改 api/config.uts。WS 仍由 voice-master-ws.uts
  * 单独负责（§8 客户端契约）；这里只放 REST 类型与请求。
  *
- * REST 字段统一使用 camelCase；序列化层会把后端 snake_case 字段映射到本模块导出
- * 的类型上，避免组件中混入 snake 命名。getMoxiangState 内部做一次轻量适配。
+ * 旧版 REST 适配为 camelCase；continuous_v2 保留服务端 snake_case，
+ * 与 WS continuous_state 共用同一解析，避免恢复与实时状态产生两个契约。
  */
 
 import { request } from './request.uts'
@@ -91,7 +91,9 @@ export interface MoxiangTurnsResponse {
 function unwrapMoxiangResponse(raw: any): any {
 	if (raw != null && typeof raw == 'object' && raw.success === false) {
 		const message = raw.message != null ? String(raw.message) : MASTER_ROLE_NAME + '数据加载失败'
-		throw new Error(message)
+		const error: any = new Error(message)
+		error.code = raw.code
+		throw error
 	}
 	if (raw != null && typeof raw == 'object' && raw.success === true) {
 		return raw.data != null ? raw.data : {}
@@ -263,7 +265,7 @@ export function createProfilePreview(
 	return request({
 		url: buildApiUrl('/ai/profile-drafts/' + draftId + '/preview'),
 		method: 'POST',
-		header: { 'Content-Type': 'application/json' },
+		headers: { 'Content-Type': 'application/json' },
 		data: { expected_revision: expectedRevision }
 	}).then((raw: any) => adaptPreview(raw?.data ?? raw ?? {}))
 }
@@ -379,4 +381,154 @@ export function getMoxiangArchive(): Promise<MoxiangArchiveResponse> {
 		url: buildApiUrl('/ai/moxiang/archive'),
 		method: 'GET'
 	}).then((raw: any) => adaptArchive(raw?.data ?? raw ?? {}))
+}
+
+// 连续对话：不以单主体 session 决定用户能否开始聊天。
+export type ContinuousPortraitStatus = 'collecting' | 'generating' | 'awaiting_confirmation' | 'confirmed' | 'failed' | 'stale'
+
+export interface ContinuousSubjectState {
+	subject: ProfileSubject
+	status: ContinuousPortraitStatus
+	overall_percent: number
+	dimensions: any
+	draft_id: string | null
+	expected_revision: number | null
+	preview_id: string | null
+	task_id: string | null
+	published_revision_id: string | null
+	has_updates: boolean
+	last_error: string | null
+}
+
+export interface ContinuousMoxiangState {
+	flow_version: 'continuous_v2'
+	consent_granted: boolean
+	session_id: string | null
+	personal: ContinuousSubjectState
+	ideal_partner: ContinuousSubjectState
+}
+
+function adaptContinuousSubject(raw: any, subject: ProfileSubject): ContinuousSubjectState {
+	const statuses = ['collecting', 'generating', 'awaiting_confirmation', 'confirmed', 'failed', 'stale']
+	if (raw == null || raw.subject != subject || statuses.indexOf(String(raw.status)) < 0) {
+		throw new Error('画像状态暂不可用，请重新加载')
+	}
+	return {
+		subject, status: raw.status as ContinuousPortraitStatus,
+		overall_percent: Math.max(0, Math.min(100, Number(raw.overall_percent) || 0)),
+		dimensions: raw.dimensions ?? {},
+		draft_id: raw.draft_id != null ? String(raw.draft_id) : null,
+		expected_revision: raw.expected_revision != null ? Number(raw.expected_revision) : null,
+		preview_id: raw.preview_id != null ? String(raw.preview_id) : null,
+		task_id: raw.task_id != null ? String(raw.task_id) : null,
+		published_revision_id: raw.published_revision_id != null ? String(raw.published_revision_id) : null,
+		has_updates: raw.has_updates === true,
+		last_error: raw.last_error != null ? String(raw.last_error) : null
+	}
+}
+
+export function adaptContinuousMoxiangState(raw: any): ContinuousMoxiangState {
+	if (raw?.flow_version != 'continuous_v2' || typeof raw.consent_granted != 'boolean') {
+		throw new Error('知遇状态协议不匹配，请稍后重试')
+	}
+	return {
+		flow_version: 'continuous_v2', consent_granted: raw.consent_granted,
+		session_id: raw.session_id != null ? String(raw.session_id) : null,
+		personal: adaptContinuousSubject(raw.personal, 'personal'),
+		ideal_partner: adaptContinuousSubject(raw.ideal_partner, 'ideal_partner')
+	}
+}
+
+export function getContinuousMoxiangState(): Promise<ContinuousMoxiangState> {
+	return request({ url: buildApiUrl('/ai/moxiang/continuous/state'), method: 'GET' })
+		.then((raw: any) => adaptContinuousMoxiangState(unwrapMoxiangResponse(raw)))
+}
+
+export function buildContinuousPortrait(subject: string, refresh: boolean = false, idempotencyKey: string = ''): Promise<ContinuousMoxiangState> {
+	if (subject != 'personal' && subject != 'ideal_partner') return Promise.reject(new Error('画像主体非法'))
+	return request({
+		url: buildApiUrl('/ai/moxiang/continuous/build?subject=' + subject), method: 'POST',
+		headers: { 'Idempotency-Key': idempotencyKey != '' ? idempotencyKey : 'continuous-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1e9).toString(36) },
+		data: { refresh }
+	}).then((raw: any) => adaptContinuousMoxiangState(unwrapMoxiangResponse(raw)))
+}
+
+export interface ContinuousTurnsResponse {
+	turns: MoxiangTurn[]
+	next_before_id: string | null
+}
+
+export function getContinuousTurns(beforeId: string | null = null, limit: number = 50): Promise<ContinuousTurnsResponse> {
+	const query = 'limit=' + Math.max(1, Math.min(100, Math.floor(limit) || 50))
+		+ (beforeId != null ? '&before_id=' + encodeURIComponent(beforeId) : '')
+	return request({ url: buildApiUrl('/ai/moxiang/continuous/turns?' + query), method: 'GET' })
+		.then((raw: any) => {
+			const data = unwrapMoxiangResponse(raw)
+			if (!Array.isArray(data.turns)) throw new Error('对话历史未能恢复，请重试')
+			return { turns: adaptTurns(data).turns, next_before_id: data.next_before_id != null ? String(data.next_before_id) : null }
+		})
+}
+
+/** continuous_v2 保留后端冻结字段，不与旧占位预览混用。 */
+export interface ContinuousPreviewField {
+	field_key: string
+	field_kind: string
+	category: string | null
+	content: string
+	display_value: string
+	value_json: any
+	change: string
+	previous_display_value: string | null
+}
+
+export interface ContinuousProfilePreview {
+	flow_version: string
+	preview_id: string
+	draft_id: string
+	expected_revision: number
+	subject: string
+	status: string
+	content: string
+	task_id: string | null
+	generation_status: string
+	fields: ContinuousPreviewField[]
+	boundary_changed: boolean
+	last_error: string
+}
+
+function adaptContinuousPreview(raw: any): ContinuousProfilePreview {
+	if (raw?.flow_version != 'continuous_v2' || raw.preview_id == null || raw.draft_id == null
+		|| !Number.isInteger(raw.expected_revision) || raw.expected_revision < 0
+		|| ['personal', 'ideal_partner'].indexOf(raw.subject) < 0
+		|| ['active', 'confirmed', 'stale', 'failed'].indexOf(raw.status) < 0
+		|| ['queued', 'processing', 'completed', 'failed'].indexOf(raw.generation_status) < 0
+		|| !Array.isArray(raw.fields)) throw new Error('成稿协议不完整，请返回档案刷新')
+	const fields: ContinuousPreviewField[] = []
+	const keys: string[] = []
+	for (const field of raw.fields) {
+		if (typeof field.field_key != 'string' || field.field_key == '' || keys.indexOf(field.field_key) >= 0
+			|| ['entry', 'structured'].indexOf(field.field_kind) < 0
+			|| ['added', 'changed', 'unchanged'].indexOf(field.change) < 0) throw new Error('成稿字段不完整，请重新加载')
+		keys.push(field.field_key)
+		fields.push({ field_key: field.field_key, field_kind: field.field_kind,
+			category: field.category ?? null, content: String(field.content ?? ''),
+			display_value: String(field.display_value ?? field.content ?? ''), value_json: field.value_json,
+			change: field.change, previous_display_value: field.previous_display_value ?? null })
+	}
+	return { flow_version: raw.flow_version, preview_id: String(raw.preview_id), draft_id: String(raw.draft_id),
+		expected_revision: raw.expected_revision, subject: raw.subject, status: raw.status,
+		content: String(raw.content ?? ''), task_id: raw.task_id != null ? String(raw.task_id) : null,
+		generation_status: raw.generation_status, fields, boundary_changed: raw.boundary_changed === true,
+		last_error: String(raw.last_error ?? '') }
+}
+
+export function createContinuousProfilePreview(draftId: string, expectedRevision: number): Promise<ContinuousProfilePreview> {
+	return request({ url: '/ai/profile-drafts/' + encodeURIComponent(draftId) + '/preview', method: 'POST',
+		data: { expected_revision: expectedRevision } })
+		.then((raw: any) => adaptContinuousPreview(unwrapMoxiangResponse(raw)))
+}
+
+export function getContinuousProfilePreview(previewId: string): Promise<ContinuousProfilePreview> {
+	return request({ url: '/ai/profile-previews/' + encodeURIComponent(previewId), method: 'GET' })
+		.then((raw: any) => adaptContinuousPreview(unwrapMoxiangResponse(raw)))
 }

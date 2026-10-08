@@ -1,88 +1,74 @@
-const assert = require('assert')
-const fs = require('fs')
-const path = require('path')
+// continuous_v2 的确认保护；legacy 构建邀请仅保留兼容，不再作为新主流程门槛。
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+const vm = require('node:vm')
+const babel = require('@babel/core')
+const parser = require('@babel/parser')
+const { parse } = require('@vue/compiler-sfc')
+const { fixture, preview } = require('./test-moxiang-continuous-result')
+const page = fs.readFileSync(path.join(__dirname, '../pagesSub/profileExtra/my-portrait-master.uvue'), 'utf8')
+const src = parse(page).descriptor.scriptSetup.content
+const prompt = parser.parse(src, { sourceType: 'module', plugins: ['typescript'] }).program.body.find(n => n.id?.name === 'maybePromptBuild')
+assert.ok(prompt)
+const promptSource = src.slice(prompt.start, prompt.end)
+const code = babel.transformSync(promptSource, { filename: 'prompt.ts', configFile: false, babelrc: false, plugins: ['@babel/plugin-transform-typescript'] }).code
+const modals = [], accepted = []
+const context = {
+  continuousFlow: { value: true }, currentSubject: { value: 'personal' },
+  buildPromptShown: { value: { personal: false, ideal_partner: false } }, inviteBusy: { value: false },
+  uni: { showModal: options => modals.push(options), showToast: () => {} },
+  ws: { isConnected: () => true, acceptBuildInvite: (...args) => accepted.push(args) }
+}
+const maybePromptBuild = vm.runInNewContext(code + ';maybePromptBuild', context)
+maybePromptBuild('personal', 'invite-1')
+assert.equal(modals.length, 0, '新版不得被旧构建邀请截断自然对话')
+context.continuousFlow.value = false
+maybePromptBuild('personal', 'invite-1')
+maybePromptBuild('personal', 'invite-1')
+assert.equal(modals.length, 1, 'legacy 邀请仍按主体去重')
+modals[0].success({ confirm: false })
+assert.equal(accepted.length, 0)
+modals[0].success({ confirm: true })
+assert.deepEqual(accepted[0], ['personal', 'invite-1'])
+assert.doesNotMatch(promptSource, /publishProfileDraft|confirmPortraitNarrative|confirmProfilePreview/, '构建邀请不能发布画像')
+assert.doesNotMatch(page, /onPublishReady:|gateBySubject\(|hardGateMet/, '不能用本地覆盖率绕过服务端状态')
 
-const root = path.resolve(__dirname, '..')
-const page = fs.readFileSync(
-  path.join(root, 'pagesSub/profileExtra/my-portrait-master.uvue'),
-  'utf8'
-)
-
-assert.match(
-  page,
-  /buildPromptShown/,
-  'build confirmation must be deduplicated per portrait subject'
-)
-assert.match(
-  page,
-  /maybePromptBuild\(subject:\s*ProfileSubject(?:,\s*inviteId:\s*string\s*=\s*['"]['"])?\)/,
-  'master page must expose a subject-scoped build confirmation helper'
-)
-assert.match(
-  page,
-  /uni\.showModal\(/,
-  'reaching the build gate must ask the user before opening a preview'
-)
-assert.match(
-  page,
-  /confirmText:\s*['"]现在构建['"]/
-)
-
-assert.doesNotMatch(
-  page,
-  /onPublishReady:|gateBySubject\(|hardGateMet/,
-  'only a durable build_invite may open the formal build prompt'
-)
-
-const inviteStart = page.indexOf('onBuildInvite:')
-const inviteEnd = page.indexOf('onBuildInviteResolved:', inviteStart)
-assert.ok(inviteStart >= 0 && inviteEnd > inviteStart, 'build invite callback not found')
-const inviteCallback = page.slice(inviteStart, inviteEnd)
-assert.match(
-  inviteCallback,
-  /maybePromptBuild\(invite\.subject,\s*String\(invite\.invite_id/,
-  'threshold invite must trigger the same explicit build prompt'
-)
-assert.match(
-  page,
-  /ws\.acceptBuildInvite\(subject,\s*inviteId\)/,
-  'confirming a journey invite must accept it before opening a draft'
-)
-assert.match(
-  inviteCallback,
-  /bucket\.journeyStage\s*=\s*invite\.journey_stage/,
-  'invite delivery must sync the authoritative building stage for the fallback card'
-)
-assert.match(
-  page,
-  /journeyStage == 'building' && inviteId != ''[\s\S]{0,220}maybePromptBuild\(subject, inviteId\)/,
-  'a restored pending invite must prompt after the journey socket is ready'
-)
-// 主体切换回调内必须重新核对待构建邀请。按回调边界取块判断，不用字符预算：
-// 注释变长不该误报，同时也不会匹配到后续回调里的同类判断。
-const subjectChangeStart = page.indexOf('onSubjectChanged:')
-const subjectChangeEnd = page.indexOf('onJourneyReady:', subjectChangeStart)
-const subjectChangeBlock = page.slice(
-  subjectChangeStart,
-  subjectChangeEnd > subjectChangeStart ? subjectChangeEnd : subjectChangeStart + 3000
-)
-assert(subjectChangeStart >= 0, 'master page must wire the onSubjectChanged callback')
-assert.match(
-  subjectChangeBlock,
-  /summary\.journeyStage == 'building' && inviteId != ''[\s\S]{0,180}maybePromptBuild\(subject, inviteId\)/,
-  'a background subject invite must prompt when the user switches back to it'
-)
-
-const promptStart = page.indexOf('function maybePromptBuild')
-const promptRemainder = page.slice(promptStart)
-const promptClose = promptRemainder.match(/\r?\n}\r?\n/)
-const promptEnd = promptClose == null
-  ? -1
-  : promptStart + promptClose.index + promptClose[0].length
-assert.ok(promptStart >= 0 && promptEnd > promptStart, 'build prompt helper not found')
-const prompt = page.slice(promptStart, promptEnd)
-assert.match(prompt, /res\.confirm[\s\S]{0,400}ws\.acceptBuildInvite\(subject, inviteId\)/)
-assert.doesNotMatch(prompt, /goPortrait\(\)/)
-assert.doesNotMatch(prompt, /publishProfileDraft|confirmPortraitNarrative/)
-
-console.log('PASS moxiang build confirmation contract')
+async function main() {
+  const invalid = [
+    null, preview({ generation_status: 'queued', content: '' }), preview({ generation_status: 'processing' }),
+    preview({ generation_status: 'failed' }), preview({ status: 'stale' }), preview({ status: 'failed' }),
+    preview({ content: ' ' }), preview({ fields: [] })
+  ]
+  for (const draft of invalid) {
+    const { page: p, calls } = fixture()
+    p.continuousPreview = draft
+    await p.onConfirmContinuous()
+    await p.confirmContinuousPreview()
+    assert.equal(calls.modal.length + calls.confirm.length + calls.legacy, 0, '完整审阅稿就绪前不允许正式生效')
+    assert.equal(p.publishedMode, false)
+  }
+  for (const lock of ['continuousConflict', 'continuousEditDirty', 'continuousEditing', 'confirming', 'continuousSaving']) {
+    const { page: p, calls } = fixture()
+    p.applyContinuousPreview(preview())
+    p[lock] = true
+    await p.onConfirmContinuous()
+    await p.confirmContinuousPreview()
+    assert.equal(calls.confirm.length, 0, `${lock} 时不能确认`)
+  }
+  const { page: p, calls } = fixture()
+  p.applyContinuousPreview(preview())
+  await p.onConfirmContinuous()
+  assert.equal(calls.confirm.length, 0, '生成完成不能自动确认')
+  assert.equal(calls.modal.length, 1)
+  calls.modal[0].success({ confirm: false })
+  assert.equal(calls.confirm.length, 0, '取消整份确认不得生效')
+  await p.publishPreview()
+  assert.equal(calls.legacy, 0, '新版不能调用旧 publish 绕过整份审阅')
+  await p.confirmContinuousPreview()
+  assert.equal(calls.confirm.length, 1)
+  assert.deepEqual(Array.from(calls.confirm[0]).slice(0, 2), ['p1', 1], '只能确认当前审阅预览和版本')
+  assert.equal(p.publishedMode, true)
+  console.log('PASS build confirmation: 完整审阅门禁、明确整份确认、legacy 兼容隔离')
+}
+main().catch(error => { console.error(error); process.exitCode = 1 })

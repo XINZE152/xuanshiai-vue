@@ -54,7 +54,7 @@ const makeHarness = () => {
   const uni = { showToast: () => {} }
   const playTTS = new Function(
     'ttsBusy', 'lastReplyText', 'lastTTSUrl', 'masterState', 'ws', 'synthesizeSpeech', 'playAudio', 'uni',
-    'let masterPageAlive = true;\n' + playSrc + '\nreturn playTTS;'
+    'let masterPageAlive = true; let masterPageVisible = true; let connectionSeq = 1;\n' + playSrc + '\nreturn playTTS;'
   )(ttsBusy, lastReplyText, lastTTSUrl, masterState, ws, synthesizeSpeech, playAudio, uni)
   return { state, ttsBusy, masterState, playTTS }
 }

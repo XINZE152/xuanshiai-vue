@@ -170,6 +170,44 @@ async function main() {
   assert.ok(aliveGuards >= 3, '异步链各回写点须有存活守卫（当前 ' + aliveGuards + ' 处）')
   assert.match(source, /waitForSearchTask\(taskId, \(\) => searchPageAlive\)/, '轮询任务须随页面存活中止')
 
+  // ── S1：解析中改输入必须恢复 busy，旧任务不得清新请求状态 ────────────────
+  const invalidateBlock = sliceBalanced(source, source.indexOf('const invalidateAiRun = () =>'))
+  assert.match(invalidateBlock, /searchRunId \+= 1/, '作废旧任务必须推进 runId')
+  assert.match(invalidateBlock, /aiGenerating\.value = false/, 'S1：作废必须显式恢复 busy')
+  assert.match(invalidateBlock, /aiConfirming\.value = false/, 'S1：作废必须同时恢复确认中状态')
+  const inputBlock = sliceBalanced(source, source.indexOf('const onAiInput = (event: any) =>'))
+  assert.match(inputBlock, /invalidateAiRun\(\)/, 'S1：输入变化必须走统一作废入口')
+  assert.doesNotMatch(inputBlock, /searchRunId \+= 1/, 'S1：输入变化不得只推进 runId 而不恢复 busy')
+  const suggestBlock = sliceBalanced(source, source.indexOf('const typeAiText = (value: string) =>'))
+  assert.match(suggestBlock, /invalidateAiRun\(\)/, 'S1：点建议同样必须恢复 busy')
+
+  // ── S2：PATCH 成功后的确认重试不得重放 PATCH ─────────────────────────────
+  assert.match(source, /let aiPatchPhaseSucceeded = false/, 'S2：必须有 PATCH 阶段成功标记')
+  assert.match(source, /aiConfirmSucceeded/, 'S2：必须有 confirm 阶段成功标记')
+  const confirmBlock = sliceBalanced(source, source.indexOf('const confirmAiSearch = async () =>'))
+  assert.match(confirmBlock, /if \(!aiPatchPhaseSucceeded\) \{/, 'S2：PATCH 已知成功时不得再次 PATCH')
+  assert.match(confirmBlock, /if \(aiConfirmSucceeded\.value\) \{/, 'S2：confirm 已知成功时不得重新确认')
+  const resetBlock = sliceBalanced(source, source.indexOf('const resetAiDraftState = ('))
+  assert.match(resetBlock, /aiPatchPhaseSucceeded = false/, 'S2：改条件/换草稿必须同时作废 PATCH 阶段')
+  assert.match(resetBlock, /aiConfirmSucceeded\.value = false/, 'S2：改条件/换草稿必须同时作废 confirm 阶段')
+  assert.match(resetBlock, /aiConfirmTaskId = ''/, 'S2：作废必须清除上一轮任务引用')
+
+  // ── S3：读结果失败只重读既有快照；调整条件保留草稿 ───────────────────────
+  const snapshotBlock = sliceBalanced(source, source.indexOf('const loadSnapshotResults = async ('))
+  assert.match(snapshotBlock, /getSearchSnapshotResults\(aiSnapshotId\.value, '', 20\)/, 'S3：结果重试只读既有快照')
+  assert.doesNotMatch(
+    snapshotBlock,
+    /createSearchDraft\(|patchSearchDraft\(|confirmSearchDraft\(/,
+    'S3：读结果失败不得重跑 create/patch/confirm 整链'
+  )
+  const retryBlock2 = sliceBalanced(source, source.indexOf('const retrySearch = () =>'))
+  assert.match(retryBlock2, /loadSnapshotResults\(searchRunId, aiDraftId\.value\)/, 'S3：已有快照时只重读结果')
+  const editorBlock = sliceBalanced(source, source.indexOf('const openSearchEditor = () =>'))
+  assert.doesNotMatch(editorBlock, /resetAiDraftState\(\)/, 'S3：「调整条件」必须保留当前条件草稿')
+  const newSearchBlock = sliceBalanced(source, source.indexOf('const startNewSearch = () =>'))
+  assert.match(newSearchBlock, /resetAiDraftState\(\)/, 'S3：「开始新的搜索」才清空上下文')
+  assert.match(source, /@tap="startNewSearch"/, 'S3：新搜索入口必须绑定独立处理函数')
+
   console.log('PASS search retry idempotency: 输入回写、键生命周期、失败重试与断网守卫全部通过')
 }
 

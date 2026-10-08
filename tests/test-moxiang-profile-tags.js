@@ -93,12 +93,12 @@ test('shared moxiang badge util gates unconfirmed narratives', () => {
 })
 
 test('self-view fallbacks honour the narrative status gate', () => {
-  // 两处前端兜底直接调 getPortraitNarrative（按设计透传 status），必须自行过滤。
-  assert.match(
-    profilePage,
-    /narrativeBadgeVisible\(/,
-    'profile.uvue loadOverview must gate the badge on narrative status'
-  )
+  // 新版我的页要求 personal、confirmed 与快照正式版本一致；不能退回旧宽松门禁。
+  assert.match(profilePage, /data\.subject != 'personal' \|\| data\.status != 'confirmed'/)
+  assert.match(profilePage, /const revisionId = String\(snapshot\.personal\.published_revision_id\)/)
+  assert.match(profilePage, /String\(data\.revision_id \?\? ''\) != revisionId/)
+  assert.match(profilePage, /clearPortraitBadge\(\)/)
+  // 旧详情本人兜底仍使用旧协议的确认状态守卫。
   assert.match(
     detailPage,
     /narrativeBadgeVisible\(/,

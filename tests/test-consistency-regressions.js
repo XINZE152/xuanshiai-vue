@@ -10,7 +10,10 @@ const login = read('pages/auth/login.uvue')
 const dynamicCard = read('components/XsaDynamicCard.uvue')
 const notifications = read('pagesSub/community/notifications.uvue')
 
-const startBlock = aiMoxiang.slice(aiMoxiang.indexOf('export function startIdealPartnerJourney'), aiMoxiang.indexOf('export async function sendMoxiangTurn'))
+const startOffset = aiMoxiang.indexOf('export function startIdealPartnerJourney')
+const endOffset = aiMoxiang.indexOf('\n}', startOffset)
+if (startOffset < 0 || endOffset < startOffset) throw new Error('墨相师启动函数边界缺失')
+const startBlock = aiMoxiang.slice(startOffset, endOffset + 2)
 if (!/headers\s*:\s*\{[\s\S]*Idempotency-Key/.test(startBlock)) {
   throw new Error('墨相师启动请求必须使用 request 支持的 headers 字段传递幂等键')
 }

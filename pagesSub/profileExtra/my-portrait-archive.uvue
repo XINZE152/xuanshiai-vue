@@ -1,678 +1,212 @@
 <template>
 	<view class="mpa-page">
-		<!-- 导航栏 -->
 		<view class="mpa-nav" :style="{ paddingTop: navPadTop + 'px', paddingRight: (menuButtonSpacing + 8) + 'px' }">
-			<view class="mpa-nav-side mpa-nav-back" @tap="navBack">
-				<text class="mpa-nav-back-text">‹</text>
-			</view>
+			<view class="mpa-nav-side mpa-nav-back" @tap="navBack"><text class="mpa-nav-back-text">‹</text></view>
 			<text class="mpa-nav-title" :style="{ top: navPadTop + 'px' }">我的画像档案</text>
 			<view class="mpa-nav-side"></view>
 		</view>
-
-		<view v-if="loading" class="mpa-loading">
-			<view class="mpa-loading-dot"></view>
-			<text class="mpa-loading-text">正在整理档案…</text>
-		</view>
-
+		<view v-if="loading" class="mpa-loading"><view class="mpa-loading-dot"></view><text class="mpa-loading-text">正在读取知遇状态…</text></view>
 		<view v-else-if="errorMessage" class="mpa-error">
 			<text class="mpa-error-text">{{ errorMessage }}</text>
 			<view class="mpa-error-btn" @tap="loadArchive"><text class="mpa-error-btn-text">重试</text></view>
 		</view>
-
 		<view v-else class="mpa-body">
-			<!-- 自我画像资产卡 -->
-			<view class="mpa-subject mpa-subject-personal">
-				<view class="mpa-subject-head">
-					<view class="mpa-subject-title-box">
-						<text class="mpa-subject-title">我的画像</text>
-						<text class="mpa-subject-tag">关于我</text>
-					</view>
-					<text v-if="personalConsentActive" class="mpa-badge">授权中</text>
-					<text v-else class="mpa-badge mpa-badge-off">未授权</text>
-				</view>
-				<text class="mpa-subject-sub">{{ personalStateSub }}</text>
-				<view v-if="personalOverallPercent > 0" class="mpa-progress">
-					<view class="mpa-progress-track"><view class="mpa-progress-fill" :style="{ width: personalOverallPercent + '%' }"></view></view>
-					<text class="mpa-progress-num">{{ personalOverallPercent }}%</text>
-				</view>
-				<view class="mpa-subject-actions">
-					<view class="mpa-btn" @tap="goMaster('personal')">
-						<text class="mpa-btn-text">{{ personalCta }}</text>
-					</view>
-					<view v-if="archive.personal.currentRevision" class="mpa-btn mpa-btn-ghost" @tap="goResult('personal')">
-						<text class="mpa-btn-text">看成稿</text>
-					</view>
-					<view v-if="archive.personal.currentRevision" class="mpa-btn mpa-btn-ghost" @tap="goPoster('personal')">
-						<text class="mpa-btn-text">生成海报</text>
-					</view>
-				</view>
-				<view v-if="archive.personal.history.length > 0" class="mpa-history">
-					<text class="mpa-history-title">历史版本</text>
-					<view v-for="(item, idx) in archive.personal.history" :key="idx" class="mpa-history-item">
-						<text class="mpa-history-no">#{{ item.revisionNo }}</text>
-						<text class="mpa-history-time">{{ formatTime(item.publishedAt) }}</text>
-						<text class="mpa-history-fields">{{ item.fieldCount }} 字段</text>
-					</view>
-				</view>
-				<view v-if="archive.personal.preview" class="mpa-preview-tip">
-					<text class="mpa-preview-tip-text">草稿上有未发布的预览 (rev {{ archive.personal.preview.expectedRevision }})</text>
-				</view>
+			<MoxiangContinuousPanel v-if="continuousState != null && continuousState.consent_granted" :state="continuousState" @open="openContinuousPortrait" />
+			<view v-else class="mpa-consent-state">
+				<text class="mpa-consent-title">知遇墨相</text>
+				<text class="mpa-consent-copy">授权后，知遇会在一次自然对话中分别整理你的真实画像与期待的长期关系。整份确认前不会成为正式画像。</text>
+				<view class="mpa-btn" @tap="goMaster('personal')"><text class="mpa-btn-text">进入授权与对话</text></view>
 			</view>
-
-			<!-- 伴侣画像资产卡 -->
-			<view class="mpa-subject mpa-subject-ideal">
-				<view class="mpa-subject-head">
-					<view class="mpa-subject-title-box">
-						<text class="mpa-subject-title">伴侣画像</text>
-						<text class="mpa-subject-tag">期待的关系</text>
-					</view>
-					<text v-if="idealConsentActive" class="mpa-badge">授权中</text>
-					<text v-else class="mpa-badge mpa-badge-off">未授权</text>
-				</view>
-				<text class="mpa-subject-sub">{{ idealPartnerStateSub }}</text>
-				<view v-if="idealOverallPercent > 0" class="mpa-progress">
-					<view class="mpa-progress-track"><view class="mpa-progress-fill" :style="{ width: idealOverallPercent + '%' }"></view></view>
-					<text class="mpa-progress-num">{{ idealOverallPercent }}%</text>
-				</view>
-				<view class="mpa-subject-actions">
-					<view class="mpa-btn" @tap="goMaster('ideal_partner')">
-						<text class="mpa-btn-text">{{ idealPartnerCta }}</text>
-					</view>
-					<view v-if="archive.idealPartner.currentRevision" class="mpa-btn mpa-btn-ghost" @tap="goResult('ideal_partner')">
-						<text class="mpa-btn-text">看成稿</text>
-					</view>
-				</view>
-				<view v-if="archive.idealPartner.history.length > 0" class="mpa-history">
-					<text class="mpa-history-title">历史版本</text>
-					<view v-for="(item, idx) in archive.idealPartner.history" :key="idx" class="mpa-history-item">
-						<text class="mpa-history-no">#{{ item.revisionNo }}</text>
-						<text class="mpa-history-time">{{ formatTime(item.publishedAt) }}</text>
-						<text class="mpa-history-fields">{{ item.fieldCount }} 字段</text>
-					</view>
-				</view>
-				<view v-if="archive.idealPartner.preview" class="mpa-preview-tip">
-					<text class="mpa-preview-tip-text">草稿上有未发布的预览 (rev {{ archive.idealPartner.preview.expectedRevision }})</text>
-				</view>
+			<view v-if="continuousState != null && continuousState.consent_granted" class="mpa-actions">
+				<view class="mpa-btn" @tap="goMaster('personal')"><text class="mpa-btn-text">继续自然聊天</text></view>
+				<view class="mpa-btn mpa-btn-ghost" @tap="openMemorySheet"><text class="mpa-btn-ghost-text">数据管理</text></view>
 			</view>
-
-			<!-- 记忆管理卡片 -->
-			<view class="mpa-memory-entry" @tap="openMemorySheet">
-				<view class="mpa-memory-entry-icon">
-					<text class="mpa-memory-entry-icon-text">记</text>
-				</view>
-				<view class="mpa-memory-entry-copy">
-					<text class="mpa-memory-entry-title">记忆管理</text>
-					<text class="mpa-memory-entry-sub">查看、确认或停止使用 AI 从对话中梳理的理解</text>
-				</view>
-				<view class="mpa-memory-entry-arrow-box">
-					<text class="mpa-memory-entry-arrow">➔</text>
-				</view>
-			</view>
+			<view v-if="archive.personal.currentRevision || archive.personal.history.length > 0" class="mpa-legacy-entry" @tap="goLegacy('personal')"><text class="mpa-legacy-text">查看旧版画像记录</text><text class="mpa-legacy-arrow">›</text></view>
+			<view v-if="archive.idealPartner.currentRevision || archive.idealPartner.history.length > 0" class="mpa-legacy-entry" @tap="goLegacy('ideal_partner')"><text class="mpa-legacy-text">查看旧版伴侣画像记录</text><text class="mpa-legacy-arrow">›</text></view>
 		</view>
 		<MemoryManagementSheet :visible="memorySheetVisible" @close="closeMemorySheet" />
 	</view>
 </template>
 
 <script lang="uts">
-	/**
-	 * Phase 3 P3-03 —— 我的墨相档案
-	 *
-	 * 路径: pagesSub/profileExtra/my-portrait-archive
-	 * 入口: 我的页面"我的墨相档案"双入口(配合墨相师入口)
-	 *
-	 * 行为契约:
-	 * 1. 永远 GET /ai/moxiang/archive(200),不依赖其它状态
-	 * 2. 双主体资产卡独立展示,主体互不干扰
-	 * 3. 撤回授权后,主体资产卡仍可读(只把 consentActive 标 false)
-	 */
-	import { getMoxiangArchive, getMoxiangState, type MoxiangArchiveResponse, type ArchiveSubject, type MoxiangStateResponse } from '@/api/ai-moxiang.uts'
-	import MemoryManagementSheet from '@/components/MemoryManagementSheet.uvue'
+import { getMoxiangArchive, getContinuousMoxiangState, buildContinuousPortrait, type MoxiangArchiveResponse, type ArchiveSubject, type ContinuousMoxiangState, type ContinuousSubjectState } from '@/api/ai-moxiang.uts'
+import MemoryManagementSheet from '@/components/MemoryManagementSheet.uvue'
+import MoxiangContinuousPanel from '@/components/moxiang/MoxiangContinuousPanel.uvue'
 
-	function emptySubject(subject: 'personal' | 'ideal_partner'): ArchiveSubject {
-		return {
-			subject,
-			consentActive: false,
-			currentRevision: null,
-			activeDraft: null,
-			summaryExcerpt: null,
-			history: [],
-			preview: null
-		}
-	}
+type PendingContinuousBuild = { refresh: boolean, key: string }
 
-	function emptyState(): MoxiangStateResponse {
-		return {
-			consentGranted: false,
-			activeSubject: 'personal',
-			personal: {
-				sessionId: null,
-				journeyStage: null,
-				lastTurnAt: null,
-				lastTopicExcerpt: '',
-				overallPercent: 0,
-				dimensions: {} as any,
-				pendingBuildInviteId: null,
-				pendingConfirmCard: false,
-				publishedRevisionId: null,
-				canStartIdealPartner: false
-			},
-			idealPartner: {
-				sessionId: null,
-				journeyStage: null,
-				lastTurnAt: null,
-				lastTopicExcerpt: '',
-				overallPercent: 0,
-				dimensions: {} as any,
-				pendingBuildInviteId: null,
-				pendingConfirmCard: false,
-				publishedRevisionId: null,
-				canStartIdealPartner: false
-			},
-			canStartIdealPartner: false
-		}
-	}
+function emptySubject(subject: 'personal' | 'ideal_partner'): ArchiveSubject {
+	return { subject, consentActive: false, currentRevision: null, activeDraft: null, summaryExcerpt: null, history: [], preview: null }
+}
+function emptyArchive(): MoxiangArchiveResponse {
+	return { personal: emptySubject('personal'), idealPartner: emptySubject('ideal_partner'), fallbackAvailable: false }
+}
+function errorCode(error: any): number {
+	return Number(error?.code ?? error?.statusCode ?? error?.status ?? 0)
+}
+function buildKey(subject: string): string {
+	return 'archive-' + subject + '-' + Date.now().toString(36)
+}
+const systemInfo = uni.getSystemInfoSync()
+const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
+const menuButtonInfo = uni.getMenuButtonBoundingClientRect()
+const navPadTop = menuButtonInfo != null && menuButtonInfo.top > statusBarHeight ? menuButtonInfo.top : statusBarHeight + 6
+const menuButtonSpacing = menuButtonInfo != null ? (systemInfo.windowWidth - menuButtonInfo.left) : 8
 
-	const systemInfo = uni.getSystemInfoSync()
-	const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
-	const menuButtonInfo = uni.getMenuButtonBoundingClientRect()
-	const navPadTop = menuButtonInfo != null && menuButtonInfo.top > statusBarHeight ? menuButtonInfo.top : statusBarHeight + 6
-	const menuButtonSpacing = menuButtonInfo != null ? (systemInfo.windowWidth - menuButtonInfo.left) : 8
-
-	export default {
-		components: { MemoryManagementSheet },
-		data() {
-			return {
-				navPadTop: navPadTop,
-				menuButtonSpacing: menuButtonSpacing,
-				loading: true,
-				errorMessage: '',
-				memorySheetVisible: false,
-				archive: {
-					personal: emptySubject('personal'),
-					idealPartner: emptySubject('ideal_partner'),
-					fallbackAvailable: false
-				} as MoxiangArchiveResponse,
-				state: emptyState() as MoxiangStateResponse | null
+export default {
+	components: { MemoryManagementSheet, MoxiangContinuousPanel },
+	data() { return {
+		navPadTop, menuButtonSpacing, loading: true, errorMessage: '', memorySheetVisible: false,
+		archive: emptyArchive() as MoxiangArchiveResponse,
+		continuousState: null as ContinuousMoxiangState | null,
+		archiveRequestSeq: 0, archiveLifecycleSeq: 0, archivePageAlive: true, archivePageVisible: true, pollTimer: null as any,
+		continuousPendingBuilds: new Map<string, PendingContinuousBuild>(), continuousActionBusy: new Set<string>()
+	} },
+	onLoad() { this.archivePageAlive = true; this.archivePageVisible = true; this.loadArchive() },
+	onShow() { this.archivePageVisible = true; if (!this.loading) this.loadArchive() },
+	onHide() { this.archivePageVisible = false; this.archiveLifecycleSeq += 1; this.archiveRequestSeq += 1; this.continuousActionBusy.clear(); this.loading = false; this.stopPolling() },
+	onUnload() { this.archivePageAlive = false; this.archivePageVisible = false; this.clearContinuousPrivateCache() },
+	methods: {
+		clearContinuousPrivateCache() {
+			this.archiveRequestSeq += 1
+			this.archiveLifecycleSeq += 1
+			this.loading = false
+			this.stopPolling()
+			this.continuousPendingBuilds.clear()
+			this.continuousActionBusy.clear()
+			this.continuousState = null
+			this.archive = emptyArchive()
+			try { uni.removeStorageSync('moxiang-continuous-state') } catch (e) {}
+		},
+		stopPolling() { if (this.pollTimer != null) { clearTimeout(this.pollTimer); this.pollTimer = null } },
+		schedulePolling() {
+			this.stopPolling()
+			if (!this.archivePageAlive || !this.archivePageVisible || this.continuousState == null || !this.continuousState.consent_granted) return
+			this.pollTimer = setTimeout(() => { this.pollTimer = null; this.refreshContinuousState() }, 5000)
+		},
+		async refreshContinuousState(): Promise<boolean> {
+			const requestSeq = ++this.archiveRequestSeq
+			try {
+				const state = await getContinuousMoxiangState()
+				if (!this.archivePageAlive || !this.archivePageVisible || requestSeq != this.archiveRequestSeq) return false
+				if (!state.consent_granted) { this.clearContinuousPrivateCache(); return true }
+				this.continuousState = state
+				this.schedulePolling()
+				return true
+			} catch (e: any) {
+				if (!this.archivePageAlive || !this.archivePageVisible || requestSeq != this.archiveRequestSeq) return false
+				const code = errorCode(e)
+				if (code == 401 || code == 403) { this.clearContinuousPrivateCache(); this.errorMessage = '授权状态已变化，请重新进入知遇'; return false }
+				this.errorMessage = '读取知遇状态失败：' + (e?.message ?? String(e)); return false
 			}
 		},
-		computed: {
-			personalOverallPercent(): number {
-				const s = this.state
-				if (s == null) return 0
-				return Math.round(Number(s.personal.overallPercent ?? 0))
-			},
-			idealOverallPercent(): number {
-				const s = this.state
-				if (s == null) return 0
-				return Math.round(Number(s.idealPartner.overallPercent ?? 0))
-			},
-			personalConsentActive(): boolean {
-				if (this.state != null) return this.state.consentGranted
-				return this.archive.personal.consentActive
-			},
-			idealConsentActive(): boolean {
-				if (this.state != null) return this.state.consentGranted
-				return this.archive.idealPartner.consentActive
-			},
-			personalStateSub(): string {
-				const p = this.archive.personal
-				if (p.currentRevision) return '已发布第 ' + p.currentRevision.revisionNo + ' 版'
-				if (p.activeDraft) return '草稿进行中 · rev ' + p.activeDraft.expectedRevision
-				if (this.personalOverallPercent > 0) return '知遇已理解你 ' + this.personalOverallPercent + '% · 继续聊聊就能成稿'
-				return '尚未开始'
-			},
-			idealPartnerStateSub(): string {
-				const p = this.archive.idealPartner
-				if (p.currentRevision) return '已发布第 ' + p.currentRevision.revisionNo + ' 版'
-				if (p.activeDraft) return '草稿进行中 · rev ' + p.activeDraft.expectedRevision
-				if (this.idealOverallPercent > 0) return '知遇已理解你的期待 ' + this.idealOverallPercent + '% · 继续聊聊就能成稿'
-				if (this.state != null && !this.state.canStartIdealPartner) return '需要先完成自我画像'
-				return '尚未开始'
-			},
-			personalCta(): string {
-				const p = this.archive.personal
-				if (p.currentRevision) return '继续完善'
-				if (p.activeDraft || this.personalOverallPercent > 0) return '继续聊聊'
-				return '开始聊聊'
-			},
-			idealPartnerCta(): string {
-				const p = this.archive.idealPartner
-				if (p.currentRevision) return '继续完善'
-				if (p.activeDraft || this.idealOverallPercent > 0) return '继续聊聊'
-				if (this.state != null && !this.state.canStartIdealPartner) return '先完成我的画像'
-				return '开始聊聊'
-			}
+		async loadArchive() {
+			this.loading = true; this.errorMessage = ''; this.stopPolling()
+			const requestSeq = ++this.archiveRequestSeq
+			try {
+				const results = await Promise.all([getMoxiangArchive(), getContinuousMoxiangState()])
+				if (!this.archivePageAlive || !this.archivePageVisible || requestSeq != this.archiveRequestSeq) return
+				const state = results[1]
+				this.archive = results[0]
+				if (!state.consent_granted) { this.clearContinuousPrivateCache(); this.loading = false; return }
+				this.continuousState = state; this.schedulePolling()
+			} catch (e: any) {
+				if (!this.archivePageAlive || !this.archivePageVisible || requestSeq != this.archiveRequestSeq) return
+				const code = errorCode(e)
+				if (code == 401 || code == 403) { this.clearContinuousPrivateCache(); this.errorMessage = '授权状态已变化，请重新进入知遇' } else this.errorMessage = '读取档案失败：' + (e?.message ?? String(e))
+			} finally { if (requestSeq == this.archiveRequestSeq && this.archivePageAlive && this.archivePageVisible) this.loading = false }
 		},
-		onLoad() {
-			this.loadArchive()
-		},
-		onShow() {
-			// 从结果页发布/恢复后,档案可能变化,自动重拉
-			if (!this.loading) this.loadArchive()
-		},
-		methods: {
-			openMemorySheet() {
-				this.memorySheetVisible = true
-			},
-			closeMemorySheet() {
-				this.memorySheetVisible = false
-			},
-			navBack() {
-				uni.navigateBack({ delta: 1, fail: () => {
-					uni.switchTab({ url: '/pages/profile/profile' })
-				} })
-			},
-			async loadArchive() {
-				this.loading = true
-				this.errorMessage = ''
-				try {
-					// archive 只覆盖已发布/草稿资产；旅程中的理解进度在 state 里，两个都要。
-					const results = await Promise.all([
-						getMoxiangArchive(),
-						getMoxiangState().catch((e: any) => {
-							console.warn('moxiang state load failed', e)
-							return null
-						})
-					])
-					this.archive = results[0]
-					this.state = results[1]
-				} catch (e: any) {
-					this.errorMessage = '读取档案失败:' + (e?.message ?? String(e))
-				} finally {
-					this.loading = false
+		async openContinuousPortrait(subject: string) {
+			if ((subject != 'personal' && subject != 'ideal_partner') || this.continuousActionBusy.has(subject)) return
+			this.continuousActionBusy.add(subject)
+			const lifecycleSeq = this.archiveLifecycleSeq
+			try {
+				if (!this.archivePageAlive || !this.archivePageVisible || this.continuousState == null || !this.continuousState.consent_granted) return
+				let item = subject == 'personal' ? this.continuousState.personal : this.continuousState.ideal_partner
+				let pending = this.continuousPendingBuilds.get(subject)
+				let refresh = false
+				if (pending == null && item.status != 'failed' && (item.status == 'stale' || item.has_updates)) {
+					const choice: any = await new Promise((resolve) => uni.showModal({
+						title: item.status == 'stale' ? '这份稿件的版本已变化' : '有新的对话补充',
+						content: '合并后会生成新的待确认稿，需要重新阅读。不会自动改变已确认画像。',
+						confirmText: '合并新信息', cancelText: '先看原稿', success: resolve, fail: () => resolve({ confirm: false })
+					}))
+					if (!this.archivePageAlive || !this.archivePageVisible || lifecycleSeq != this.archiveLifecycleSeq || this.continuousState == null || !this.continuousState.consent_granted) return
+					refresh = choice.confirm === true
+					if (!refresh) { this.openContinuousResult(subject, item, item.status == 'confirmed'); return }
 				}
-			},
-			goMaster(subject: string) {
-				// 伴侣画像需先完成（发布）我的画像，锁定时提示而不是推进聊天。
-				if (subject == 'ideal_partner' && this.state != null && !this.state.canStartIdealPartner) {
-					uni.showToast({ title: '先完成「我的画像」发布，再开启伴侣画像', icon: 'none', duration: 2500 })
+				if (!this.archivePageAlive || !this.archivePageVisible || this.continuousState == null || !this.continuousState.consent_granted) return
+				if (pending != null || refresh || item.status == 'failed') {
+					if (pending == null) {
+						pending = { refresh: item.status == 'failed' ? false : refresh, key: buildKey(subject) }
+						this.continuousPendingBuilds.set(subject, pending)
+					}
+					const updated = await buildContinuousPortrait(subject, pending.refresh, pending.key)
+					if (!this.archivePageAlive || !this.archivePageVisible || lifecycleSeq != this.archiveLifecycleSeq || this.continuousPendingBuilds.get(subject) !== pending) return
+					this.continuousPendingBuilds.delete(subject)
+					if (!updated.consent_granted) { this.clearContinuousPrivateCache(); return }
+					this.archiveRequestSeq += 1
+					this.loading = false
+					this.continuousState = updated
+					item = subject == 'personal' ? updated.personal : updated.ideal_partner
+					this.openContinuousResult(subject, item, item.status == 'confirmed')
 					return
 				}
-				uni.redirectTo({ url: '/pagesSub/profileExtra/my-portrait-master?subject=' + subject })
-			},
-			goResult(subject: string) {
-				uni.navigateTo({ url: '/pagesSub/profileExtra/my-portrait-result?subject=' + subject })
-			},
-			goPoster(subject: string) {
-				uni.navigateTo({ url: '/pagesSub/profileExtra/my-portrait-result?subject=' + subject + '&openPoster=1' })
-			},
-			formatTime(t: string | null): string {
-				if (!t) return ''
-				if (t.length >= 10) return t.substring(0, 10)
-				return t
-			}
-		}
+				if (item.status == 'collecting') { this.goMaster(subject); return }
+				if (item.status == 'generating') { this.openContinuousResult(subject, item, false); return }
+				this.openContinuousResult(subject, item, item.status == 'confirmed')
+			} catch (e: any) {
+				if (lifecycleSeq != this.archiveLifecycleSeq || !this.archivePageAlive || !this.archivePageVisible) return
+				const code = errorCode(e)
+				if ([400, 401, 403, 404, 409, 422].includes(code)) this.continuousPendingBuilds.delete(subject)
+				if (code == 401 || code == 403) { this.clearContinuousPrivateCache(); this.errorMessage = '授权状态已变化，请重新进入知遇'; return }
+				if (this.archivePageAlive && this.archivePageVisible) this.errorMessage = '生成成稿失败：' + (e?.message ?? String(e))
+			} finally { if (lifecycleSeq == this.archiveLifecycleSeq) this.continuousActionBusy.delete(subject) }
+		},
+		openContinuousResult(subject: string, item: ContinuousSubjectState, published: boolean) {
+			if (!this.archivePageAlive || !this.archivePageVisible || this.continuousState == null || !this.continuousState.consent_granted) return
+			let url = '/pagesSub/profileExtra/my-portrait-result?flow_version=continuous_v2&subject=' + subject
+			if (item.draft_id != null) url += '&draft_id=' + encodeURIComponent(item.draft_id)
+			if (item.expected_revision != null) url += '&expected_revision=' + item.expected_revision
+			if (item.preview_id != null) url += '&preview_id=' + encodeURIComponent(item.preview_id)
+			if (published) url += '&published=1'
+			uni.navigateTo({ url })
+		},
+		goMaster(subject: string) { uni.redirectTo({ url: '/pagesSub/profileExtra/my-portrait-master?flow_version=continuous_v2&subject=' + subject }) },
+		goLegacy(subject: string) { uni.navigateTo({ url: '/pagesSub/profileExtra/my-portrait-result?subject=' + subject }) },
+		openMemorySheet() { this.memorySheetVisible = true },
+		async closeMemorySheet() {
+			this.memorySheetVisible = false
+			// 管理页可能删除数据或撤权：先失效旧读写，再从服务端重新核对。
+			this.clearContinuousPrivateCache()
+			await this.loadArchive()
+		},
+		navBack() { uni.navigateBack({ delta: 1, fail: () => { uni.switchTab({ url: '/pages/profile/profile' }) } }) }
 	}
+}
 </script>
 
 <style>
-	.mpa-page {
-		min-height: 100vh;
-		background: #F3EFE8;
-		padding: 0 0 60px 0;
-		color: #23201E;
-		--canvas: #F3EFE8;
-		--primary: #9C5B42;
-		--primary-dark: #854B35;
-		--warm-gold: #C29F68;
-		--surface: #FFFFFF;
-		--surface-warm: #FAF7F2;
-		--line: #E8E2D8;
-		--border-card: #D8D2C7;
-		--ink: #23201E;
-		--ink2: #6C665F;
-		--muted: #9E978E;
-		--accent: #9C5B42;
-		--accent2: #9C5B42;
-		--warm: #F5EAE4;
-		--text-invert: #FFFFFF;
-	}
-
-	.mpa-nav {
-		position: sticky;
-		top: 0;
-		z-index: 100;
-		box-sizing: content-box;
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		justify-content: space-between;
-		padding-left: 10px;
-		padding-bottom: 8px;
-		background: #F3EFE8;
-		border-bottom: 1px solid rgba(232, 226, 216, 0.7);
-	}
-
-	.mpa-nav-side {
-		z-index: 1;
-		min-width: 44px;
-		height: 40px;
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		justify-content: flex-end;
-	}
-
-	.mpa-nav-back {
-		justify-content: flex-start;
-	}
-
-	.mpa-nav-back-text {
-		font-size: 28px;
-		color: #23201E;
-		padding: 0 8px;
-		line-height: 1;
-	}
-
-	.mpa-nav-title {
-		position: absolute;
-		left: 0;
-		right: 0;
-		height: 40px;
-		line-height: 40px;
-		text-align: center;
-		font-size: 17px;
-		font-weight: 700;
-		color: #23201E;
-		pointer-events: none;
-		z-index: 1;
-	}
-
-	.mpa-loading, .mpa-error {
-		padding: 80px 24px 48px;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-	}
-
-	.mpa-loading-dot {
-		width: 14px;
-		height: 14px;
-		border-radius: 999px;
-		background: #9C5B42;
-		margin-bottom: 16px;
-		box-shadow: 0 2px 8px rgba(156, 91, 66, 0.3);
-	}
-
-	.mpa-loading-text, .mpa-error-text {
-		font-size: 14px;
-		color: #6C665F;
-		text-align: center;
-	}
-
-	.mpa-error-btn {
-		margin-top: 20px;
-		min-height: 44px;
-		height: 44px;
-		padding: 0 24px;
-		background: #9C5B42;
-		border-radius: 22px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		box-shadow: 0 4px 12px rgba(156, 91, 66, 0.22);
-	}
-
-	.mpa-error-btn-text {
-		font-size: 14px;
-		color: #FFFFFF;
-		font-weight: 700;
-	}
-
-	.mpa-body {
-		padding: 16px 16px 40px;
-	}
-
-	.mpa-subject {
-		background: #FFFFFF;
-		border-radius: 16px;
-		padding: 20px 18px;
-		margin-top: 14px;
-		border: 1px solid #E8E2D8;
-		box-shadow: 0 4px 16px rgba(156, 91, 66, 0.05);
-	}
-
-	.mpa-subject-head {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		justify-content: space-between;
-	}
-
-	.mpa-subject-title-box {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.mpa-subject-title {
-		font-size: 17px;
-		color: #23201E;
-		font-weight: 700;
-	}
-
-	.mpa-subject-tag {
-		font-size: 11px;
-		color: #9C5B42;
-		background-color: #F5EAE4;
-		padding: 2px 6px;
-		border-radius: 4px;
-		font-weight: 600;
-	}
-
-	.mpa-badge {
-		padding: 3px 10px;
-		font-size: 11px;
-		font-weight: 600;
-		border-radius: 6px;
-		background: #F5EAE4;
-		color: #9C5B42;
-	}
-
-	.mpa-badge-off {
-		background: #EFECE6;
-		color: #9E978E;
-	}
-
-	.mpa-subject-sub {
-		font-size: 13px;
-		color: #6C665F;
-		display: block;
-		margin-top: 8px;
-		line-height: 1.5;
-	}
-
-	.mpa-progress {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: 12px;
-		margin-top: 16px;
-	}
-
-	.mpa-progress-track {
-		flex: 1;
-		height: 8px;
-		border-radius: 4px;
-		background: #EFE9E0;
-		overflow: hidden;
-	}
-
-	.mpa-progress-fill {
-		height: 100%;
-		border-radius: 4px;
-		background: #9C5B42;
-	}
-
-	.mpa-progress-num {
-		width: 40px;
-		text-align: right;
-		font-size: 12px;
-		color: #9C5B42;
-		font-weight: 700;
-	}
-
-	.mpa-subject-actions {
-		display: flex;
-		flex-direction: row;
-		gap: 12px;
-		margin-top: 18px;
-	}
-
-	.mpa-btn {
-		flex: 1;
-		min-height: 44px;
-		height: 44px;
-		padding: 0 16px;
-		background: #9C5B42;
-		border-radius: 22px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		box-sizing: border-box;
-		box-shadow: 0 4px 12px rgba(156, 91, 66, 0.22);
-	}
-
-	.mpa-btn-ghost {
-		background: #FFFFFF;
-		border: 1px solid #D8D2C7;
-		box-shadow: none;
-	}
-
-	.mpa-btn-text {
-		font-size: 14px;
-		color: #FFFFFF;
-		font-weight: 700;
-	}
-
-	.mpa-btn-ghost .mpa-btn-text {
-		color: #23201E;
-		font-weight: 600;
-	}
-
-	.mpa-history {
-		margin-top: 18px;
-		padding-top: 14px;
-		border-top: 1px solid #E8E2D8;
-	}
-
-	.mpa-history-title {
-		font-size: 12px;
-		color: #9E978E;
-		font-weight: 700;
-		display: block;
-		margin-bottom: 8px;
-		letter-spacing: 0.04em;
-	}
-
-	.mpa-history-item {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		justify-content: space-between;
-		padding: 8px 12px;
-		margin-top: 6px;
-		border-radius: 8px;
-		background: #FAF7F2;
-		border: 1px solid #E8E2D8;
-		font-size: 12px;
-	}
-
-	.mpa-history-no {
-		color: #9C5B42;
-		font-weight: 700;
-	}
-
-	.mpa-history-time {
-		color: #6C665F;
-	}
-
-	.mpa-history-fields {
-		color: #23201E;
-		font-weight: 500;
-	}
-
-	.mpa-preview-tip {
-		margin-top: 14px;
-		padding: 10px 14px;
-		background: #FFF8EB;
-		border: 1px solid #F3E0B5;
-		border-radius: 10px;
-	}
-
-	.mpa-preview-tip-text {
-		font-size: 12px;
-		color: #A66B24;
-		line-height: 1.5;
-	}
-
-	.mpa-memory-entry {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: 14px;
-		margin-top: 18px;
-		padding: 16px 18px;
-		border: 1px solid #E8E2D8;
-		border-radius: 16px;
-		background: #FFFFFF;
-		box-shadow: 0 4px 16px rgba(156, 91, 66, 0.05);
-	}
-
-	.mpa-memory-entry-icon {
-		width: 36px;
-		height: 36px;
-		border-radius: 10px;
-		background-color: #FAF7F2;
-		border: 1px solid #E8E2D8;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-	}
-
-	.mpa-memory-entry-icon-text {
-		font-size: 15px;
-		font-weight: 700;
-		color: #9C5B42;
-	}
-
-	.mpa-memory-entry-copy {
-		display: flex;
-		flex: 1;
-		flex-direction: column;
-		gap: 4px;
-		min-width: 0;
-	}
-
-	.mpa-memory-entry-title {
-		font-size: 15px;
-		color: #23201E;
-		font-weight: 700;
-	}
-
-	.mpa-memory-entry-sub {
-		font-size: 12px;
-		color: #6C665F;
-		line-height: 1.5;
-	}
-
-	.mpa-memory-entry-arrow-box {
-		width: 28px;
-		height: 28px;
-		border-radius: 14px;
-		background-color: #FAF7F2;
-		border: 1px solid #E8E2D8;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-	}
-
-	.mpa-memory-entry-arrow {
-		font-size: 12px;
-		color: #9C5B42;
-	}
-
+.mpa-page { min-height: 100vh; background: var(--canvas); padding-bottom: 60px; color: var(--ink); }
+.mpa-nav { position: sticky; top: 0; z-index: 100; box-sizing: content-box; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 8px; background: var(--canvas); border-bottom: 1px solid var(--line); }
+.mpa-nav-side { min-width: 44px; height: 44px; display: flex; align-items: center; justify-content: flex-start; }
+.mpa-nav-back-text { font-size: 28px; color: var(--ink); padding: 0 8px; line-height: 1; }
+.mpa-nav-title { position: absolute; left: 0; right: 0; height: 44px; line-height: 44px; text-align: center; font-size: 17px; font-weight: 700; color: var(--ink); pointer-events: none; }
+.mpa-loading, .mpa-error, .mpa-consent-state { padding: 80px 24px 48px; display: flex; flex-direction: column; align-items: center; }
+.mpa-loading-dot { width: 14px; height: 14px; border-radius: 999px; background: var(--accent); margin-bottom: 16px; }
+.mpa-loading-text, .mpa-error-text, .mpa-consent-copy { font-size: 14px; color: var(--muted); text-align: center; line-height: 1.6; }
+.mpa-error-btn, .mpa-btn { min-height: 44px; height: 44px; padding: 0 18px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+.mpa-error-btn { margin-top: 20px; }
+.mpa-btn-text, .mpa-error-btn-text { color: var(--text-invert); font-size: 14px; font-weight: 700; }
+.mpa-body { padding: 16px 0 40px; }
+.mpa-consent-title { font-family: var(--serif); font-size: 22px; font-weight: 700; color: var(--ink); margin-bottom: 12px; }
+.mpa-consent-copy { max-width: 320px; margin-bottom: 24px; }
+.mpa-consent-state .mpa-btn { width: 100%; max-width: 320px; }
+.mpa-actions { display: flex; gap: 12px; padding: 16px; }
+.mpa-actions .mpa-btn { flex: 1; }
+.mpa-btn-ghost { background: var(--surface); border: 1px solid var(--line); }
+.mpa-btn-ghost-text { color: var(--ink); font-size: 14px; font-weight: 600; }
+.mpa-legacy-entry { min-height: 44px; margin: 4px 16px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.mpa-legacy-text { font-size: 13px; color: var(--muted); }
+.mpa-legacy-arrow { font-size: 22px; color: var(--accent); }
 </style>

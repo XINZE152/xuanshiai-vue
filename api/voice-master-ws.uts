@@ -13,6 +13,7 @@ import { request } from './request.uts'
 import { ProfileSubject } from './ai-profile.uts'
 import { debugLog } from '@/utils/debug-log.uts'
 import { MASTER_ROLE_NAME } from '@/utils/moxiang-badge.uts'
+import { adaptContinuousMoxiangState, ContinuousMoxiangState } from './ai-moxiang.uts'
 
 // 角色名唯一来源在 utils/moxiang-badge.uts，这里只透传，避免两处「知遇」各自漂移。
 export { MASTER_ROLE_NAME }
@@ -98,10 +99,15 @@ export function classifyMasterWSError(code: string): string {
 
 export interface MasterWSCallbacks {
 	onSessionReady?: (sessionId?: string, subject?: ProfileSubject, resumed?: boolean, newSession?: boolean) => void
+	onContinuousState?: (state: ContinuousMoxiangState) => void
 	onSubjectChanged?: (subject: ProfileSubject, sessionId?: string, resumed?: boolean, newSession?: boolean) => void
-	onPartialTranscript?: (text: string) => void
-	onFinalTranscript?: (text: string) => void
-	onAIThinking?: () => void
+onPartialTranscript?: (text: string) => void
+onFinalTranscript?: (text: string) => void
+onAIThinking?: () => void
+onTranscriptPreview?: (transcriptId: string, clientTurnId: string, sessionId: string, text: string, expiresIn: number) => void
+onTranscriptConfirmed?: (transcriptId: string, clientTurnId: string, sourceId: string, text: string) => void
+onTranscriptCancelled?: (transcriptId: string) => void
+onTranscriptExpired?: (transcriptId: string) => void
 	onAIContent?: (text: string) => void
 	onAIReply?: (text: string, isOpening?: boolean, generationId?: string) => void
 	onTTSAudio?: (audioUrl: string, durationMs: number) => void
@@ -148,6 +154,7 @@ export class MasterWS {
 	// 旅程参数:非空时 session_start 固定携带 moxiang_journey。
 	private journeySubject: ProfileSubject | null = null
 	private journeyConsentVersion = ''
+	private continuousFlow = false
 	// 实时语音 v2:connect 前调用 enableRealtimeV2() 后 session_start
 	// 携带 protocolVersion=2 与 pcmPlayback 能力声明;未协商成功自动回退 v1。
 	private protocolV2 = false
@@ -248,9 +255,7 @@ export class MasterWS {
 				this.reconnectAttempts++
 				debugLog('[MasterWS] reconnecting attempt', this.reconnectAttempts)
 				setTimeout(() => {
-					if (!this.manuallyClosed) {
-						this.connect()
-					}
+					if (!this.manuallyClosed) this.connect()
 				}, 1000 * this.reconnectAttempts)
 			} else {
 				this.callbacks.onClose?.()
@@ -275,6 +280,12 @@ startJourneyMode(subject: ProfileSubject, consentVersion: string) {
 	}
 }
 
+// 画像流程版本与实时语音 protocolVersion 是两个独立能力标识。
+startContinuousMode(consentVersion: string) {
+	this.continuousFlow = true
+	this.startJourneyMode('personal', consentVersion)
+}
+
 switchSubject(subject: ProfileSubject) {
 	if (!this.isSupportedSubject(subject)) {
 		this.reportInvalidSubject()
@@ -292,6 +303,7 @@ private sendSessionStart() {
 				mode: 'moxiang_journey',
 				subject: this.journeySubject,
 				consentVersion: this.journeyConsentVersion,
+				...(this.continuousFlow ? { flow_version: 'continuous_v2' } : {}),
 				protocolVersion: 2,
 				capabilities: { pcmPlayback: true }
 			})
@@ -300,7 +312,8 @@ private sendSessionStart() {
 				type: 'session_start',
 				mode: 'moxiang_journey',
 				subject: this.journeySubject,
-				consentVersion: this.journeyConsentVersion
+				consentVersion: this.journeyConsentVersion,
+				...(this.continuousFlow ? { flow_version: 'continuous_v2' } : {})
 			})
 		}
 	} else {
@@ -344,6 +357,13 @@ snoozeBuildInvite(subject: ProfileSubject, inviteId: string) {
 		if (msg == null || msg.type == null) return
 		const type = String(msg.type)
 		switch (type) {
+			case 'continuous_state':
+				try {
+					this.callbacks.onContinuousState?.(adaptContinuousMoxiangState(msg.state))
+				} catch (e) {
+					this.callbacks.onError?.('AI_TEMPORARILY_UNAVAILABLE', '画像状态未能同步，请重新加载')
+				}
+				break
 			case 'session_ready':
 				{
 					const sessionId = String(msg.session_id != null ? msg.session_id : '')
@@ -376,6 +396,29 @@ snoozeBuildInvite(subject: ProfileSubject, inviteId: string) {
 				break
 			case 'final_transcript':
 				this.callbacks.onFinalTranscript?.(String(msg.text != null ? msg.text : ''))
+				break
+			case 'transcript_preview':
+				this.callbacks.onTranscriptPreview?.(
+					String(msg.transcript_id != null ? msg.transcript_id : ''),
+					String(msg.client_turn_id != null ? msg.client_turn_id : ''),
+					String(msg.session_id != null ? msg.session_id : ''),
+					String(msg.text != null ? msg.text : ''),
+					Number(msg.expires_in != null ? msg.expires_in : 0),
+				)
+				break
+			case 'transcript_confirmed':
+				this.callbacks.onTranscriptConfirmed?.(
+					String(msg.transcript_id != null ? msg.transcript_id : ''),
+					String(msg.client_turn_id != null ? msg.client_turn_id : ''),
+					String(msg.source_id != null ? msg.source_id : ''),
+					String(msg.text != null ? msg.text : ''),
+				)
+				break
+			case 'transcript_cancelled':
+				this.callbacks.onTranscriptCancelled?.(String(msg.transcript_id != null ? msg.transcript_id : ''))
+				break
+			case 'transcript_expired':
+				this.callbacks.onTranscriptExpired?.(String(msg.transcript_id != null ? msg.transcript_id : ''))
 				break
 			case 'ai_thinking':
 				this.callbacks.onAIThinking?.()
@@ -652,6 +695,14 @@ snoozeBuildInvite(subject: ProfileSubject, inviteId: string) {
 	// 请求 TTS 播报最新回复
 	sendListen() {
 		this.send({ type: 'listen' })
+	}
+
+	confirmTranscript(transcriptId: string, clientTurnId: string, sessionId: string, text: string) {
+		this.send({ type: 'confirm_transcript', transcript_id: transcriptId, client_turn_id: clientTurnId, session_id: sessionId, text: text })
+	}
+
+	cancelTranscript(transcriptId: string, clientTurnId: string, sessionId: string) {
+		this.send({ type: 'cancel_transcript', transcript_id: transcriptId, client_turn_id: clientTurnId, session_id: sessionId })
 	}
 
 	// 编辑转写文本重新生成

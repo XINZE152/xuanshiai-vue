@@ -162,7 +162,7 @@
 			</scroll-view>
 
 			<view class="result-bottom-actions">
-			<button class="result-primary-button" @tap="openSearchEditor"><text>开始新的搜索</text></button>
+				<button class="result-primary-button" @tap="startNewSearch"><text>开始新的搜索</text></button>
 			</view>
 		</view>
 
@@ -250,6 +250,8 @@
 	const aiSuggestionGenerating = ref(false)
 	const aiSuggestionIdempotencyKey = ref('')
 	const aiTaskStage = ref('正在等待后端任务完成')
+	// confirm 已知成功后的任务/快照引用：成功响应丢失时用它重读结果，而不是重跑整链。
+	let aiConfirmTaskId = ''
 	const aiDraftStatusLabel = computed(() => aiDraftStatus.value == 'awaiting_confirmation' ? '待确认' : (aiDraftStatus.value == 'confirmed' ? '已确认' : (aiDraftStatus.value == 'failed' ? '解析失败' : '解析中')))
 	const resetAiDraftState = (preserveDraftKey: boolean = false) => {
 		aiDraft.value = null
@@ -265,6 +267,10 @@
 		aiPatchIdempotencyKey.value = ''
 		aiConfirmIdempotencyKey.value = ''
 		aiConfirming.value = false
+		// 草稿换人/换句后，上一轮的阶段成功标记与任务引用必须一起作废。
+		aiPatchPhaseSucceeded = false
+		aiConfirmSucceeded.value = false
+		aiConfirmTaskId = ''
 		aiSnapshotId.value = ''
 		aiConditions.value = []
 		aiUnknown.value = []
@@ -444,10 +450,17 @@
 
 	const goBack = () => uni.navigateBack({ delta: 1 })
 	const handleBack = () => { if (resultState.value != 'idle') openSearchEditor(); else goBack() }
+	// 作废当前解析任务：旧任务已被替换，busy 必须立刻恢复，否则新提交会被
+	// aiGenerating 永久拒绝（旧任务的 finally 因 runId 失配不会再清它）。
+	const invalidateAiRun = () => {
+		searchRunId += 1
+		aiGenerating.value = false
+		aiConfirming.value = false
+	}
 	const onAiInput = (event: any) => {
 		const next = toText(event.detail.value)
 		if (next == aiQuery.value) return
-		searchRunId += 1
+		invalidateAiRun()
 		resetAiDraftState()
 		aiQuery.value = next
 	}
@@ -459,7 +472,7 @@
 	}
 	const typeAiText = (value: string) => {
 		stopAiTyping()
-		searchRunId += 1
+		invalidateAiRun()
 		aiQuery.value = ''
 		resetAiDraftState()
 		let index = 0
@@ -546,6 +559,11 @@
 		if (runId == searchRunId && draftId == aiDraftId.value) aiDraftError.value = response.message != null ? String(response.message) : '条件版本已变化，请检查后重试'
 		return false
 	}
+	// 阶段化确认：PATCH 与 confirm 各自保存"已知成功"标记与请求快照。
+	// 已知 PATCH 成功后重试只重放 confirm；条件被修改后两阶段键同时作废，
+	// 否则会拿着旧 revision 的键去重放新内容，必然 409 死循环。
+	let aiPatchPhaseSucceeded = false
+	const aiConfirmSucceeded = ref(false)
 	const confirmAiSearch = async () => {
 		if (aiConfirming.value || aiDraftId.value == '') return
 		const runId = searchRunId
@@ -553,15 +571,27 @@
 		aiConfirming.value = true
 		aiDraftError.value = ''
 		try {
-			if (!await patchAiConditions(runId, draftId) || runId != searchRunId || draftId != aiDraftId.value) return
-			if (aiConfirmIdempotencyKey.value.length == 0) aiConfirmIdempotencyKey.value = 'search-confirm-' + String(Date.now()) + '-' + String(Math.floor(Math.random() * 1000000))
-			const accepted = await confirmSearchDraft(draftId, searchDraftRevision(aiDraft.value), aiConfirmIdempotencyKey.value)
+			if (!aiPatchPhaseSucceeded) {
+				if (!await patchAiConditions(runId, draftId) || runId != searchRunId || draftId != aiDraftId.value) return
+				aiPatchPhaseSucceeded = true
+			}
+			let accepted: any = null
+			if (aiConfirmSucceeded.value) {
+				// confirm 已知成功（例如成功响应丢失后重试）：直接复用上次快照，
+				// 不再重复执行同一次确认，避免重复创建任务。
+				accepted = { success: true, data: aiSnapshotId.value != '' ? { snapshot_id: aiSnapshotId.value, task_id: aiConfirmTaskId } : null }
+			} else {
+				if (aiConfirmIdempotencyKey.value.length == 0) aiConfirmIdempotencyKey.value = 'search-confirm-' + String(Date.now()) + '-' + String(Math.floor(Math.random() * 1000000))
+				accepted = await confirmSearchDraft(draftId, searchDraftRevision(aiDraft.value), aiConfirmIdempotencyKey.value)
+			}
 			if (runId != searchRunId || draftId != aiDraftId.value) return
-			if (!accepted.success || accepted.data == null) { aiDraftError.value = accepted.message != null ? String(accepted.message) : '条件确认失败，请检查条件后重试'; return }
+			if (accepted == null || !accepted.success || accepted.data == null) { aiDraftError.value = accepted != null && accepted.message != null ? String(accepted.message) : '条件确认失败，请检查条件后重试'; return }
 			const acceptedData = accepted.data
-			aiSnapshotId.value = acceptedData.snapshot_id != null ? String(acceptedData.snapshot_id) : ''
-			const taskId = acceptedData.task_id != null ? String(acceptedData.task_id) : ''
+			aiSnapshotId.value = acceptedData.snapshot_id != null ? String(acceptedData.snapshot_id) : aiSnapshotId.value
+			const taskId = acceptedData.task_id != null ? String(acceptedData.task_id) : aiConfirmTaskId
+			aiConfirmTaskId = taskId
 			if (aiSnapshotId.value == '' || taskId == '') { aiDraftError.value = '搜索服务未返回有效执行任务'; return }
+			aiConfirmSucceeded.value = true
 			resultState.value = 'loading'
 			aiTaskStage.value = '正在执行已确认的搜索条件'
 			const task = await waitForSearchTask(taskId, () => runId == searchRunId && draftId == aiDraftId.value)
@@ -570,24 +600,36 @@
 				resultState.value = 'error'
 				resultError.value = task.error != null ? String(task.error) : '搜索任务未完成'
 				if (task.done) {
-					// 任务明确失败：解除幂等键，用户主动重试时才产生新操作，不回放死任务。
+					// 任务明确失败：解除两阶段标记与幂等键，用户主动重试才产生新操作。
 					aiConfirmIdempotencyKey.value = ''
+					aiConfirmSucceeded.value = false
+					aiPatchPhaseSucceeded = false
 				}
 				return
 			}
-			aiTaskStage.value = '正在读取最终候选'
-			const results = await getSearchSnapshotResults(aiSnapshotId.value, '', 20)
-			if (runId != searchRunId || draftId != aiDraftId.value) return
-			if (!results.success || results.data == null) { resultState.value = 'error'; resultError.value = results.message != null ? String(results.message) : '候选结果读取失败'; return }
-			resultCandidates.value = searchResultItems(results)
-			nextCursor.value = searchNextCursor(results)
-			hasMore.value = nextCursor.value.length > 0
-			resultState.value = resultCandidates.value.length > 0 ? 'success' : 'empty'
+			await loadSnapshotResults(runId, draftId)
 		} catch (error) {
 			if (runId == searchRunId && draftId == aiDraftId.value) { resultState.value = 'error'; resultError.value = '网络异常，搜索未完成' }
 		} finally {
 			if (runId == searchRunId && draftId == aiDraftId.value) aiConfirming.value = false
 		}
+	}
+	// 结果读取单独成段：读结果失败只重读既有快照，不重跑 create/patch/confirm 整链。
+	const loadSnapshotResults = async (runId: number, draftId: string): Promise<boolean> => {
+		if (aiSnapshotId.value == '') return false
+		aiTaskStage.value = '正在读取最终候选'
+		const results = await getSearchSnapshotResults(aiSnapshotId.value, '', 20)
+		if (runId != searchRunId || draftId != aiDraftId.value) return false
+		if (results == null || !results.success || results.data == null) {
+			resultState.value = 'error'
+			resultError.value = results != null && results.message != null ? String(results.message) : '候选结果读取失败'
+			return false
+		}
+		resultCandidates.value = searchResultItems(results)
+		nextCursor.value = searchNextCursor(results)
+		hasMore.value = nextCursor.value.length > 0
+		resultState.value = resultCandidates.value.length > 0 ? 'success' : 'empty'
+		return true
 	}
 	const onHometownChange = (event: any) => { hometownIndex.value = Number(event.detail.value) }
 	const onResidenceChange = (event: any) => { residenceIndex.value = Number(event.detail.value) }
@@ -959,13 +1001,33 @@
 	}
 	const retrySearch = () => {
 		if (activeTab.value == 0) {
-			if (aiDraftId.value != '' && aiSnapshotId.value == '') confirmAiSearch()
+			// 已经有快照时，失败原因只可能是"读结果"这一步：只重读既有快照，
+			// 不重跑 create/patch/confirm 整链（否则会重复执行同一次搜索）。
+			if (aiSnapshotId.value != '') {
+				resultState.value = 'loading'
+				loadSnapshotResults(searchRunId, aiDraftId.value)
+				return
+			}
+			if (aiDraftId.value != '') confirmAiSearch()
 			else submitAiSearch()
 			return
 		}
 		beginSearch()
 	}
-	const openSearchEditor = () => { searchRunId += 1; resultState.value = 'idle'; searchProgress.value = 0; resetAiDraftState() }
+	// 调整条件：保留当前条件草稿上下文（草稿、条件、修改），只回到编辑态。
+	const openSearchEditor = () => {
+		invalidateAiRun()
+		resultState.value = 'idle'
+		searchProgress.value = 0
+		// 不调用 resetAiDraftState：用户改过的条件必须留在这里可继续编辑。
+	}
+	// 开始新的搜索：这才需要清掉上一轮草稿与快照上下文。
+	const startNewSearch = () => {
+		invalidateAiRun()
+		resultState.value = 'idle'
+		searchProgress.value = 0
+		resetAiDraftState()
+	}
 	const goToResultProfile = (item: any) => {
 		const profile = resultProfile(item)
 		const userId = Number(profile.id != null ? profile.id : (item != null && item.user_id != null ? item.user_id : (item != null ? item.id : 0)))

@@ -41,7 +41,7 @@ function mapCard(row: any): any {
     occupation: card.occupation != null ? '' + card.occupation : (card.job != null ? '' + card.job : ''),
     city: card.city_code != null ? '' + card.city_code : (card.city != null ? '' + card.city : '未填写'),
     cityCode: card.city_code != null ? '' + card.city_code : '',
-    distance: card.distance_km != null ? Number(card.distance_km) : 0,
+    distance: card.distance_km != null ? Number(card.distance_km) : null,
     online: card.online_status != null ? card.online_status == 1 : (card.online === true || onlineText.indexOf('在线') >= 0),
     mbti: card.mbti != null ? '' + card.mbti : '',
     interestTags: tags,

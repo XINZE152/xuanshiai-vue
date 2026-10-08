@@ -71,6 +71,8 @@ function makeTtsSandbox(options) {
       return { success: true, audioUrl: 'audio/tts-1.webp', error: '' }
     },
     masterPageAlive: true,
+    masterPageVisible: true,
+    connectionSeq: 1,
     lastTTSUrl: { value: scenario.lastUrl != null ? scenario.lastUrl : '' },
     masterState: { value: 'idle' },
     audioContext: null,
