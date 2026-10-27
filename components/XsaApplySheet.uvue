@@ -114,6 +114,16 @@
 				uni.showToast({ title: toastTitle, icon: data.quotaRefreshFailed == true ? 'none' : 'success' })
 				emit('success', data)
 				emit('close')
+				// 对方未实名：申请照常送达，但其必须实名后才能点「同意 / 拒绝」。
+				// 后端 create_application 回包带 target_realname_required。
+				if (data.target_realname_required == true || data.targetRealnameRequired == true) {
+					uni.showModal({
+						title: '申请已发送',
+						content: '对方完成实名认证后才能处理你的申请，可先等待对方认证。',
+						showCancel: false,
+						confirmText: '知道了'
+					})
+				}
 			} else {
 				const msg =
 					data != null && data.message != null

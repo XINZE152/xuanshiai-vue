@@ -75,6 +75,19 @@
 						</view>
 					</view>
 
+					<view v-if="user.detailInfo.length > 0" class="vip-section-card">
+						<text class="vip-section-title">详细资料</text>
+						<view class="detail-info-grid">
+							<view v-for="item in visibleDetailInfo" :key="item.label" class="detail-info-cell">
+								<text class="detail-info-label">{{ item.label }}</text>
+								<text class="detail-info-value">{{ item.value }}</text>
+							</view>
+						</view>
+						<view v-if="user.detailInfo.length > DETAIL_COLLAPSED_COUNT" class="detail-info-toggle" @tap="detailExpanded = !detailExpanded">
+							<text class="detail-info-toggle-text">{{ detailExpanded ? '收起' : '展开全部 ' + user.detailInfo.length + ' 项' }}</text>
+						</view>
+					</view>
+
 					<view v-if="certs.length > 0" class="vip-section-card">
 						<text class="vip-section-title">认证信息</text>
 						<view v-for="cert in certs" :key="cert.label" class="cert-item"><view class="cert-icon-wrap"><text class="cert-icon">{{ cert.icon }}</text></view><view class="cert-copy"><text class="cert-label">{{ cert.label }}</text><text class="cert-desc">{{ cert.desc }}</text></view><text class="cert-check">✓</text></view>
@@ -90,6 +103,27 @@
 						<view v-for="(item, index) in user.expect" :key="index" class="qa-card"><text class="qa-answer">{{ item }}</text></view>
 					</view>
 
+					<view v-if="idealPartner != null" class="vip-section-card">
+						<text class="vip-section-title">Ta 的理想型</text>
+						<view v-if="idealPartner.ageText != ''" class="ideal-row">
+							<text class="ideal-label">年龄</text>
+							<text class="ideal-value">{{ idealPartner.ageText }}</text>
+						</view>
+						<view v-if="idealPartner.heightText != ''" class="ideal-row">
+							<text class="ideal-label">身高</text>
+							<text class="ideal-value">{{ idealPartner.heightText }}</text>
+						</view>
+						<view v-if="idealPartner.rows.length > 0" class="ideal-grid">
+							<view v-for="item in idealPartner.rows" :key="item.label" class="ideal-cell">
+								<text class="ideal-label">{{ item.label }}</text>
+								<text class="ideal-value">{{ item.value }}</text>
+							</view>
+						</view>
+						<view v-if="idealPartner.extras.length > 0" class="tag-row ideal-tags">
+							<view v-for="tag in idealPartner.extras" :key="tag" class="profile-tag"><text class="profile-tag-text">{{ tag }}</text></view>
+						</view>
+					</view>
+
 					<view v-if="user.qaAnswers.length > 0" id="anchor-qa" class="vip-section-card">
 						<text class="vip-section-title">Ta的问答</text>
 						<view v-for="(item, index) in user.qaAnswers" :key="index" class="qa-card">
@@ -99,8 +133,13 @@
 					</view>
 
 					<view v-if="dynamics.length > 0" id="anchor-dynamics" class="vip-section-card">
-						<view class="section-heading-row"><text class="vip-section-title">Ta的动态</text><text class="section-more">查看全部 ›</text></view>
-						<view v-for="item in dynamics" :key="item.id" class="dynamic-card"><view class="dynamic-user-row"><image class="dynamic-avatar" :src="user.avatar" mode="aspectFill"></image><view class="dynamic-user-copy"><text class="dynamic-name">{{ user.name }}</text><text class="dynamic-time">{{ item.time }}</text></view></view><text class="dynamic-content">{{ item.content }}</text><image v-if="item.photo != ''" class="dynamic-photo" :src="item.photo" mode="aspectFill"></image><view class="dynamic-footer"><text class="dynamic-topic">{{ item.topic }}</text><text class="dynamic-count">♡ {{ item.likes }}　◌ {{ item.comments }}</text></view></view>
+						<view class="section-heading-row">
+							<text class="vip-section-title">Ta的动态</text>
+							<!-- 原「查看全部 ›」是死链（没有 @tap）。独立动态页依赖后端 mode=user 接口 + pages.json 注册，
+							     本期先用本地展开兜住：默认 3 条，点开可看全部，不再是假按钮。 -->
+							<text v-if="dynamics.length > DYNAMICS_PREVIEW_COUNT" class="section-more" @tap="dynamicsExpanded = !dynamicsExpanded">{{ dynamicsExpanded ? '收起' : '查看全部 ' + dynamics.length + ' 条 ›' }}</text>
+						</view>
+						<view v-for="item in visibleDynamics" :key="item.id" class="dynamic-card"><view class="dynamic-user-row"><image class="dynamic-avatar" :src="user.avatar" mode="aspectFill"></image><view class="dynamic-user-copy"><text class="dynamic-name">{{ user.name }}</text><text class="dynamic-time">{{ item.time }}</text></view></view><text class="dynamic-content">{{ item.content }}</text><image v-if="item.photo != ''" class="dynamic-photo" :src="item.photo" mode="aspectFill"></image><view class="dynamic-footer"><text class="dynamic-topic">{{ item.topic }}</text><text class="dynamic-count">♡ {{ item.likes }}　◌ {{ item.comments }}</text></view></view>
 					</view>
 
 					<!-- 爆灯：名片下方。免费额度制，不涉及支付；理由仅本地展示。
@@ -287,7 +326,8 @@ import XsaAiMatchSheet from '@/components/XsaAiMatchSheet.uvue'
 import XsaAiCatBubble from '@/components/XsaAiCatBubble.uvue'
 import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
 import XsaZhiyuHub from '@/components/XsaZhiyuHub.uvue'
-import { getUserDetail, likeUser, getOwnProfile, getMyPosts, getMembershipStatus, getUserVisitorCount, saveAiAvatarProfileSnapshot, getDynamicList, getPortraitNarrative } from '@/api'
+import { getUserDetail, likeUser, getOwnProfile, getMyPosts, getMembershipStatus, getUserVisitorCount, saveAiAvatarProfileSnapshot, getDynamicList, getPortraitNarrative, getUserPartnerPreference } from '@/api'
+import { normalizeIdealPartner } from '@/api/preference.uts'
 import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
 import locationJson from '@/data/location.json'
 import { sendSuperlike } from '@/api/spotlight.uts'
@@ -321,16 +361,25 @@ const spotlightSending = ref(false)
 const spotlightDone = ref(false)
 const spotlightError = ref('')
 const visitorCount = ref<number | null>(null)
-
 const user = ref({
 	id: 0,
 	detailLocked: false,
 	name: '', age: '', avatar: '', isVIP: false, job: '', edu: '', city: '',
 	online: '', distance: '', recentActivity: '', match: 0, matchAvailable: false, mbti: '', tags: [], bio: '',
-	cover: '', photos: [], lifePhotos: [], expect: [], basicInfo: [], qaAnswers: [] as any[],
+	cover: '', photos: [], lifePhotos: [], expect: [], basicInfo: [], detailInfo: [] as any[], qaAnswers: [] as any[],
 	moxiangPersonaTitle: '',
 	moxiangPersonaTags: [] as string[],
 	moxiangAttachmentStyle: ''
+})
+
+// 详细资料 12 行全展开会把「Ta 的瞬间 / 动态 / 爆灯」推到两屏外，默认只露 6 行。
+const DETAIL_COLLAPSED_COUNT = 6
+const detailExpanded = ref(false)
+// Ta 的理想型：接口未上线或对方没填 → 保持 null，整块不渲染
+const idealPartner = ref<any>(null)
+const visibleDetailInfo = computed((): any[] => {
+	const all = user.value.detailInfo
+	return detailExpanded.value ? all : all.slice(0, DETAIL_COLLAPSED_COUNT)
 })
 
 // 认证标签 → 展示项。只翻译后端真实下发的标签，不凭空补"房产认证"之类的结论。
@@ -364,6 +413,14 @@ const buildCertsFromTags = (tags: any): any[] => {
 const certs = ref([] as any[])
 
 const dynamics = ref([] as any[])
+
+// 动态：默认只露 3 条，点「查看全部」就地展开（独立页等后端 mode=user 接口）
+const DYNAMICS_PREVIEW_COUNT = 3
+const dynamicsExpanded = ref(false)
+const visibleDynamics = computed((): any[] => {
+	const all = dynamics.value
+	return dynamicsExpanded.value ? all : all.slice(0, DYNAMICS_PREVIEW_COUNT)
+})
 
 const textValue = (value: any, fallback: string): string => {
 	return value != null && value != '' ? '' + value : fallback
@@ -423,6 +480,16 @@ const constellationFromBirthday = (birthday: any): string => {
 	return signs[(day < cutoffs[month - 1] ? month - 1 : month) % 12]
 }
 
+// 属相兜底：老数据没有 zodiac 列值时按生日年份推导。1900 年为庚子鼠年。
+const ZODIAC_ANIMALS: string[] = ['鼠', '牛', '虎', '兔', '龙', '蛇', '马', '羊', '猴', '鸡', '狗', '猪']
+const zodiacFromBirthday = (birthday: any): string => {
+	const value = textValue(birthday, '')
+	if (value.length < 4) return ''
+	const year = Number(value.substring(0, 4))
+	if (isNaN(year) || year < 1900 || year > 2100) return ''
+	return ZODIAC_ANIMALS[(year - 1900) % 12] + '年'
+}
+
 const locationTextByCityCode = (rawCode: any): string => {
 	const cityCode = textValue(rawCode, '')
 	if (cityCode == '') return ''
@@ -448,7 +515,7 @@ const formatIncome = (raw: any): string => incomeDisplayText(raw)
 user.value = {
 	id: 0, name: '', detailLocked: false, age: '', avatar: '', isVIP: false, job: '', edu: '', city: '',
 	online: '', distance: '', recentActivity: '', match: 0, matchAvailable: false, tags: [], bio: '',
-	cover: '', photos: [], lifePhotos: [], expect: [], basicInfo: [], qaAnswers: [] as any[],
+	cover: '', photos: [], lifePhotos: [], expect: [], basicInfo: [], detailInfo: [] as any[], qaAnswers: [] as any[],
 	moxiangPersonaTitle: '',
 	moxiangPersonaTags: [] as string[],
 	moxiangAttachmentStyle: ''
@@ -471,7 +538,11 @@ const mapDetailUser = (raw: any, id: number) => {
 	const missing = '未填写'
 	const age = value(card.age, profile.age, missing)
 	const educationLabel = (level: any): string => {
-		const labels = ['', '博士', '硕士', '本科', '大专', '高中', '中专', '初中', '小学']
+		// 与 edit.uvue 的 educationOptions 及后端 discovery.py 的 filter-options CASE 同口径：
+		// 1=高中及以下、2=大专、3=本科、4=硕士、5=博士。
+		// 后端 schemas/auth.py 的 education_level 放行到 8，6-8 属未启用档位，
+		// 按「博士」兜底 —— 宁可重复，也不能像旧版那样反序（旧版 1 被显示成「博士」）。
+		const labels = ['', '高中及以下', '大专', '本科', '硕士', '博士', '博士', '博士', '博士']
 		if (level == null || level === '') return ''
 		const text = '' + level
 		const index = Number(text)
@@ -494,11 +565,13 @@ const mapDetailUser = (raw: any, id: number) => {
 	const marriageStatus = card.is_married != null ? card.is_married : profile.is_married
 	const marriage = value(card.marriage, marriageStatus == 1 ? '未婚' : marriageStatus == 2 ? '离异' : marriageStatus == 3 ? '丧偶' : null, '未填写')
 	const mbti = value(card.mbti, profile.mbti, '未填写')
-	const activeStatus = value(card.activeStatus, card.active_status, '未填写')
 	const avatar = resolveMediaUrl(value(card.avatar, profile.avatar, value(envelope.avatar, account.avatar, '')))
 	const background = resolveMediaUrl(value(card.background_wall, profile.background_wall, value(envelope.background_wall, '', '')))
 	const nickname = value(card.nickname, profile.nickname, value(envelope.nickname, account.nickname, ''))
 	const detailLocked = card.detail_locked === true || envelope.detail_locked === true
+	// 红心初始态：读卡片上的 is_liked（user_favorite.type=1）；is_favorite 是 type=2 的旧收藏，不能用。
+	const likedFlag = card.is_liked != null ? card.is_liked : envelope.is_liked
+	if (likedFlag != null) isLikedUser.value = likedFlag == true
 	if (envelope.is_vip_viewer != null) viewerIsVip.value = envelope.is_vip_viewer === true
 	const rawPhotos = card.photos != null ? card.photos : profile.photos
 	const photos = Array.isArray(rawPhotos)
@@ -524,11 +597,39 @@ const mapDetailUser = (raw: any, id: number) => {
 		const question = String(item.question ?? '').trim()
 		qaAnswers.push({ question: question != '' ? question : '关于我', answer: answer })
 	}
+	// 基础资料固定 3 行 × 3 列 = 9 格（2026-10-27 定版）：
+	// 婚姻、MBTI 与新增的 10 项一起归入「详细资料」，避免两块重复展示同一字段。
 	const mappedInfo = [
 		[{ label: '年龄', value: age == missing ? missing : age + '岁' }, { label: '身高', value: height }, { label: '体重', value: weight }],
 		[{ label: '星座', value: constellation }, { label: '学历', value: edu }, { label: '职业', value: job }],
-		[{ label: '现居', value: city }, { label: '家乡', value: hometown }, { label: '收入', value: income }],
-		[{ label: '婚姻', value: marriage }, { label: 'MBTI', value: mbti }, { label: '状态', value: activeStatus }]
+		[{ label: '现居', value: city }, { label: '家乡', value: hometown }, { label: '收入', value: income }]
+	]
+	// 详细资料 12 项：取值优先 card，再 profile，都没有显示「未填写」。
+	// 12 项都不计入资料完整度，所以这里缺值不影响任何门槛。
+	const pickDetail = (keys: string[]): string => {
+		const fromCard = firstField(card, keys)
+		if (fromCard != null) return ('' + fromCard).trim()
+		const fromProfile = firstField(profile, keys)
+		return fromProfile != null ? ('' + fromProfile).trim() : ''
+	}
+	const detailValue = (keys: string[]): string => {
+		const text = pickDetail(keys)
+		return text == '' ? missing : text
+	}
+	const householdText = pickDetail(['household_display', 'household'])
+	const detailInfo = [
+		{ label: '婚姻状况', value: marriage },
+		{ label: 'MBTI', value: mbti },
+		{ label: '属相', value: pickDetail(['zodiac']) != '' ? pickDetail(['zodiac']) : (zodiacFromBirthday(birthday) != '' ? zodiacFromBirthday(birthday) : missing) },
+		{ label: '户口', value: householdText != '' ? householdText : missing },
+		{ label: '购房', value: detailValue(['house']) },
+		{ label: '购车', value: detailValue(['car']) },
+		{ label: '毕业学校', value: detailValue(['school']) },
+		{ label: '工作单位', value: detailValue(['company']) },
+		{ label: '民族', value: detailValue(['ethnicity']) },
+		{ label: '吸烟', value: detailValue(['smoking']) },
+		{ label: '喝酒', value: detailValue(['drinking']) },
+		{ label: '宗教', value: detailValue(['religion']) }
 	]
 	const moxiangTitleRaw = firstField(card, ['moxiang_persona_title', 'persona_title']) || firstField(profile, ['moxiang_persona_title', 'persona_title']) || firstField(envelope, ['moxiang_persona_title', 'persona_title'])
 	const moxiangPersonaTitle = moxiangTitleRaw != null ? String(moxiangTitleRaw).trim() : ''
@@ -573,6 +674,7 @@ const mapDetailUser = (raw: any, id: number) => {
 		expect: expectations,
 		qaAnswers: qaAnswers,
 		basicInfo: mappedInfo,
+		detailInfo: detailInfo,
 		moxiangPersonaTitle,
 		moxiangPersonaTags,
 		moxiangAttachmentStyle
@@ -621,6 +723,24 @@ const load = async () => {
 				if (visitorRes != null && visitorRes.success === true && visitorRes.data != null) {
 					const count = Number((visitorRes.data as any).visitor_count)
 					if (!isNaN(count) && count >= 0) visitorCount.value = count
+				}
+			}
+			// Ta 的理想型：详情响应已内嵌 preference（后端 view_profile 同门禁归一），优先用它，省一次请求。
+			// 拿不到（旧后端）再回退到单独接口；两者都失败则静默隐藏，不影响主资料加载。
+			if (!isOwnProfile.value && !isPreview.value && !fromMatchmaker.value && user.value.id > 0) {
+				const envelope: any = res.data != null ? res.data : {}
+				const embedded: any = envelope.preference != null ? envelope.preference : null
+				if (embedded != null && embedded.has_data !== false) {
+					const summary = normalizeIdealPartner(embedded)
+					idealPartner.value = summary.hasData ? summary : null
+				} else if (embedded == null) {
+					try {
+						const prefRes = await getUserPartnerPreference(user.value.id)
+						const prefData: any = prefRes != null && prefRes.success ? prefRes.data : null
+						idealPartner.value = prefData != null && prefData.hasData == true ? prefData : null
+					} catch (e) {
+						idealPartner.value = null
+					}
 				}
 			}
 			if (isOwnProfile.value) {
@@ -988,7 +1108,7 @@ const onLike = async () => {
 		if (res.success && res.data != null) {
 			const liked = res.data.liked == true
 			isLikedUser.value = liked
-			uni.showToast({ title: liked ? '已收藏，仅你自己可见' : '已取消收藏', icon: 'none' })
+			uni.showToast({ title: liked ? '已喜欢，仅你自己可见' : '已取消喜欢', icon: 'none' })
 		} else {
 			uni.showToast({ title: '操作失败，请重试', icon: 'none' })
 		}
@@ -1075,6 +1195,20 @@ const onLike = async () => {
 .basic-info-cell { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6rpx; padding: 18rpx 8rpx; border-radius: 12rpx; background-color: var(--canvas); }
 .basic-info-label { color: var(--muted); font-size: 20rpx; }
 .basic-info-value { color: var(--ink); font-size: 24rpx; font-weight: 600; }
+/* 详细资料：左右对齐的清单行，与基础资料的「田字格」区分开，避免 12 个格子变成表格 */
+.detail-info-grid { display: flex; flex-direction: row; flex-wrap: wrap; }
+.detail-info-cell { width: 50%; box-sizing: border-box; padding: 14rpx 0; display: flex; flex-direction: row; align-items: flex-start; justify-content: space-between; gap: 12rpx; border-bottom: 1rpx solid var(--line); }
+.detail-info-label { flex-shrink: 0; color: var(--muted); font-size: 22rpx; line-height: 1.5; }
+.detail-info-value { flex: 1; text-align: right; color: var(--ink); font-size: 23rpx; font-weight: 500; line-height: 1.5; overflow-wrap: break-word; }
+.detail-info-toggle { display: flex; flex-direction: row; align-items: center; justify-content: center; padding-top: 18rpx; }
+.detail-info-toggle-text { color: var(--accent2); font-size: 22rpx; }
+/* Ta 的理想型：数值区间通栏、枚举两列、期待走标签流 */
+.ideal-row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 14rpx 0; border-bottom: 1rpx solid var(--line); }
+.ideal-grid { display: flex; flex-direction: row; flex-wrap: wrap; }
+.ideal-cell { width: 50%; box-sizing: border-box; padding: 14rpx 0; display: flex; flex-direction: row; align-items: flex-start; justify-content: space-between; gap: 12rpx; border-bottom: 1rpx solid var(--line); }
+.ideal-label { flex-shrink: 0; color: var(--muted); font-size: 22rpx; line-height: 1.5; }
+.ideal-value { flex: 1; text-align: right; color: var(--ink); font-size: 23rpx; font-weight: 500; line-height: 1.5; overflow-wrap: break-word; }
+.ideal-tags { margin-top: 16rpx; }
 .moment-hero { width: 100%; height: 380rpx; border-radius: 16rpx; background-color: var(--warm); }
 .qa-card { display: flex; flex-direction: column; gap: 12rpx; padding: 24rpx; border-radius: 16rpx; background-color: var(--canvas); }
 .qa-question { color: var(--accent2); font-size: 24rpx; font-weight: 700; }

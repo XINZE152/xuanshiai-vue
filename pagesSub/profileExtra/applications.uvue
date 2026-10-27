@@ -33,6 +33,7 @@
 
 <script setup lang="uts">
 import { getApplicationPage, acceptDiscoveryApplication, rejectDiscoveryApplication, getCommunityQuotas, getChatSessionId } from '@/api'
+import { guardRealName } from '@/utils/realNameGate.uts'
 
 const applications = ref<any[]>([])
 const receivedApplications = ref<any[]>([])
@@ -202,12 +203,32 @@ const askStartChat = (item: any) => {
 	})
 }
 
+// 回应申请与发起认识同等门槛：未实名先引导认证。
+// 后端 respond_application 也有一道同样的闸（403 REALNAME_REQUIRED），前端先拦可少一次请求，
+// 也保证「点同意/拒绝」这一步能立刻看到认证引导，而不是先吃一个失败 toast。
+const ensureCanRespond = async (): Promise<boolean> => {
+	return await guardRealName('acceptApply')
+}
+
+// 后端第二道闸的兜底：403 且命中实名语义时，复用同一个认证引导弹窗，不再叠一条 toast。
+// 若用户其实已实名（说明是别的 403），guardRealName 会返回 true，这时才把原文提示出来，
+// 否则用户会觉得「点了没反应」。
+const handleRespondForbidden = async (res: any): Promise<boolean> => {
+	const bizCode: string = (res as any).businessCode != null ? '' + (res as any).businessCode : ''
+	const message: string = res != null && res.message != null ? '' + res.message : ''
+	if (bizCode != 'REALNAME_REQUIRED' && message.indexOf('实名') < 0) return false
+	const ok = await guardRealName('acceptApply')
+	if (ok) uni.showToast({ title: message != '' ? message : '操作失败，请重试', icon: 'none' })
+	return true
+}
+
 const rejectApplication = async (item: any) => {
 	if (actionId.value != 0) return
 	const applicationId = Number(item != null ? item.applicationId : 0)
 	if (applicationId <= 0) return
 	actionId.value = applicationId
 	try {
+		if (!(await ensureCanRespond())) return
 		const res = await rejectDiscoveryApplication(applicationId)
 		if (res.success) {
 			item.statusCode = 'rejected'
@@ -215,6 +236,7 @@ const rejectApplication = async (item: any) => {
 			item.statusClass = 'rejected'
 			uni.showToast({ title: '已拒绝', icon: 'none' })
 		} else {
+			if (await handleRespondForbidden(res)) return
 			if (Number(res.code) == 409) await loadApplications()
 			uni.showToast({ title: res.message != null ? '' + res.message : '拒绝失败，请重试', icon: 'none' })
 		}
@@ -231,8 +253,10 @@ const agreeApplication = async (item: any) => {
 	if (applicationId <= 0) return
 	actionId.value = applicationId
 	try {
+		if (!(await ensureCanRespond())) return
 		const res = await acceptDiscoveryApplication(applicationId)
 		if (!res.success) {
+			if (await handleRespondForbidden(res)) return
 			if (Number(res.code) == 409) await loadApplications()
 			uni.showToast({ title: res.message != null ? '' + res.message : '同意失败，请重试', icon: 'none' })
 			return
