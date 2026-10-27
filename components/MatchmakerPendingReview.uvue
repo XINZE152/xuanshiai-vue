@@ -119,8 +119,8 @@
         <view class="more-item" @tap="openIntroductions(menuMember)"><text>牵线({{ menuMember.introCount || 0 }})</text></view>
         <view class="more-item" @tap="openMatch(menuMember)"><text>匹配</text></view>
         <view class="more-item" @tap="openNote(menuMember)"><text>红娘说</text></view>
-        <view class="more-item" @tap="openAssign(menuMember)"><text>修改红娘</text></view>
-        <view class="more-item last" @tap="onAbandonEntry(menuMember)"><text>{{ menuMember.review_status == 'REJECTED' ? '已驳回' : '驳回资料' }}</text></view>
+        <view class="more-item" :class="{ last: !canReview }" @tap="openAssign(menuMember)"><text>修改红娘</text></view>
+        <view v-if="canReview" class="more-item last" @tap="onAbandonEntry(menuMember)"><text>{{ menuMember.review_status == 'REJECTED' ? '已驳回' : '驳回资料' }}</text></view>
       </view>
     </view>
 
@@ -141,10 +141,10 @@
           <view class="intro-ava"><text>{{ avatarText(row.counterpart_nickname) }}</text></view>
           <view class="intro-copy">
             <text class="intro-name">{{ row.counterpart_nickname }}</text>
-            <text class="intro-sub">编号：G{{ row.counterpart_user_id }} · {{ row.direction == 'OUTGOING' ? '会员主动申请' : '对方申请会员' }}</text>
+            <text class="intro-sub">编号：G{{ row.counterpart_user_id }} · {{ row.direction == 'OUTGOING' ? '把本会员介绍给 TA' : '把 TA 介绍给本会员' }}</text>
           </view>
           <view class="intro-right">
-            <text class="intro-status" :class="'ms-' + row.status">{{ matchStatusLabel(row.status) }}</text>
+            <text class="intro-status" :class="'ms-' + introStatusTone(row.status)">{{ introStatusLabel(row.status) }}</text>
             <text class="intro-time">{{ formatTime(row.created_at) }}</text>
           </view>
         </view>
@@ -310,6 +310,36 @@
       </view>
     </view>
 
+    <!-- 复制资料弹窗（样板：授权卡结构——图标块 + 居中标题/说明 + 分隔线 + 左右双胶囊）。
+         先把要复制的文本列出来，「修改」只改这段文本，不回写会员在库中的资料。 -->
+    <view v-if="copyVisible" class="cpd-mask" @tap="closeCopyProfile">
+      <view class="cpd-card" @tap.stop>
+        <view class="cpd-icon"><text class="cpd-icon-glyph">◈</text></view>
+        <text class="cpd-title">复制会员资料</text>
+        <text class="cpd-subtitle">确认下方文本后再复制，可先修改。</text>
+
+        <view v-if="copyLoading" class="cpd-body">
+          <view class="cpd-state"><text>正在加载资料…</text></view>
+        </view>
+        <view v-else-if="copyEditing" class="cpd-body cpd-editor">
+          <textarea class="cpd-textarea" maxlength="2000" :value="copyText" @input="onCopyText" />
+          <text class="cpd-note">这里的修改只影响要复制的文本，不会改动该会员的资料。</text>
+        </view>
+        <scroll-view v-else scroll-y class="cpd-body" :show-scrollbar="false">
+          <view class="cpd-lines">
+            <text v-if="copyError != ''" class="cpd-error">{{ copyError }}</text>
+            <view v-if="copyError != ''" class="cpd-retry" @tap="retryCopyLoad"><text>重新加载</text></view>
+            <text v-for="(line, index) in copyLines" :key="index" class="cpd-line">{{ line }}</text>
+          </view>
+        </scroll-view>
+
+        <view class="cpd-footer">
+          <view class="cpd-btn" @tap="toggleCopyEdit"><text>{{ copyEditing ? '预览' : '修改' }}</text></view>
+          <view class="cpd-btn primary" :class="{ disabled: copyLoading }" @tap="confirmCopyProfile"><text>{{ copyCopied ? '已复制 ✓' : '一键复制' }}</text></view>
+        </view>
+      </view>
+    </view>
+
     <!-- 查看联系方式弹窗由父页面（become-matchmaker）统一渲染，这里只上抛会员，避免重复实现弹层。 -->
   </view>
 </template>
@@ -324,6 +354,7 @@ import {
   getMatchmakerMemberMatchHistory,
   getMatchmakerMemberMatchmakers,
   getMatchmakerMemberNote,
+  getMatchmakerMemberProfile,
   getMatchmakerReviewMembers,
   getMatchmakerWorkspaceProfile,
   getDiscoveryPlaza,
@@ -354,6 +385,8 @@ const errorMessage = ref('')
 const members = ref<any[]>([])
 const rawMembers = ref<any[]>([])
 const selfUserId = ref(0)
+// 公开资料审核只对总店（SUPER）红娘开放，后端同口径返回 403。
+const canReview = ref(false)
 
 const filterVisible = ref(false)
 const expandedFilterKey = ref('')
@@ -371,7 +404,7 @@ const filterRows = [
   { key: 'education', label: '学历', options: [{ label: '不限', value: '' }, { label: '高中及以下', value: 'highschool' }, { label: '大专', value: 'college' }, { label: '本科', value: 'bachelor' }, { label: '硕士及以上', value: 'master' }] },
   { key: 'occupation', label: '职业', options: [{ label: '不限', value: '' }, { label: '事业单位/国企', value: '事业单位' }, { label: '教师/医生', value: '教师' }, { label: 'IT/互联网', value: '互联网' }, { label: '金融/法律', value: '金融' }, { label: '自由职业', value: '自由职业' }, { label: '其他', value: '其他' }] },
   { key: 'income', label: '收入', options: [{ label: '不限', value: '' }, { label: '10万以下', value: '10万以下' }, { label: '10-20万', value: '10-20万' }, { label: '20-30万', value: '20-30万' }, { label: '30万以上', value: '30万以上' }] },
-  { key: 'marital', label: '婚况', options: [{ label: '不限', value: '' }, { label: '未婚', value: '0' }, { label: '已婚', value: '1' }, { label: '离异', value: '2' }, { label: '丧偶', value: '3' }] },
+  { key: 'marital', label: '婚况', options: [{ label: '不限', value: '' }, { label: '未婚', value: '1' }, { label: '离异', value: '2' }, { label: '丧偶', value: '3' }] },
   { key: 'housing', label: '购房', options: [{ label: '不限', value: '' }, { label: '已购房', value: '已购房' }, { label: '未购房', value: '未购房' }, { label: '购房中', value: '购房中' }] },
   { key: 'vehicle', label: '购车', options: [{ label: '不限', value: '' }, { label: '已购车', value: '已购车' }, { label: '未购车', value: '未购车' }, { label: '购车中', value: '购车中' }] },
   { key: 'smoking', label: '吸烟', options: [{ label: '不限', value: '' }, { label: '不吸烟', value: '不吸烟' }, { label: '偶尔吸烟', value: '偶尔吸烟' }, { label: '吸烟', value: '吸烟' }] },
@@ -507,12 +540,16 @@ const ageText = (birthday: any): string => {
   if (isNaN(birth)) return ''
   return String(new Date().getFullYear() - birth) + '岁'
 }
+// 与后端 users.is_married 编码一致：1 未婚 2 离异 3 丧偶，4-7 是离异的细分档。
 const marriedText = (value: any): string => {
   const status = value != null ? Number(value) : -1
-  if (status == 0) return '未婚'
-  if (status == 1) return '已婚'
+  if (status == 1) return '未婚'
   if (status == 2) return '离异'
   if (status == 3) return '丧偶'
+  if (status == 4) return '离婚未育'
+  if (status == 5) return '离异未带孩'
+  if (status == 6) return '离异带女孩'
+  if (status == 7) return '离异带男孩'
   return '婚况未填'
 }
 const educationLabel = (code: number): string => {
@@ -540,12 +577,19 @@ const isVipMember = (member: any): boolean => {
   const value = member.is_vip
   return value === true || value == 1
 }
-const matchStatusLabel = (status: any): string => {
-  const value = Number(status)
-  if (value == 1) return '双方同意'
-  if (value == 2) return '已拒绝'
-  if (value == 3) return '已关闭'
-  return '待回应'
+const introStatusLabel = (status: any): string => {
+  const value = String(status)
+  if (value == 'IN_PROGRESS') return '牵线中'
+  if (value == 'SUCCEEDED') return '牵线成功'
+  if (value == 'FAILED') return '牵线失败'
+  return '待牵线'
+}
+const introStatusTone = (status: any): string => {
+  const value = String(status)
+  if (value == 'IN_PROGRESS') return 'progress'
+  if (value == 'SUCCEEDED') return 'succeeded'
+  if (value == 'FAILED') return 'failed'
+  return 'pending'
 }
 const followMethodLabel = (method: string): string => method == 'PHONE' ? '电话' : (method == 'WECHAT' ? '微信' : (method == 'VISIT' ? '面谈' : '其他'))
 const onKeyword = (event: any) => { keyword.value = event.detail.value }
@@ -578,7 +622,7 @@ const submitEntry = async () => {
   if (!/^1[3-9]\d{9}$/.test(String(draft.phone).trim())) { notify('请填写正确的手机号'); return }
   if (draft.codeMode == 'custom' && String(draft.memberCode).trim().length == 0) { notify('请填写自定义编号'); return }
   if (String(draft.height).trim().length > 0 && (isNaN(Number(draft.height)) || Number(draft.height) < 100 || Number(draft.height) > 250)) { notify('请填写正确的身高'); return }
-  if (String(draft.weight).trim().length > 0 && (isNaN(Number(draft.weight)) || Number(draft.weight) < 40 || Number(draft.weight) > 120)) { notify('请填写正确的体重'); return }
+  if (String(draft.weight).trim().length > 0 && (isNaN(Number(draft.weight)) || Number(draft.weight) < 30 || Number(draft.weight) > 150)) { notify('请填写正确的体重'); return }
   entrySubmitting.value = true
   try {
     const result = await createMatchmakerWorkspaceMember({
@@ -602,9 +646,10 @@ const emitServedCount = () => {
   emit('servedCount', count)
 }
 
-// 学历编码 → 展示文案（与首页会员专区保持一致）
+// 学历编码 → 展示文案（与首页会员专区保持一致）：education_level 存储刻度
+// 1=高中及以下 … 5=博士，与后端 EDUCATION_LEVEL_LABELS 同一套。
 const eduText = (code: any): string => {
-  const labels: string[] = ['', '博士', '硕士', '本科', '大专', '高中', '中专', '初中', '小学']
+  const labels: string[] = ['', '高中及以下', '大专', '本科', '硕士', '博士']
   const value = code != null ? Number(code) : 0
   return value > 0 && value < labels.length ? labels[value] : ''
 }
@@ -649,62 +694,104 @@ const memberFromPlaza = (user: any, extra: any): any => {
   return mapped
 }
 
+// 红娘工作台审核队列 → 卡片字段。录入会员和自助注册会员都只在这条链路上出现，
+// 广场接口里没有他们（非 VIP、未过审），所以待审列表不能以广场为数据源。
+const memberFromWorkbench = (row: any): any => {
+  const mapped: any = {
+    user_id: Number(row.user_id || 0),
+    nickname: row.nickname != null ? String(row.nickname) : '未命名会员',
+    avatar: row.avatar != null ? String(row.avatar) : '',
+    gender: row.gender != null ? Number(row.gender) : 0,
+    age: null,
+    birthday: row.birthday != null ? String(row.birthday) : '',
+    is_married: row.is_married != null ? Number(row.is_married) : null,
+    education: row.education != null ? String(row.education) : '',
+    job: row.job != null ? String(row.job) : '',
+    height: row.height != null ? Number(row.height) : null,
+    income: null,
+    residence: row.residence != null ? String(row.residence) : '',
+    hometown: row.hometown != null ? String(row.hometown) : '',
+    realname_status: row.realname_status != null ? Number(row.realname_status) : 0,
+    review_status: row.review_status != null ? String(row.review_status) : 'PENDING',
+    review_reason: row.review_reason != null ? String(row.review_reason) : null,
+    matchmaker_id: row.matchmaker_id != null ? Number(row.matchmaker_id) : 0,
+    matchmaker_name: row.matchmaker_name != null ? String(row.matchmaker_name) : '',
+    created_at: row.created_at != null ? String(row.created_at) : '',
+    followCount: 0,
+    introCount: 0,
+    profile_completion_score: row.profile_completion_score != null ? Number(row.profile_completion_score) : 0,
+    source: 'workbench'
+  }
+  return mapped
+}
+
+const loadWorkbenchMembers = async (tab: string): Promise<void> => {
+  const data: any = { page: 1, page_size: 100 }
+  if (tab == 'PENDING' || tab == 'REJECTED') data['review_status'] = tab
+  if (keyword.value.trim().length > 0) data['search'] = keyword.value.trim()
+  const result = await getMatchmakerReviewMembers(data)
+  if (!result.success || result.data == null) {
+    rawMembers.value = []
+    members.value = []
+    errorMessage.value = result.message != null ? String(result.message) : '资料数据加载失败'
+    return
+  }
+  const items = Array.isArray(result.data.items) ? result.data.items as any[] : []
+  const list: any[] = []
+  for (let i = 0; i < items.length; i++) list.push(memberFromWorkbench(items[i]))
+  rawMembers.value = list
+  applyMemberFilter()
+  emitServedCount()
+}
+
+const loadVipMembers = async (tab: string): Promise<void> => {
+  // 线上VIP / 线下VIP：在线状态只有首页广场提供，继续与首页「会员专区」同源。
+  const workbenchRes = await getMatchmakerReviewMembers({ page: 1, page_size: 100 })
+  const extras: any = {}
+  if (workbenchRes.success && workbenchRes.data != null && Array.isArray(workbenchRes.data.items)) {
+    const rows = workbenchRes.data.items as any[]
+    for (let i = 0; i < rows.length; i++) extras[String(Number(rows[i].user_id))] = rows[i]
+  }
+  const plazaRes = await getDiscoveryPlaza({ page: 1, page_size: 20 })
+  if (!plazaRes.success || plazaRes.data == null) {
+    rawMembers.value = []
+    members.value = []
+    errorMessage.value = plazaRes.message || '会员数据加载失败'
+    return
+  }
+  const plazaItems = Array.isArray(plazaRes.data.items) ? plazaRes.data.items as any[] : []
+  const list: any[] = []
+  const kw = keyword.value.trim()
+  for (let i = 0; i < plazaItems.length; i++) {
+    const user = plazaItems[i]
+    if (user == null) continue
+    if (!(user.isVip === true || user.is_vip === true)) continue
+    if (tab == 'vip_online' && user.online !== true) continue
+    if (tab == 'vip_offline' && user.online === true) continue
+    const uid = Number(user.id || 0)
+    if (kw.length > 0) {
+      const nameHit = user.name != null && String(user.name).indexOf(kw) >= 0
+      const idHit = String(uid).indexOf(kw) >= 0
+      if (!nameHit && !idHit) continue
+    }
+    list.push(memberFromPlaza(user, extras[String(uid)]))
+  }
+  rawMembers.value = list
+  applyMemberFilter()
+  emitServedCount()
+}
+
 const loadMembers = async () => {
   loading.value = true
   errorMessage.value = ''
   try {
     const tab = activeTab.value
-    if (tab == 'mine' || tab == 'REJECTED') {
-      // 「我的」「已驳回」按红娘工作台数据展示
-      const data: any = { page: 1, page_size: 100 }
-      if (tab == 'REJECTED') data['review_status'] = 'REJECTED'
-      if (keyword.value.trim().length > 0) data['search'] = keyword.value.trim()
-      const result = await getMatchmakerReviewMembers(data)
-      if (!result.success || result.data == null) {
-        rawMembers.value = []
-        members.value = []
-        errorMessage.value = result.message || '资料数据加载失败'
-        return
-      }
-      rawMembers.value = Array.isArray(result.data.items) ? result.data.items : []
-      applyMemberFilter()
-      emitServedCount()
+    if (tab == 'vip_online' || tab == 'vip_offline') {
+      await loadVipMembers(tab)
       return
     }
-    // 全部 / 待审 / 线上VIP / 线下VIP：与首页「会员专区」同源，展示广场 VIP 会员
-    const workbenchRes = await getMatchmakerReviewMembers({ page: 1, page_size: 100 })
-    const extras: any = {}
-    if (workbenchRes.success && workbenchRes.data != null && Array.isArray(workbenchRes.data.items)) {
-      const rows = workbenchRes.data.items as any[]
-      for (let i = 0; i < rows.length; i++) extras[String(Number(rows[i].user_id))] = rows[i]
-    }
-    const plazaRes = await getDiscoveryPlaza({ page: 1, page_size: 20 })
-    if (!plazaRes.success || plazaRes.data == null) {
-      rawMembers.value = []
-      members.value = []
-      errorMessage.value = plazaRes.message || '会员数据加载失败'
-      return
-    }
-    const plazaItems = Array.isArray(plazaRes.data.items) ? plazaRes.data.items as any[] : []
-    const list: any[] = []
-    const kw = keyword.value.trim()
-    for (let i = 0; i < plazaItems.length; i++) {
-      const user = plazaItems[i]
-      if (user == null) continue
-      if (!(user.isVip === true || user.is_vip === true)) continue
-      if (tab == 'vip_online' && user.online !== true) continue
-      if (tab == 'vip_offline' && user.online === true) continue
-      const uid = Number(user.id || 0)
-      if (kw.length > 0) {
-        const nameHit = user.name != null && String(user.name).indexOf(kw) >= 0
-        const idHit = String(uid).indexOf(kw) >= 0
-        if (!nameHit && !idHit) continue
-      }
-      list.push(memberFromPlaza(user, extras[String(uid)]))
-    }
-    rawMembers.value = list
-    applyMemberFilter()
-    emitServedCount()
+    // 全部 / 待审 / 我的 / 已驳回：读服务端审核队列，录入的会员要在这里落地。
+    await loadWorkbenchMembers(tab)
   } catch (error) {
     rawMembers.value = []
     members.value = []
@@ -786,6 +873,14 @@ const occupationFilterMatches = (member: any, value: string): boolean => {
   return textFilterMatches(member, 'job', value)
 }
 
+// 婚况筛选：4-7 是「离异」的细分档，选「离异」要一并命中。
+const maritalFilterMatches = (member: any, value: string): boolean => {
+  if (value.length == 0 || !hasMemberValue(member, 'is_married')) return true
+  const status = Number(member.is_married)
+  if (value == '2') return status == 2 || (status >= 4 && status <= 7)
+  return String(status) == value
+}
+
 const vipFilterMatches = (member: any, keys: string[], value: string): boolean => {
   if (value.length == 0) return true
   let available = false
@@ -833,7 +928,7 @@ const applyMemberFilter = () => {
     if (!educationFilterMatches(member, selectedFilter.education)) return false
     if (!occupationFilterMatches(member, selectedFilter.occupation)) return false
     if (!textFilterMatches(member, 'income', selectedFilter.income)) return false
-    if (selectedFilter.marital.length > 0 && hasMemberValue(member, 'is_married') && String(member.is_married) != selectedFilter.marital) return false
+    if (!maritalFilterMatches(member, selectedFilter.marital)) return false
     if (!textFilterMatches(member, 'housing', selectedFilter.housing)) return false
     if (!textFilterMatches(member, 'vehicle', selectedFilter.vehicle)) return false
     if (!textFilterMatches(member, 'smoking', selectedFilter.smoking)) return false
@@ -874,6 +969,7 @@ const loadSelfProfile = async () => {
     const result = await getMatchmakerWorkspaceProfile()
     if (result.success && result.data != null && result.data.user_id != null) {
       selfUserId.value = Number(result.data.user_id)
+      canReview.value = String(result.data.level) == 'SUPER'
       if (activeTab.value == 'mine') applyMemberFilter()
       emitServedCount()
     }
@@ -890,7 +986,7 @@ const toggleMenu = (member: any, event: any) => {
   }
   const windowInfo = uni.getSystemInfoSync()
   const menuWidth = 270 * windowInfo.windowWidth / 750
-  const menuHeight = 5 * 84 * windowInfo.windowWidth / 750
+  const menuHeight = (canReview.value ? 5 : 4) * 84 * windowInfo.windowWidth / 750
   let tapX = 0
   let tapY = 0
   if (event != null && event.detail != null) {
@@ -1092,6 +1188,10 @@ const submitAbandon = async () => {
 /* ---------- 审核状态 ---------- */
 const openReview = (member: any) => {
   closeMenu()
+  if (!canReview.value) {
+    notify('仅总店红娘可审核会员资料')
+    return
+  }
   selected.value = member
   reviewReason.value = ''
   reviewStatus.value = member.review_status == 'PASSED' ? 'PASSED' : (member.review_status == 'REJECTED' ? 'REJECTED' : 'PENDING')
@@ -1169,19 +1269,159 @@ const submitFollowUp = async () => {
 }
 
 /* ---------- 复制 / 编辑 / 悬浮球（按键逻辑保留） ---------- */
+/* 复制文本口径 = 编辑资料页的「昵称 + 基础信息」全量字段，未填写留空。 */
+const copyVisible = ref(false)
+const copyLoading = ref(false)
+const copyEditing = ref(false)
+const copyCopied = ref(false)
+const copyError = ref('')
+const copyText = ref('')
+const copyLines = ref<string[]>([])
+const copyMember = ref<any>(null)
+let copyLoadSeq = 0
+
+const cpText = (value: any): string => value == null ? '' : String(value).trim()
+const cpGenderText = (value: any): string => {
+  if (cpText(value).length == 0) return ''
+  const gender = Number(value)
+  return gender == 1 ? '男' : (gender == 2 ? '女' : '')
+}
+// education_level 存储刻度 1-5，文案与编辑资料页 educationOptions 同一套。
+const cpEducationText = (value: any): string => {
+  if (value == null) return ''
+  const labels: string[] = ['高中及以下', '大专', '本科', '硕士', '博士']
+  const idx = Number(value) - 1
+  return idx >= 0 && idx < labels.length ? labels[idx] : ''
+}
+const cpMaritalText = (value: any): string => {
+  const status = value == null ? -1 : Number(value)
+  if (status == 1) return '未婚'
+  if (status == 3) return '丧偶'
+  if (status >= 2 && status <= 7) return '离异'
+  return ''
+}
+// 收入按登录问卷档位反向映射，口径与编辑资料页 incomeDisplay 一致。
+const cpIncomeText = (value: any): string => {
+  const raw = cpText(value)
+  if (raw.length == 0) return ''
+  const numeric = Number(raw)
+  if (isNaN(numeric) || numeric <= 0) return raw
+  if (numeric == 50000) return '小于10w'
+  if (numeric == 150000) return '10-20w'
+  if (numeric == 400000) return '30-50w'
+  if (numeric == 750000) return '50-100w'
+  if (numeric >= 1000000) return '100w以上'
+  const wan = numeric / 10000
+  return (wan % 1 == 0 ? '' + wan : wan.toFixed(1)) + 'w'
+}
+// 星座与编辑资料页一致：由生日推算，不独立存储。
+const cpConstellation = (value: any): string => {
+  const birthday = cpText(value)
+  if (birthday.length < 10) return ''
+  const month = Number(birthday.substring(5, 7))
+  const day = Number(birthday.substring(8, 10))
+  if (isNaN(month) || isNaN(day) || month < 1 || month > 12 || day < 1 || day > 31) return ''
+  const signs: string[] = ['摩羯', '水瓶', '双鱼', '白羊', '金牛', '双子', '巨蟹', '狮子', '处女', '天秤', '天蝎', '射手']
+  const boundaries: number[] = [20, 19, 21, 20, 21, 22, 23, 23, 23, 24, 23, 22]
+  const idx = day >= boundaries[month - 1] ? month % 12 : month - 1
+  return signs[idx] + '座'
+}
+const cpSizeText = (value: any, unit: string): string => {
+  if (cpText(value).length == 0) return ''
+  const numeric = Number(value)
+  return isNaN(numeric) || numeric <= 0 ? '' : '' + numeric + unit
+}
+const cpOccupationText = (detail: any): string => {
+  const parts: string[] = []
+  if (cpText(detail.occupation).length > 0) parts.push(cpText(detail.occupation))
+  if (cpText(detail.industry).length > 0) parts.push(cpText(detail.industry))
+  return parts.join(' · ')
+}
+const buildCopyLines = (member: any, detail: any): string[] => {
+  const d: any = detail != null ? detail : {}
+  const nickname = cpText(d.nickname)
+  const age = d.age != null && Number(d.age) > 0 ? '' + Number(d.age) + '岁' : ageText(d.birthday)
+  return [
+    '昵称：' + (nickname.length > 0 ? nickname : cpText(member.nickname)),
+    '编号：G' + String(member.user_id),
+    '性别：' + cpGenderText(d.gender),
+    '年龄：' + age,
+    '星座：' + cpConstellation(d.birthday),
+    '身高：' + cpSizeText(d.height, 'cm'),
+    '体重：' + cpSizeText(d.weight, 'kg'),
+    '学历：' + cpEducationText(d.education_level),
+    '现居地：' + cpText(d.residence_display),
+    '家乡：' + cpText(d.hometown_display),
+    '职业：' + cpOccupationText(d),
+    '公司：' + cpText(d.company),
+    '收入：' + cpIncomeText(d.income),
+    '婚姻状况：' + cpMaritalText(d.is_married),
+    'MBTI：' + cpText(d.mbti),
+    '微信号：' + cpText(d.wechat)
+  ]
+}
+const loadCopyLines = async (member: any) => {
+  const seq = ++copyLoadSeq
+  copyLoading.value = true
+  copyError.value = ''
+  copyLines.value = []
+  try {
+    const result = await getMatchmakerMemberProfile(String(member.user_id))
+    if (seq != copyLoadSeq) return
+    if (result.success && result.data != null) {
+      copyLines.value = buildCopyLines(member, result.data)
+    } else {
+      copyError.value = result.message != null ? String(result.message) : '资料加载失败'
+    }
+  } catch (e) {
+    if (seq == copyLoadSeq) copyError.value = '网络异常，请稍后重试'
+  } finally {
+    if (seq == copyLoadSeq) copyLoading.value = false
+  }
+}
 const copyProfile = (member: any) => {
   closeMenu()
-  const lines: string[] = []
-  lines.push('昵称：' + String(member.nickname || ''))
-  lines.push('编号：G' + String(member.user_id))
-  lines.push('性别：' + (member.gender == 1 ? '男' : (member.gender == 2 ? '女' : '未填写')))
-  lines.push('基本资料：' + memberMeta(member))
-  lines.push('现居：' + String(member.residence || '未填写'))
-  lines.push('跟进服务：' + String(member.matchmaker_name || '待分派'))
-  lines.push('登记：' + formatTime(member.created_at))
+  copyMember.value = member
+  copyVisible.value = true
+  copyEditing.value = false
+  copyCopied.value = false
+  copyText.value = ''
+  loadCopyLines(member)
+}
+const retryCopyLoad = () => {
+  if (copyMember.value != null) loadCopyLines(copyMember.value)
+}
+const closeCopyProfile = () => {
+  copyLoadSeq++
+  copyVisible.value = false
+  copyEditing.value = false
+}
+const toggleCopyEdit = () => {
+  if (copyLoading.value) return
+  if (copyEditing.value) {
+    copyLines.value = copyText.value.split('\n')
+    copyEditing.value = false
+    return
+  }
+  if (copyLines.value.length == 0) return
+  copyText.value = copyLines.value.join('\n')
+  copyEditing.value = true
+}
+const onCopyText = (event: any) => { copyText.value = event.detail.value }
+const confirmCopyProfile = () => {
+  if (copyLoading.value) return
+  const data = copyEditing.value ? copyText.value : copyLines.value.join('\n')
+  if (data.length == 0) {
+    notify('资料还没有内容可复制')
+    return
+  }
   uni.setClipboardData({
-    data: lines.join('\n'),
-    success: () => notify('资料已复制'),
+    data: data,
+    success: () => {
+      copyCopied.value = true
+      notify('资料已复制')
+      setTimeout(() => { copyCopied.value = false }, 2000)
+    },
     fail: () => notify('复制失败，请重试')
   })
 }
@@ -1426,8 +1666,10 @@ onMounted(() => {
 .intro-sub { color: var(--muted); font-size: 19rpx; }
 .intro-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8rpx; }
 .intro-status { font-size: 19rpx; font-weight: 800; color: var(--accent); }
-.intro-status.ms-2 { color: var(--match-coral); }
-.intro-status.ms-3 { color: var(--muted); }
+.intro-status.ms-succeeded { color: var(--sage); }
+.intro-status.ms-progress { color: var(--accent2); }
+.intro-status.ms-failed { color: var(--match-coral); }
+.intro-status.ms-pending { color: var(--muted); }
 .intro-time { color: var(--muted); font-size: 18rpx; }
 
 /* match page */
@@ -1512,6 +1754,32 @@ onMounted(() => {
 .modal-btn text { color: var(--ink); font-size: 25rpx; }
 .modal-btn.strong text { color: var(--accent2); font-weight: 800; }
 .modal-btn:active { opacity: 0.7; }
+
+/* 复制资料弹窗：图标块 + 居中标题/说明 + 文本区 + 分隔线 + 左右双胶囊（配色沿用本组件 token） */
+.cpd-mask { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 100; padding: 0 56rpx; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: center; background: rgba(12, 19, 19, .46); }
+.cpd-card { width: 100%; max-width: 640rpx; padding: 40rpx 32rpx 0; border-radius: 32rpx; background: var(--surface); display: flex; flex-direction: column; box-sizing: border-box; box-shadow: var(--shadow-lg); }
+.cpd-icon { align-self: center; width: 112rpx; height: 112rpx; border-radius: 28rpx; border: 1px solid var(--line); background: linear-gradient(160deg, var(--paper), var(--warm)); display: flex; align-items: center; justify-content: center; box-shadow: 0 10rpx 24rpx rgba(12, 19, 19, .10); }
+.cpd-icon-glyph { color: var(--accent2); font-size: 48rpx; line-height: 1; }
+.cpd-title { margin-top: 24rpx; color: var(--ink); font-size: 33rpx; font-weight: 800; text-align: center; }
+.cpd-subtitle { margin-top: 10rpx; color: var(--muted); font-size: 22rpx; line-height: 1.55; text-align: center; }
+.cpd-body { margin-top: 24rpx; min-height: 116rpx; max-height: 50vh; padding: 22rpx 24rpx; border-radius: 20rpx; background: var(--canvas); box-sizing: border-box; }
+.cpd-lines { display: flex; flex-direction: column; }
+.cpd-line { color: var(--ink2); font-size: 25rpx; line-height: 46rpx; }
+.cpd-state { min-height: 72rpx; display: flex; align-items: center; justify-content: center; }
+.cpd-state text { color: var(--muted); font-size: 23rpx; }
+.cpd-error { color: #e5484d; font-size: 22rpx; line-height: 40rpx; }
+.cpd-retry { margin-top: 8rpx; align-self: flex-start; padding: 10rpx 24rpx; border-radius: 999rpx; background: var(--surface); }
+.cpd-retry text { color: var(--accent2); font-size: 22rpx; font-weight: 800; }
+.cpd-editor { display: flex; flex-direction: column; }
+.cpd-textarea { width: 100%; height: 380rpx; color: var(--ink); font-size: 25rpx; line-height: 46rpx; }
+.cpd-note { margin-top: 10rpx; color: var(--muted); font-size: 20rpx; line-height: 1.5; }
+.cpd-footer { margin-top: 28rpx; padding: 24rpx 0 32rpx; border-top: 1px solid var(--line); display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+.cpd-btn { min-width: 184rpx; height: 76rpx; padding: 0 28rpx; border-radius: 999rpx; background: var(--warm); display: flex; align-items: center; justify-content: center; box-shadow: 0 6rpx 16rpx rgba(12, 19, 19, .08); }
+.cpd-btn text { color: var(--ink); font-size: 25rpx; font-weight: 700; }
+.cpd-btn.primary { background: linear-gradient(90deg, var(--accent), var(--accent2)); box-shadow: 0 10rpx 24rpx rgba(0, 96, 82, .24); }
+.cpd-btn.primary text { color: var(--paper); }
+.cpd-btn.primary.disabled { opacity: .55; }
+.cpd-btn:active { opacity: .8; }
 
 .mcard-status:active, .act:active, .act-more:active, .more-item:active, .panel-submit:active, .pr-search-btn:active, .state-action:active, .seg-item:active { opacity: 0.75; }
 </style>
