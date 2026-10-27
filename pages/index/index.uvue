@@ -975,7 +975,7 @@
 	const vipBottomBenefits = ref([
 		{ icon: '/static/icons/vip-ben-crown.svg', title: 'VIP 标识与优先曝光', desc: '头像 VIP 标识，专区与搜索加权曝光，优先被看见。', colorClass: 'gold' },
 		{ icon: '/static/icons/vip-ben-filter.svg', title: 'MBTI 高级筛选', desc: '按人格契合度筛选，快速找到同频的人。', colorClass: 'mint' },
-		{ icon: '/static/icons/vip-ben-incognito.svg', title: '无痕浏览与访客全查看', desc: '无痕访问不留记录，完整访客列表随时查看。', colorClass: 'warm' }
+		{ icon: '/static/icons/vip-ben-incognito.svg', title: '访客全查看', desc: '可查看「谁看过我」的完整访客列表。', colorClass: 'warm' }
 	])
 	const filteredRecommendUsers = computed(() => recommendUsers.value)
 	const canShowRecommendUsers = computed(() => recommendUsers.value.length > 0)

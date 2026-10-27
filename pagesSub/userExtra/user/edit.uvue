@@ -113,10 +113,10 @@
 			</view>
 
 			<view id="sec-self_intro" class="section-card intro-card ai-anchor-self-intro">
-				<view class="section-heading"><text class="section-title">自我介绍{{ completionSuffix('intro', 10) }}</text><view class="heading-actions"><view v-if="!isMemberEdit" class="intro-polish-action" :class="{ disabled: introPolishing || !introHasContent }" @tap="reviewIntroPolish"><text>{{ introPolishing ? '润色中…' : 'AI 润色' }}</text></view><view class="pill-action" @tap="saveIntroduction"><text class="pill-action-text">保存</text></view></view></view>
+				<view class="section-heading"><text class="section-title">关于我{{ completionSuffix('intro', 10) }}</text><view class="heading-actions"><view v-if="!isMemberEdit" class="intro-polish-action" :class="{ disabled: introPolishing || !introHasContent }" @tap="reviewIntroPolish"><text>{{ introPolishing ? '润色中…' : 'AI 润色' }}</text></view><view class="pill-action" @tap="saveIntroduction"><text class="pill-action-text">保存</text></view></view></view>
 				<textarea class="intro-main-input" :class="{ 'has-content': introHasContent }" :value="formData.introduction" maxlength="500" placeholder="分享一下你的性格、爱好、生活态度...让TA更快了解你" @input="onInput('introduction', $event)"></textarea>
-				<text class="section-caption">超有趣的自我介绍会被更多人看见哦！完成后建议搭配照片验证</text>
-				<text v-if="!completionPassed('intro')" class="completion-warning">自我介绍：少于后台要求的 20 字</text>
+				<text class="section-caption">认真写点关于你的故事，会被更多人看见哦！完成后建议搭配照片验证</text>
+				<text v-if="!completionPassed('intro')" class="completion-warning">关于我：少于后台要求的 20 字</text>
 			</view>
 
 			<view id="sec-personal_tags" class="section-card tags-card ai-anchor-personal-tags" @tap="goTagsEdit()">
@@ -137,7 +137,7 @@
 			</navigator>
 
 			<view id="sec-qa_answers" class="section-card qa-card ai-anchor-qa-answers">
-				<text class="section-title">关于我</text>
+				<text class="section-title">深度问答</text>
 				<text class="section-caption">你的回答将展示在个人主页，帮助对方更深入了解你</text>
 				<view class="qa-item" v-for="(qa, index) in qaItems" :key="qa.id" @tap="openQaEditor(index)">
 					<text class="qa-question">{{ qa.question }}</text>
@@ -215,8 +215,8 @@
 					</view>
 					<view class="sheet-divider"></view>
 					<view class="sheet-row">
-						<text class="sheet-row-label">公司</text>
-						<input class="sheet-input" :value="formData.company" placeholder="搜索公司名称" @input="onCompanyInput" />
+						<text class="sheet-row-label">工作单位</text>
+						<input class="sheet-input" :value="formData.company" placeholder="搜索或填写工作单位" @input="onCompanyInput" />
 					</view>
 					<view v-if="companySuggestions.length > 0" class="sheet-suggestion-list"><view v-for="company in companySuggestions" :key="company" class="sheet-suggestion" @tap="chooseCompany(company)"><text>{{ company }}</text></view></view>
 					<view class="sheet-divider"></view>
@@ -228,6 +228,51 @@
 					<view class="sheet-row">
 						<text class="sheet-row-label">MBTI</text>
 						<picker class="sheet-row-right" mode="selector" :range="mbtiOptions" :value="mbtiPickerIndex" @change="onMbtiChange"><text class="sheet-row-value">{{ formData.mbti || '请选择' }}</text><text class="sheet-row-arrow">›</text></picker>
+					</view>
+					<view class="sheet-divider"></view>
+					<view class="sheet-row">
+						<text class="sheet-row-label">属相</text>
+						<text class="sheet-row-readonly">{{ zodiacText }}</text>
+					</view>
+					<view class="sheet-divider"></view>
+					<view class="sheet-row">
+						<text class="sheet-row-label">户口</text>
+						<picker class="sheet-row-right" mode="region" :value="householdRegionValue" @change="onHouseholdChange"><text class="sheet-row-value">{{ formData.household || '请选择' }}</text><text class="sheet-row-arrow">›</text></picker>
+					</view>
+					<view class="sheet-divider"></view>
+					<view class="sheet-row">
+						<text class="sheet-row-label">购房</text>
+						<picker class="sheet-row-right" mode="selector" :range="houseOptions" @change="onHouseChange"><text class="sheet-row-value">{{ formData.house || '请选择' }}</text><text class="sheet-row-arrow">›</text></picker>
+					</view>
+					<view class="sheet-divider"></view>
+					<view class="sheet-row">
+						<text class="sheet-row-label">购车</text>
+						<picker class="sheet-row-right" mode="selector" :range="carOptions" @change="onCarChange"><text class="sheet-row-value">{{ formData.car || '请选择' }}</text><text class="sheet-row-arrow">›</text></picker>
+					</view>
+					<view class="sheet-divider"></view>
+					<view class="sheet-row">
+						<text class="sheet-row-label">毕业学校</text>
+						<input class="sheet-input" :value="formData.graduateSchool" maxlength="128" placeholder="填写毕业学校" @input="onInput('graduateSchool', $event)" />
+					</view>
+					<view class="sheet-divider"></view>
+					<view class="sheet-row">
+						<text class="sheet-row-label">民族</text>
+						<picker class="sheet-row-right" mode="selector" :range="ethnicityOptions" @change="onEthnicityChange"><text class="sheet-row-value">{{ formData.ethnicity || '请选择' }}</text><text class="sheet-row-arrow">›</text></picker>
+					</view>
+					<view class="sheet-divider"></view>
+					<view class="sheet-row">
+						<text class="sheet-row-label">吸烟</text>
+						<picker class="sheet-row-right" mode="selector" :range="smokingOptions" @change="onSmokingChange"><text class="sheet-row-value">{{ formData.smoking || '请选择' }}</text><text class="sheet-row-arrow">›</text></picker>
+					</view>
+					<view class="sheet-divider"></view>
+					<view class="sheet-row">
+						<text class="sheet-row-label">喝酒</text>
+						<picker class="sheet-row-right" mode="selector" :range="drinkingOptions" @change="onDrinkingChange"><text class="sheet-row-value">{{ formData.drinking || '请选择' }}</text><text class="sheet-row-arrow">›</text></picker>
+					</view>
+					<view class="sheet-divider"></view>
+					<view class="sheet-row">
+						<text class="sheet-row-label">宗教</text>
+						<picker class="sheet-row-right" mode="selector" :range="religionOptions" @change="onReligionChange"><text class="sheet-row-value">{{ formData.religion || '请选择' }}</text><text class="sheet-row-arrow">›</text></picker>
 					</view>
 					<view class="sheet-divider"></view>
 					<view class="sheet-row">
@@ -268,7 +313,7 @@
 				<view class="sheet-handle"></view>
 				<view class="sheet-nav"><text class="sheet-title">AI 润色预览</text><text class="sheet-close" @tap="closeIntroPolish">✕</text></view>
 				<scroll-view class="intro-polish-body" scroll-y enhanced show-scrollbar="false">
-					<text class="intro-polish-note">只会替换自我介绍编辑框，不会自动保存或发布。</text>
+					<text class="intro-polish-note">只会替换关于我编辑框，不会自动保存或发布。</text>
 					<text class="intro-polish-label">原文</text>
 					<text class="intro-polish-copy">{{ introPolishOriginal }}</text>
 					<text class="intro-polish-label">润色后</text>
@@ -278,7 +323,7 @@
 						<view v-if="introPolishChangesExpanded" class="intro-polish-change-list"><text v-for="(point, index) in introPolishChangedPoints" :key="index" class="intro-polish-change">• {{ point }}</text></view>
 					</view>
 				</scroll-view>
-				<view class="sheet-footer"><view class="cancel-button" @tap="closeIntroPolish"><text>继续编辑</text></view><view class="save-button" @tap="adoptIntroPolish"><text>采用到自我介绍</text></view></view>
+				<view class="sheet-footer"><view class="cancel-button" @tap="closeIntroPolish"><text>继续编辑</text></view><view class="save-button" @tap="adoptIntroPolish"><text>采用到关于我</text></view></view>
 			</view>
 		</view>
 
@@ -346,6 +391,15 @@
 	// 与登录引导页「您从事何种工作」保持同一套枚举，最后一项「其他」允许自由填写。
 	const occupationOptions = ['请选择', '私企员工', '央企/国企', '事业单位/公务员', '外企员工', '自由职业', '创业者/个体', '教师', '医生', '律师', '金融从业', '互联网/IT', '制造业', '服务业', '在校学生', '其他']
 	const maritalOptions = ['未选择', '未婚', '离异', '丧偶']
+	// —— 详细资料选项（2026-10-27）——
+	// 后端 platform_base_data 里没有这 6 项的权威字典，存储是自由文本；
+	// 展示侧原样输出、编辑侧给固定选项，避免自建映射把历史值切成两套。
+	const houseOptions = ['未填写', '已购房', '未购房', '与父母同住']
+	const carOptions = ['未填写', '已购车', '未购车']
+	const smokingOptions = ['未填写', '不吸烟', '偶尔吸烟', '经常吸烟']
+	const drinkingOptions = ['未填写', '不饮酒', '社交场合饮酒', '经常饮酒']
+	const religionOptions = ['未填写', '无宗教信仰', '佛教', '基督教', '伊斯兰教', '道教', '其他']
+	const ethnicityOptions = ['未填写', '汉族', '回族', '满族', '蒙古族', '壮族', '维吾尔族', '藏族', '苗族', '彝族', '其他']
 	const incomeOptions = ['请选择', '小于10w', '10-20w', '30-50w', '50-100w', '100w以上', '保密']
 	const mbtiOptions = ['未选择', 'INTJ', 'INTP', 'ENTJ', 'ENTP', 'INFJ', 'INFP', 'ENFJ', 'ENFP', 'ISTJ', 'ISFJ', 'ESTJ', 'ESFJ', 'ISTP', 'ISFP', 'ESTP', 'ESFP']
 	const companyDirectory = ['腾讯', '阿里巴巴', '字节跳动', '华为', '京东', '美团', '小米', '网易', '比亚迪', '中国平安', '招商银行', '中国移动']
@@ -362,6 +416,11 @@
 		residenceApiCityCode: '',
 		residenceProvinceCode: '',
 		residenceDistrictCode: '',
+		// —— 详细资料（与 user_profile 列名一一对应；school/company 落 user_auth）——
+		zodiac: '',
+		household: '', householdProvinceCode: '', householdCityCode: '', householdDistrictCode: '',
+		house: '', car: '', smoking: '', drinking: '', ethnicity: '', religion: '',
+		graduateSchool: '',
 		hometown: '',
 		hometownProvinceCode: '',
 		hometownCityCode: '',
@@ -508,6 +567,7 @@
 	}
 	const residenceRegionValue = computed(() => locationNamesByCodes(formData.value.residenceProvinceCode, formData.value.residenceApiCityCode, formData.value.residenceDistrictCode))
 	const hometownRegionValue = computed(() => locationNamesByCodes(formData.value.hometownProvinceCode, formData.value.hometownCityCode, formData.value.hometownDistrictCode))
+	const householdRegionValue = computed(() => locationNamesByCodes(formData.value.householdProvinceCode, formData.value.householdCityCode, formData.value.householdDistrictCode))
 
 	const applyProfile = (raw: any) => {
 		const data = raw != null ? raw : {}
@@ -529,6 +589,18 @@
 		formData.value.occupation = textValue(data.occupation)
 		formData.value.industry = textValue(data.industry)
 		formData.value.company = textValue(data.company)
+		formData.value.zodiac = textValue(data.zodiac)
+		formData.value.household = textValue(data.household)
+		formData.value.householdProvinceCode = textValue(data.household_province_code)
+		formData.value.householdCityCode = textValue(data.household_city_code)
+		formData.value.householdDistrictCode = textValue(data.household_district_code)
+		formData.value.house = textValue(data.house)
+		formData.value.car = textValue(data.car)
+		formData.value.smoking = textValue(data.smoking)
+		formData.value.drinking = textValue(data.drinking)
+		formData.value.ethnicity = textValue(data.ethnicity)
+		formData.value.religion = textValue(data.religion)
+		formData.value.graduateSchool = textValue(data.school)
 		formData.value.income = incomeDisplay(data.income) || textValue(data.income_range)
 		formData.value.isMarried = data.is_married
 		formData.value.mbti = textValue(data.mbti)
@@ -943,7 +1015,7 @@
 		const labels: any = {
 			gender: '性别', birthday: '出生日期', location: '所在地区', marriage: '婚姻状况', occupation: '职业', company: '公司',
 			education: '学历', income: '收入', height: '身高', weight: '体重', hometown: '家乡', avatar: '头像',
-			intro: '自我介绍', album: '相册', personal_tags: '兴趣标签', interest: '兴趣标签', personality: '兴趣标签', mbti: 'MBTI',
+			intro: '关于我', album: '相册', personal_tags: '兴趣标签', interest: '兴趣标签', personality: '兴趣标签', mbti: 'MBTI',
 			preference: '择偶要求', realname: '实名认证', single_pledge: '单身承诺'
 		}
 		const names = missing.map((key: string) => labels[key] || key)
@@ -962,6 +1034,18 @@
 	const genderText = computed(() => formData.value.gender == 1 ? '男' : formData.value.gender == 2 ? '女' : '未选择')
 	const educationText = computed(() => formData.value.educationLevel != null ? educationOptions[Number(formData.value.educationLevel)] || '未选择' : '未选择')
 	const maritalText = computed(() => formData.value.isMarried != null ? maritalOptions[Number(formData.value.isMarried)] || '未选择' : '未选择')
+	// 属相只读：由生日推导，不单独落库（详情页用同一套规则推导，两边天然一致）。
+	// 允许用户手选会与生日矛盾，所以这里不给 picker。
+	const zodiacText = computed((): string => {
+		const stored = textValue(formData.value.zodiac).trim()
+		if (stored != '') return stored
+		const birthday = textValue(formData.value.birthday)
+		if (birthday.length < 4) return '填生日后自动生成'
+		const year = Number(birthday.substring(0, 4))
+		if (isNaN(year) || year < 1900 || year > 2100) return '填生日后自动生成'
+		const animals = ['鼠', '牛', '虎', '兔', '龙', '蛇', '马', '羊', '猴', '鸡', '狗', '猪']
+		return animals[(year - 1900) % 12] + '年'
+	})
 	const incomeText = computed(() => formData.value.income != '' ? textValue(formData.value.income) : '请选择')
 	const incomePickerIndex = computed(() => {
 		const index = incomeOptions.indexOf(textValue(formData.value.income))
@@ -1055,6 +1139,27 @@
 	const onGenderChange = (event: any) => { if (!isIdentityLocked.value) formData.value.gender = Number(event.detail.value) == 1 ? 1 : Number(event.detail.value) == 2 ? 2 : null }
 	const onEducationChange = (event: any) => formData.value.educationLevel = Number(event.detail.value) > 0 ? Number(event.detail.value) : null
 	const onMaritalChange = (event: any) => formData.value.isMarried = Number(event.detail.value) > 0 ? Number(event.detail.value) : null
+	// 「未填写」等于不改：置空后 putText 不提交该 key，后端 PATCH 语义下原值保留。
+	const setDetailField = (field: string, options: string[], event: any) => {
+		const index = Number(event.detail.value)
+		const label = index >= 0 && index < options.length ? options[index] : ''
+		const value = label == '未填写' ? '' : label
+		;(formData.value as any)[field] = value
+	}
+	const onHouseChange = (event: any) => setDetailField('house', houseOptions, event)
+	const onCarChange = (event: any) => setDetailField('car', carOptions, event)
+	const onSmokingChange = (event: any) => setDetailField('smoking', smokingOptions, event)
+	const onDrinkingChange = (event: any) => setDetailField('drinking', drinkingOptions, event)
+	const onReligionChange = (event: any) => setDetailField('religion', religionOptions, event)
+	const onEthnicityChange = (event: any) => setDetailField('ethnicity', ethnicityOptions, event)
+	const onHouseholdChange = (event: any) => {
+		const values = event.detail.value as string[]
+		const codes = locationCodesByNames(values)
+		formData.value.householdProvinceCode = codes.province
+		formData.value.householdCityCode = codes.city
+		formData.value.householdDistrictCode = codes.district
+		formData.value.household = values.length >= 3 ? values[0] + ' ' + values[1] + ' ' + values[2] : ''
+	}
 	const onBirthdayChange = (event: any) => { if (!isIdentityLocked.value) formData.value.birthday = event.detail.value }
 	const onHeightChange = (event: any) => formData.value.height = Number(heightOptions[Number(event.detail.value)])
 	const onWeightChange = (event: any) => formData.value.weight = Number(weightOptions[Number(event.detail.value)])
@@ -1341,7 +1446,7 @@
 		formData.value.introduction = proposed
 		if (aiHasData.value) aiStale.value = true
 		introPolishVisible.value = false
-		uni.showToast({ title: '已填入自我介绍，请确认后保存', icon: 'none' })
+		uni.showToast({ title: '已填入关于我，请确认后保存', icon: 'none' })
 	}
 	const saveIntroduction = async () => {
 		if (saving.value || uploadingMedia.value) return
@@ -1350,7 +1455,7 @@
 			const introduction = textValue(formData.value.introduction)
 			const res = await apiUpdateProfile({ self_intro: introduction || null })
 			if (!res.success) {
-				uni.showToast({ title: res.message != null ? '' + res.message : '自我介绍保存失败', icon: 'none' })
+				uni.showToast({ title: res.message != null ? '' + res.message : '关于我保存失败', icon: 'none' })
 				return
 			}
 			try {
@@ -1359,7 +1464,7 @@
 				lastSavedPayloadJson.value = JSON.stringify(saved)
 			} catch (e) {}
 			await refreshCompletion()
-			uni.showToast({ title: '自我介绍已保存', icon: 'success' })
+			uni.showToast({ title: '关于我已保存', icon: 'success' })
 			if (!isMemberEdit.value) triggerThoughtfulness('save', ['self_intro'])
 		} finally {
 			saving.value = false
@@ -1465,6 +1570,13 @@
 		if (!saving.value && !uploadingMedia.value) detailSheetVisible.value = false
 	}
 
+	// 只把非空值塞进 payload：后端 update_profile 是 exclude_unset=True（PATCH），
+	// 传 null 等于 SET NULL。若某字段 get_profile 没下发，编辑页读到空，
+	// 用 `|| null` 就会把红娘后台录入的历史值清掉，且回滚代码救不回来。
+	const putText = (obj: any, key: string, value: any) => {
+		const text = textValue(value).trim()
+		if (text != '') obj[key] = text
+	}
 	const buildProfilePayload = () => {
 		const payload: any = {
 			gender: formData.value.gender,
@@ -1486,6 +1598,20 @@
 			qa_answers: buildQaPayload(-1, ''),
 			mbti: textValue(formData.value.mbti).toUpperCase() || null
 		}
+		// 详细资料 13 项：非空才提交
+		putText(payload, 'zodiac', formData.value.zodiac)
+		putText(payload, 'household', formData.value.household)
+		putText(payload, 'household_province_code', formData.value.householdProvinceCode)
+		putText(payload, 'household_city_code', formData.value.householdCityCode)
+		putText(payload, 'household_district_code', formData.value.householdDistrictCode)
+		putText(payload, 'house', formData.value.house)
+		putText(payload, 'car', formData.value.car)
+		putText(payload, 'smoking', formData.value.smoking)
+		putText(payload, 'drinking', formData.value.drinking)
+		putText(payload, 'ethnicity', formData.value.ethnicity)
+		putText(payload, 'religion', formData.value.religion)
+		putText(payload, 'school', formData.value.graduateSchool)
+		putText(payload, 'company', formData.value.company)
 		return payload
 	}
 	watch(() => JSON.stringify(buildProfilePayload()), (current: string) => {
@@ -1723,6 +1849,7 @@
 .sheet-row-right { display: flex; flex-direction: row; align-items: center; gap: 6px; }
 .sheet-row-value { font-size: 14px; color: var(--muted); }
 .sheet-row-arrow { font-size: 18px; color: var(--muted); }
+.sheet-row-readonly { flex: 1; text-align: right; color: var(--muted); font-size: 14px; }
 .sheet-input { flex: 1; min-width: 0; text-align: right; font-size: 14px; color: var(--muted); height: 24px; }
 .sheet-locked-note { padding: 0 6px 10px; text-align: right; font-size: 11px; color: var(--muted); }
 .sheet-suggestion-list { margin: -4px 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); overflow: hidden; }
