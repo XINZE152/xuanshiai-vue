@@ -499,6 +499,9 @@ const mapDetailUser = (raw: any, id: number) => {
 	const background = resolveMediaUrl(value(card.background_wall, profile.background_wall, value(envelope.background_wall, '', '')))
 	const nickname = value(card.nickname, profile.nickname, value(envelope.nickname, account.nickname, ''))
 	const detailLocked = card.detail_locked === true || envelope.detail_locked === true
+	// 红心初始态：读卡片上的 is_liked（user_favorite.type=1）；is_favorite 是 type=2 的旧收藏，不能用。
+	const likedFlag = card.is_liked != null ? card.is_liked : envelope.is_liked
+	if (likedFlag != null) isLikedUser.value = likedFlag == true
 	if (envelope.is_vip_viewer != null) viewerIsVip.value = envelope.is_vip_viewer === true
 	const rawPhotos = card.photos != null ? card.photos : profile.photos
 	const photos = Array.isArray(rawPhotos)
@@ -988,7 +991,7 @@ const onLike = async () => {
 		if (res.success && res.data != null) {
 			const liked = res.data.liked == true
 			isLikedUser.value = liked
-			uni.showToast({ title: liked ? '已收藏，仅你自己可见' : '已取消收藏', icon: 'none' })
+			uni.showToast({ title: liked ? '已喜欢，仅你自己可见' : '已取消喜欢', icon: 'none' })
 		} else {
 			uni.showToast({ title: '操作失败，请重试', icon: 'none' })
 		}

@@ -1487,7 +1487,35 @@
 		})
 	}
 	const likedUserIds = ref([] as number[])
-	const isLiked = (userId: number): boolean => likedUserIds.value.indexOf(Number(userId)) >= 0
+	// 初始态：红心必须读卡片上后端下发的 is_liked（user_favorite.type=1）。
+	// mapCard 的 isFavorite 是 type=2 的旧收藏，用它回填会把「收藏过」错显示成「喜欢过」。
+	const cardLiked = (id: number): boolean => {
+		for (let i = 0; i < recommendUsers.value.length; i++) {
+			const item = recommendUsers.value[i]
+			if (item != null && Number(item.id) == id) return item.isLiked === true
+		}
+		for (let i = 0; i < squareUsers.value.length; i++) {
+			const item = squareUsers.value[i]
+			if (item != null && Number(item.id) == id) return item.isLiked === true
+		}
+		return false
+	}
+	const isLiked = (userId: number): boolean => {
+		const id = Number(userId)
+		if (id <= 0) return false
+		return likedUserIds.value.indexOf(id) >= 0 || cardLiked(id)
+	}
+	// 点击后同步卡片上的 isLiked，否则取消喜欢时 cardLiked 仍为 true，红心会卡在实心。
+	const setCardLiked = (id: number, liked: boolean) => {
+		for (let i = 0; i < recommendUsers.value.length; i++) {
+			const item = recommendUsers.value[i]
+			if (item != null && Number(item.id) == id) item.isLiked = liked
+		}
+		for (let i = 0; i < squareUsers.value.length; i++) {
+			const item = squareUsers.value[i]
+			if (item != null && Number(item.id) == id) item.isLiked = liked
+		}
+	}
 	const onLike = async (userId: number = 0) => {
 		const id = userId > 0 ? userId : recommendUserId.value
 		const ok = await guardRealName('like')
@@ -1496,10 +1524,11 @@
 			const res = await likeUser(id)
 			if (res.success && res.data != null) {
 				const liked = res.data.liked == true
+				setCardLiked(id, liked)
 				const idx = likedUserIds.value.indexOf(id)
 				if (liked && idx < 0) likedUserIds.value.push(id)
 				if (!liked && idx >= 0) likedUserIds.value.splice(idx, 1)
-				showToast(liked ? '已收藏，仅你自己可见' : '已取消收藏')
+				showToast(liked ? '已喜欢，仅你自己可见' : '已取消喜欢')
 			} else {
 				showToast('操作失败，请重试')
 			}

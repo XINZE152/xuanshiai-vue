@@ -11,17 +11,17 @@
 			<view class="main-tab" @tap="goVisitors"><text>谁看过我</text><view class="tab-line"></view></view>
 		</view>
 		<scroll-view class="record-scroll" scroll-y>
-			<view class="vip-hint" @tap="goVip"><text class="ic ic-vip ic-huiyuan hint-icon"></text><text class="hint-copy">开通会员可查看 3 天内的浏览记录</text><text class="hint-link">去开通 ›</text></view>
+			<view v-if="!canViewDetails" class="vip-hint" @tap="goVip"><text class="ic ic-vip ic-huiyuan hint-icon"></text><text class="hint-copy">普通用户仅可见今天的浏览记录，会员可查看全部</text><text class="hint-link">去开通 ›</text></view>
 			<view class="sub-tabs"><view class="sub-tab" :class="{ active: historyMode == 'recommend' }" @tap="selectHistoryMode('recommend')"><text>每日推荐</text></view><view class="sub-tab" :class="{ active: historyMode == 'plaza' }" @tap="selectHistoryMode('plaza')"><text>广场</text></view></view>
-			<view class="filter-row"><text class="result-count">共 {{ historyUsers.length }} 条浏览记录</text><view class="filter-button" @tap="toggleFilter"><text class="ic ic-sys ic-xiala filter-icon"></text><text>筛选</text></view></view>
+			<view class="filter-row"><text class="result-count">共 {{ historyUsers.length }} 条浏览记录{{ countSuffix }}</text><view class="filter-button" @tap="toggleFilter"><text class="ic ic-sys ic-xiala filter-icon"></text><text>筛选</text></view></view>
 			<view class="record-card" v-for="user in historyUsers" :key="user.id" @tap="openUser(user.id)">
 				<image class="record-avatar" :src="user.avatar" mode="aspectFill"></image>
 				<view class="record-info"><text class="record-name">{{ user.name }} · {{ user.age }}岁</text><text class="record-job">{{ user.job }}</text><text class="record-city">{{ user.city }}</text></view>
 				<text class="record-time">{{ user.time }}</text>
 			</view>
 			<view class="section-divider"></view>
-			<view class="upsell-card"><view class="lock-circle"><text class="ic ic-vip ic-huiyuan lock-icon"></text></view><text class="upsell-title">开通会员查看全部访客</text><text class="upsell-desc">解锁后可查看谁看过你，发现更多缘分</text><view class="upsell-button" @tap="goVip"><text>立即开通会员</text></view></view>
-			<view class="visitor-section"><text class="visitor-title">最近访客</text><view class="visitor-row" v-for="visitor in visitors" :key="visitor.distance"><view class="visitor-avatar"><text class="ic ic-social ic-touxiang visitor-icon"></text></view><view class="visitor-info"><text class="visitor-name">{{ visitor.name }}</text><text class="visitor-meta">距你 {{ visitor.distance }} · 合拍度 {{ visitor.compatText }}</text></view><view class="lock-badge"><text class="ic ic-vip ic-huiyuan"></text><text>VIP查看</text></view></view></view>
+			<view v-if="!canViewDetails" class="upsell-card"><view class="lock-circle"><text class="ic ic-vip ic-huiyuan lock-icon"></text></view><text class="upsell-title">开通会员查看全部浏览记录</text><text class="upsell-desc">解锁后可查看今天之前的浏览记录与你心动过的人</text><view class="upsell-button" @tap="goVip"><text>立即开通会员</text></view></view>
+			<view v-if="canViewDetails" class="visitor-section"><text class="visitor-title">最近访客</text><view class="visitor-row" v-for="visitor in visitors" :key="visitor.id"><view class="visitor-avatar"><image v-if="visitor.avatar != ''" :src="visitor.avatar" style="width:100%;height:100%;border-radius:50%;" mode="aspectFill"></image><text v-else class="ic ic-social ic-touxiang visitor-icon"></text></view><view class="visitor-info"><text class="visitor-name">{{ visitor.name }}</text><text class="visitor-meta">距你 {{ visitor.distance }} · 合拍度 {{ visitor.compatText }}</text></view></view></view>
 		</scroll-view>
 		<view v-if="filterVisible" class="filter-mask" @tap="closeFilter">
 			<view class="filter-sheet" @tap.stop="noop">
@@ -44,6 +44,10 @@ import { resolveMediaUrl } from '@/api/config.uts'
 const historyUsers = ref<any[]>([])
 const visitors = ref<any[]>([])
 const historyMode = ref('recommend')
+const canViewDetails = ref(false)
+// 浏览记录接口（/discovery/browse-history）只返回到 items/page/page_size/total，没有身份字段；
+// 这里借 /discovery/visitors 的 can_view_details 判断身份（非 VIP 时后端把窗口压到今天）。
+const countSuffix = computed(() => canViewDetails.value ? '' : '（今天）')
 
 const loadHistory = async () => {
 	const res = await getBrowseHistory(1, 20)
@@ -60,11 +64,12 @@ const loadHistory = async () => {
 const loadVisitors = async () => {
 	const res = await getVisitors(1, 20)
 	if (!res.success || res.data == null) return
+	canViewDetails.value = (res.data as any).can_view_details == true
 	const rows = res.data.items != null && Array.isArray(res.data.items) ? res.data.items as any[] : []
 	const result: any[] = []
 	for (let i = 0; i < rows.length; i++) {
 		const card = rows[i].target != null ? rows[i].target : {}
-		result.push({ name: card.nickname != null ? card.nickname : '匿名用户', distance: card.distance_km != null ? Number(card.distance_km).toFixed(1) + 'km' : '未知', compatText: card.match_score != null ? Math.round(Number(card.match_score)) + '%' : '--' })
+		result.push({ id: Number(card.user_id != null ? card.user_id : i), name: card.nickname != null ? card.nickname : '匿名用户', avatar: card.avatar != null ? resolveMediaUrl('' + card.avatar) : '', distance: card.distance_km != null ? Number(card.distance_km).toFixed(1) + 'km' : '未知', compatText: card.match_score != null ? Math.round(Number(card.match_score)) + '%' : '--' })
 	}
 	visitors.value = result
 }

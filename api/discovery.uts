@@ -54,6 +54,9 @@ export function mapCard(row: any, fallbackName: string = '用户'): any {
     certificationTags: certifications,
     isVip: card.isVip === true || card.is_vip === true,
     isFavorite: card.is_favorite == true,
+    // 喜欢（user_favorite.type=1）与收藏（type=2）是两套数据：is_favorite 只代表收藏，
+    // 红心必须读后端新加的 is_liked，缺字段时按未喜欢处理。
+    isLiked: card.is_liked == true,
     matchScore: card.match_score != null ? Number(card.match_score) : (card.match != null ? Number(card.match) : null),
     viewCount: card.view_count != null ? Number(card.view_count) : 0,
     matchReason: card.match_reason != null ? '' + card.match_reason : '',

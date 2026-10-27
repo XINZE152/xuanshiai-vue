@@ -6,7 +6,7 @@
 
 import { request } from './request.uts'
 import { mockProfileTagOptions } from '@/mock/profile-tags.uts'
-import { USE_MOCK, getAccessToken, clearAuthTokens, buildApiUrl } from './config.uts'
+import { USE_MOCK, getAccessToken, clearAuthTokens, buildApiUrl, resolveMediaUrl } from './config.uts'
 import {
   mockRecommendUsers,
   mockSquareUsers,
@@ -769,7 +769,30 @@ export async function likeUser(userId: number, internalMockScope: string = '') {
   })
 }
 
-/** 获取当前用户私有的“我的喜欢”用户列表；不会作为帖子互动计数返回。 */
+/**
+ * 「我的喜欢」一行 → 页面扁平结构。
+ * 后端 GET /relations/likes 的 items 是 SocialUser{user_id,nickname,avatar,age}：
+ * **没有城市、没有 has_more**，调用方不要按 DiscoveryCard 的字段取。
+ */
+function mapLikedProfile(row: any): any {
+  const item = row != null ? row : {}
+  const uid = Number(item.user_id != null ? item.user_id : (item.userId != null ? item.userId : 0))
+  const ageValue = item.age != null ? Number(item.age) : 0
+  const nickname = item.nickname != null && ('' + item.nickname).trim() != ''
+    ? '' + item.nickname
+    : (item.name != null ? '' + item.name : '用户')
+  return {
+    id: uid,
+    userId: uid,
+    name: nickname,
+    nickname: nickname,
+    avatar: resolveMediaUrl(item.avatar != null ? '' + item.avatar : ''),
+    age: ageValue,
+    ageText: ageValue > 0 ? '' + ageValue + '岁' : '年龄未填写'
+  }
+}
+
+/** 获取当前用户私有的「我的喜欢」用户列表（user_favorite.type=1）；不会作为帖子互动计数返回。 */
 export async function getMyLikedProfiles(page: number = 1, pageSize: number = 20) {
   if (USE_MOCK) {
     const ids = mockLikedUserIds as number[]
@@ -783,19 +806,37 @@ export async function getMyLikedProfiles(page: number = 1, pageSize: number = 20
       }
     }
     const start = Math.max(0, (page - 1) * pageSize)
-    const items = rows.slice(start, start + pageSize)
+    const pageRows = rows.slice(start, start + pageSize)
+    const mockItems: any[] = []
+    for (let i = 0; i < pageRows.length; i++) mockItems.push(mapLikedProfile(pageRows[i]))
     return request({
-      url: '/users/me/likes',
+      url: '/relations/likes',
       cloudFunctionName: 'user',
       action: 'getMyLikedProfiles',
       method: 'GET',
       data: { page, pageSize },
-      mockData: { items, total: rows.length, page, pageSize }
+      mockData: { items: mockItems, total: rows.length, page, page_size: pageSize }
     })
   }
-  return await request({
-    url: '/users/me/likes',
+  const res = await request({
+    url: '/relations/likes',
     method: 'GET',
     data: { page, page_size: pageSize }
   })
+  if (!res.success) return res
+  const body = res.data != null ? res.data : {}
+  const rawItems = body.items != null && Array.isArray(body.items) ? body.items as any[] : []
+  const items: any[] = []
+  for (let i = 0; i < rawItems.length; i++) items.push(mapLikedProfile(rawItems[i]))
+  return {
+    success: true,
+    data: {
+      items: items,
+      total: body.total != null ? Number(body.total) : items.length,
+      page: body.page != null ? Number(body.page) : page,
+      page_size: body.page_size != null ? Number(body.page_size) : pageSize
+    },
+    code: res.code,
+    message: res.message
+  }
 }
