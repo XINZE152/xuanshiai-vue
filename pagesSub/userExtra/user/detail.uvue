@@ -327,6 +327,7 @@ import XsaAiCatBubble from '@/components/XsaAiCatBubble.uvue'
 import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
 import XsaZhiyuHub from '@/components/XsaZhiyuHub.uvue'
 import { getUserDetail, likeUser, getOwnProfile, getMyPosts, getMembershipStatus, getUserVisitorCount, saveAiAvatarProfileSnapshot, getDynamicList, getPortraitNarrative, getUserPartnerPreference } from '@/api'
+import { normalizeIdealPartner } from '@/api/preference.uts'
 import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
 import locationJson from '@/data/location.json'
 import { sendSuperlike } from '@/api/spotlight.uts'
@@ -724,14 +725,22 @@ const load = async () => {
 					if (!isNaN(count) && count >= 0) visitorCount.value = count
 				}
 			}
-			// Ta 的理想型：失败静默（接口未上线时是 404），不影响主资料加载
+			// Ta 的理想型：详情响应已内嵌 preference（后端 view_profile 同门禁归一），优先用它，省一次请求。
+			// 拿不到（旧后端）再回退到单独接口；两者都失败则静默隐藏，不影响主资料加载。
 			if (!isOwnProfile.value && !isPreview.value && !fromMatchmaker.value && user.value.id > 0) {
-				try {
-					const prefRes = await getUserPartnerPreference(user.value.id)
-					const prefData: any = prefRes != null && prefRes.success ? prefRes.data : null
-					idealPartner.value = prefData != null && prefData.hasData == true ? prefData : null
-				} catch (e) {
-					idealPartner.value = null
+				const envelope: any = res.data != null ? res.data : {}
+				const embedded: any = envelope.preference != null ? envelope.preference : null
+				if (embedded != null && embedded.has_data !== false) {
+					const summary = normalizeIdealPartner(embedded)
+					idealPartner.value = summary.hasData ? summary : null
+				} else if (embedded == null) {
+					try {
+						const prefRes = await getUserPartnerPreference(user.value.id)
+						const prefData: any = prefRes != null && prefRes.success ? prefRes.data : null
+						idealPartner.value = prefData != null && prefData.hasData == true ? prefData : null
+					} catch (e) {
+						idealPartner.value = null
+					}
 				}
 			}
 			if (isOwnProfile.value) {

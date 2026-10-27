@@ -641,11 +641,17 @@ export async function applyToMeet(userId: number, message: string, internalMockS
     quotaRefreshFailed = true
   }
 
+  // 后端 create_application 会回填 target_realname_required（对方尚未实名）。
+  // 这里必须透传：XsaApplySheet 靠它决定是否弹「对方需实名后才能处理」，
+  // 不透传的话该提示永远不出现（字段被 okRes 的新对象吞掉）。
+  const targetRealnameRequired = res.data != null && (res.data as any).target_realname_required == true
+
   return okRes({
     success: true,
     remain: remain,
     quotaRefreshFailed: quotaRefreshFailed,
     applyStatus: 'pending',
+    target_realname_required: targetRealnameRequired,
     message: quotaRefreshFailed
       ? '申请已发送，额度同步失败请下拉刷新'
       : '申请已发送，对方同意后才能开始聊天',

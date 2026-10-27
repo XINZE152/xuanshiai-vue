@@ -48,7 +48,13 @@ const numberRangeText = (minValue: any, maxValue: any, unit: string): string => 
 	return ''
 }
 
-const buildSummary = (raw: any): IdealPartnerSummary => {
+/**
+ * 把服务端 `_public_preference` 的返回归一成详情页结构。
+ * 同时适用于两个来源：
+ *   ① `GET /users/{id}/profile` 响应里的 `preference`（同一个归一结果，优先用这个，省一次请求）；
+ *   ② `GET /users/{id}/preference-public` 单独接口。
+ */
+export const normalizeIdealPartner = (raw: any): IdealPartnerSummary => {
 	const data = raw != null ? raw : {}
 	const rows: IdealPartnerRow[] = []
 	// 只认服务端文案；拿不到就跳过这一行，避免出现一排「不限」
@@ -101,6 +107,6 @@ export async function getUserPartnerPreference(userId: number) {
 	if (!res.success || res.data == null) {
 		return { success: false, data: null as any, code: res.code, message: res.message }
 	}
-	const summary = buildSummary(res.data)
+	const summary = normalizeIdealPartner(res.data)
 	return { success: true, data: summary as any, code: res.code, message: res.message }
 }
