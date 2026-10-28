@@ -10,7 +10,14 @@ export async function getPointsSummary() {
   return request({ url: '/users/me/points', method: 'GET' })
 }
 
-/** 兑换积分商品/权益（POST /users/me/points/redeem）。 */
-export async function redeemPointProduct(productCode: string) {
-  return request({ url: '/users/me/points/redeem', method: 'POST', data: { product_code: productCode } })
+/** 兑换积分商品/权益（POST /users/me/points/redeem）。后端强制要求 Idempotency-Key。 */
+export async function redeemPointProduct(productCode: string, idempotencyKey: string = '') {
+  let key = idempotencyKey
+  if (key == '') key = 'redeem-' + Date.now() + '-' + Math.floor(Math.random() * 1000000)
+  return request({
+    url: '/users/me/points/redeem',
+    method: 'POST',
+    data: { product_code: productCode },
+    headers: { 'Idempotency-Key': key }
+  })
 }
