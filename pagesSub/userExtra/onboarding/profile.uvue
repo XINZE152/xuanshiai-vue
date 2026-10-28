@@ -78,7 +78,7 @@
 				<text class="picker-selected-text">{{ selectedValue || '上下滑动选择' }}</text>
 			</view>
 			<view v-if="currentType === 'location'" class="onboarding-picker location-picker">
-				<picker-view class="location-picker-view" :value="locationPickerValue" indicator-style="height: 52px; background: transparent; border-top: 2px solid #C9CED3; border-bottom: 2px solid #C9CED3;" mask-style="background: linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 28%, rgba(255,255,255,0) 72%, rgba(255,255,255,1) 100%);" @pickstart="onWheelStart" @pickend="onWheelEnd" @change="onLocationPickerChange">
+				<picker-view :key="locationPickerKey" class="location-picker-view" :value="locationPickerValue" indicator-style="height: 52px; background: transparent; border-top: 2px solid #C9CED3; border-bottom: 2px solid #C9CED3;" mask-style="background: linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 28%, rgba(255,255,255,0) 72%, rgba(255,255,255,1) 100%);" @pickstart="onWheelStart" @pickend="onWheelEnd" @change="onLocationPickerChange">
 					<picker-view-column><view v-for="province in provinceOptions" :key="province" class="picker-column-item"><text>{{ province }}</text></view></picker-view-column>
 					<picker-view-column><view v-for="city in cityOptions" :key="city" class="picker-column-item"><text>{{ city }}</text></view></picker-view-column>
 					<picker-view-column><view v-for="district in districtOptions" :key="district" class="picker-column-item"><text>{{ district }}</text></view></picker-view-column>
@@ -146,7 +146,7 @@
 	}
 	const heightOptions = numericOptions(140, 220, 'cm')
 	const weightOptions = numericOptions(40, 120, 'kg')
-	const educationOptions = ['小学', '初中', '技校', '高中', '大专', '本科', '硕士', '博士']
+	const educationOptions = ['高中及以下', '大专', '本科', '硕士', '博士']
 	const heightTouched = ref(false)
 	const weightTouched = ref(false)
 	const bodyDefaults = (gender: string): any => gender === '女' ? { height: '160cm', weight: '50kg' } : { height: '170cm', weight: '60kg' }
@@ -223,6 +223,7 @@
 	const importedLocations = normalizeLocations(locationJson)
 	const locationData = ref(importedLocations.length > 0 ? importedLocations : fallbackLocations)
 	const locationIndexes = ref([0, 0, 0] as number[])
+	const locationPickerKey = ref(0)
 	const locationCodesByQuestion = ref([
 		{ province: '', city: '', district: '' },
 		{ province: '', city: '', district: '' }
@@ -343,6 +344,12 @@
 		let cityIndex = Number(values[1])
 		let districtIndex = Number(values[2])
 		if (provinceIndex < 0 || provinceIndex >= provinceOptions.value.length) provinceIndex = 0
+		const provinceChanged = provinceIndex != locationIndexes.value[0]
+		if (provinceChanged) {
+			// 省份变了，市/区必须回到首项，否则会出现“安徽省 / 宁波市 / 上城区”这种跨省组合。
+			cityIndex = 0
+			districtIndex = 0
+		}
 		const province = locationData.value[provinceIndex]
 		const cities = province != null && Array.isArray(province.cities) ? province.cities as any[] : []
 		if (cityIndex < 0 || cityIndex >= cities.length) cityIndex = 0
@@ -350,6 +357,7 @@
 		const districts = city != null && Array.isArray(city.districts) ? city.districts as any[] : []
 		if (districtIndex < 0 || districtIndex >= districts.length) districtIndex = 0
 		locationIndexes.value = [provinceIndex, cityIndex, districtIndex]
+		if (provinceChanged) locationPickerKey.value = locationPickerKey.value + 1
 		if (locationLabel.value != '') {
 			selectOption(locationLabel.value)
 			if (step.value == 3) locationCodesByQuestion.value[0] = selectedLocationCodes(locationIndexes.value)
@@ -370,7 +378,7 @@
 		const birthday = selections.value[1]
 		const heightText = selections.value[4].replace('cm', '')
 		const weightText = selections.value[5].replace('kg', '')
-		const educationMap: any = { '大专': 4, '本科': 3, '硕士': 2, '博士': 1, '高中': 5, '技校': 6, '初中': 7, '小学': 8 }
+		const educationMap: any = { '高中及以下': 1, '大专': 2, '本科': 3, '硕士': 4, '博士': 5 }
 		const marriageMap: any = { '未婚': 1, '离异': 2, '丧偶': 3 }
 		const incomeMap: any = { '小于10w': 50000, '10-20w': 150000, '30-50w': 400000, '50-100w': 750000, '100w以上': 1000000 }
 		const rawPayload: any = {
@@ -398,10 +406,24 @@
 		return payload
 	}
 
+	const ensureLocationSelection = (): boolean => {
+		if (currentType.value !== 'location') return true
+		if (selectedValue.value.length > 0) return true
+		const label = locationLabel.value
+		if (label == '') return false
+		selections.value[step.value - 1] = label
+		locationCodesByQuestion.value[step.value - 3] = selectedLocationCodes(locationIndexes.value)
+		return true
+	}
+
 	const nextStep = async () => {
 		const stepBeforeWait = step.value
 		await waitWheelSettled()
 		if (step.value != stepBeforeWait) return
+		if (!ensureLocationSelection()) {
+			uni.showToast({ title: '请选择一项后继续', icon: 'none' })
+			return
+		}
 		if (selectedValue.value.length === 0) {
 			uni.showToast({ title: '请选择一项后继续', icon: 'none' })
 			return

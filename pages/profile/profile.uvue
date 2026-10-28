@@ -63,7 +63,7 @@
 			<view class="stats-card">
 				<view class="stat-item" v-for="stat in stats" :key="stat.label" @tap="openStatPage(stat.route)">
 					<text class="stat-value">{{ stat.value }}</text>
-					<text class="stat-label">{{ stat.label }}</text>
+					<view class="stat-label"><text v-for="line in stat.lines" :key="line">{{ line }}</text></view>
 				</view>
 			</view>
 
@@ -223,10 +223,10 @@ const user = ref({
 })
 
 const stats = ref([
-	{ value: '0', label: '我的申请', route: '/pagesSub/profileExtra/applications' },
-	{ value: '0', label: '我看过谁/看过我', route: '/pagesSub/profileExtra/visitors' },
-	{ value: '0', label: '我的喜欢', route: '/pagesSub/profileExtra/favorites' },
-	{ value: '0', label: '我的爆灯', route: '/pagesSub/profileExtra/spotlights' },
+	{ value: '0', label: '我的申请', lines: ['我的申请'], route: '/pagesSub/profileExtra/applications' },
+	{ value: '0', label: '我看过谁/看过我', lines: ['我看过谁', '谁看过我'], route: '/pagesSub/profileExtra/visitors' },
+	{ value: '0', label: '我的收藏', lines: ['我的收藏'], route: '/pagesSub/profileExtra/favorites' },
+	{ value: '0', label: '我的爆灯', lines: ['我的爆灯'], route: '/pagesSub/profileExtra/spotlights' },
 ])
 
 const portraitTag = ref('状态读取中')
@@ -1086,7 +1086,11 @@ page {
 }
 
 .stat-label {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
 	font-size: 11px;
+	line-height: 1.25;
 	color: var(--profile-text-secondary);
 	text-align: center;
 }

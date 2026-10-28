@@ -26,7 +26,7 @@
 				<view class="cert-item" @tap="openStep('education')">
 					<view class="cert-icon-wrap" :class="{ 'cert-done': educationStatus == 2 }"><text class="cert-icon-text">学历</text></view>
 					<view class="cert-text-wrap"><text class="cert-label">学历认证</text><text class="cert-desc">{{ educationDescription }}</text></view>
-					<text v-if="educationStatus == 2" class="status passed">已认证</text><text v-else-if="educationStatus == 1" class="status reviewing">审核中</text><view v-else class="action-pill"><text>{{ educationStatus == 3 ? '重新提交' : '去认证' }}</text></view>
+					<text v-if="educationStatus == 2" class="status passed">已认证</text><text v-else-if="educationReviewing" class="status reviewing">审核中</text><view v-else class="action-pill"><text>{{ educationStatus == 3 ? '重新提交' : '去认证' }}</text></view>
 				</view>
 				<view class="cert-item">
 					<view class="cert-icon-wrap" :class="{ 'cert-done': avatarUploaded }"><text class="cert-icon-text">头像</text></view>

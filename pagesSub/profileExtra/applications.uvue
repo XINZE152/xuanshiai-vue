@@ -32,7 +32,7 @@
 </template>
 
 <script setup lang="uts">
-import { getApplicationPage, acceptDiscoveryApplication, rejectDiscoveryApplication, getCommunityQuotas, getChatSessionId } from '@/api'
+import { getApplicationPage, acceptDiscoveryApplication, rejectDiscoveryApplication, getCommunityQuotas, getChatSessionId, getPointProducts, getPointsSummary, redeemPointProduct } from '@/api'
 import { guardRealName } from '@/utils/realNameGate.uts'
 
 const applications = ref<any[]>([])
@@ -58,7 +58,49 @@ const currentHasMore = computed(() => activeTab.value == 0 ? outgoingHasMore.val
 
 const goBack = () => { uni.navigateBack({}) }
 const goVip = () => { uni.navigateTo({ url: '/pagesSub/profileExtra/vip' }) }
-const showPackage = () => { uni.showToast({ title: '申请次数获取功能即将开放', icon: 'none' }) }
+const redeemingQuota = ref(false)
+const redeemExtraApply = async (product: any) => {
+	if (redeemingQuota.value) return
+	redeemingQuota.value = true
+	try {
+		const res = await redeemPointProduct('' + product.code)
+		if (!res.success) {
+			uni.showToast({ title: res.message != null ? '' + res.message : '兑换失败', icon: 'none' })
+			return
+		}
+		uni.showToast({ title: '兑换成功', icon: 'success' })
+		await loadQuota()
+	} catch (e) {
+		uni.showToast({ title: '兑换失败，请重试', icon: 'none' })
+	} finally {
+		redeemingQuota.value = false
+	}
+}
+const showPackage = async () => {
+	if (redeemingQuota.value) return
+	try {
+		const productsRes = await getPointProducts()
+		const pointsRes = await getPointsSummary()
+		const products = productsRes.success && productsRes.data != null && Array.isArray(productsRes.data) ? productsRes.data as any[] : []
+		let product: any = null
+		for (let i = 0; i < products.length; i++) {
+			if (products[i] != null && products[i].code == 'extra_apply') { product = products[i]; break }
+		}
+		if (product == null) {
+			uni.showToast({ title: '申请次数兑换暂未开放', icon: 'none' })
+			return
+		}
+		const balance = pointsRes.success && pointsRes.data != null && pointsRes.data.balance != null ? Number(pointsRes.data.balance) : 0
+		uni.showModal({
+			title: '兑换申请次数',
+			content: '' + product.name + ' · ' + product.points_cost + ' 积分\n当前积分余额 ' + balance,
+			confirmText: '兑换',
+			success: (res: any) => { if (res.confirm) redeemExtraApply(product) }
+		})
+	} catch (e) {
+		uni.showToast({ title: '兑换信息读取失败，请重试', icon: 'none' })
+	}
+}
 const selectTab = (index: number) => { activeTab.value = index }
 
 const normalizeStatus = (value: any): string => {

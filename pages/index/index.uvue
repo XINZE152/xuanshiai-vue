@@ -128,6 +128,16 @@
 
 						<view class="divider"></view>
 
+						<view class="qa-section" v-if="currentRecommendUser.qaAnswers && currentRecommendUser.qaAnswers.length > 0">
+							<text class="section-title">深度问答</text>
+							<view class="home-qa-item" v-for="(qa, qi) in currentRecommendUser.qaAnswers.slice(0, 2)" :key="qi">
+								<text class="home-qa-question">{{ qa.question }}</text>
+								<text class="home-qa-answer">{{ qa.answer }}</text>
+							</view>
+						</view>
+
+						<view class="divider" v-if="currentRecommendUser.qaAnswers && currentRecommendUser.qaAnswers.length > 0"></view>
+
 						<!-- 认证标签来自后端 certification_tags 真实字段（实名/单身承诺）；
 						     无认证数据的候选隐藏该区块，不展示未接线的认证结论 -->
 						<view class="cert-section" v-if="currentCertTags.length > 0">
@@ -1528,7 +1538,7 @@
 				const idx = likedUserIds.value.indexOf(id)
 				if (liked && idx < 0) likedUserIds.value.push(id)
 				if (!liked && idx >= 0) likedUserIds.value.splice(idx, 1)
-				showToast(liked ? '已喜欢，仅你自己可见' : '已取消喜欢')
+				showToast(liked ? '已收藏，仅你自己可见' : '已取消收藏')
 			} else {
 				showToast('操作失败，请重试')
 			}
@@ -1718,6 +1728,10 @@
 .about-section { display: flex; flex-direction: column; gap: 20rpx; }
 .section-title { font-size: 28rpx; font-weight: 700; color: var(--text-primary); }
 .about-content { font-size: 26rpx; color: var(--text-secondary); line-height: 1.6; }
+.qa-section { display: flex; flex-direction: column; gap: 16rpx; }
+.home-qa-item { display: flex; flex-direction: column; gap: 6rpx; padding: 18rpx 20rpx; border-radius: 16rpx; background: var(--bg-card-soft); }
+.home-qa-question { font-size: 24rpx; font-weight: 700; color: var(--text-primary); }
+.home-qa-answer { font-size: 24rpx; color: var(--text-secondary); line-height: 1.5; }
 
 /* 认证信息 */
 .cert-section { display: flex; flex-direction: row; align-items: center; gap: 16rpx; flex-wrap: wrap; }

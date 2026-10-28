@@ -1,0 +1,16 @@
+import { request } from './request.uts'
+
+/** 积分商品/权益列表（GET /points/products）。申请次数兑换使用 code = extra_apply。 */
+export async function getPointProducts() {
+  return request({ url: '/points/products', method: 'GET' })
+}
+
+/** 当前积分余额（GET /users/me/points）。 */
+export async function getPointsSummary() {
+  return request({ url: '/users/me/points', method: 'GET' })
+}
+
+/** 兑换积分商品/权益（POST /users/me/points/redeem）。 */
+export async function redeemPointProduct(productCode: string) {
+  return request({ url: '/users/me/points/redeem', method: 'POST', data: { product_code: productCode } })
+}
