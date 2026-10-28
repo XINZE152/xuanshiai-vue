@@ -20,6 +20,15 @@ export function mapCard(row: any, fallbackName: string = '用户'): any {
     if (item != '' && photos.indexOf(item) < 0) photos.push(item)
   }
   if (photos.length == 0 && photo != '') photos.push(photo)
+  const qaAnswers: any[] = []
+  const rawQa = card.qa_answers != null && Array.isArray(card.qa_answers) ? card.qa_answers as any[] : []
+  for (let qaIndex = 0; qaIndex < rawQa.length; qaIndex++) {
+    const item: any = rawQa[qaIndex]
+    if (item == null) continue
+    const answer = item.answer != null ? ('' + item.answer).trim() : ''
+    if (answer == '') continue
+    qaAnswers.push({ question: item.question != null ? '' + item.question : '关于我', answer: answer })
+  }
   const onlineText = card.online != null ? '' + card.online : ''
   return {
     id: Number(card.user_id != null ? card.user_id : (card.id != null ? card.id : 0)),
@@ -52,6 +61,7 @@ export function mapCard(row: any, fallbackName: string = '用户'): any {
     mbti: card.mbti != null ? '' + card.mbti : '',
     interestTags: tags,
     certificationTags: certifications,
+    qaAnswers: qaAnswers,
     isVip: card.isVip === true || card.is_vip === true,
     isFavorite: card.is_favorite == true,
     // 喜欢（user_favorite.type=1）与收藏（type=2）是两套数据：is_favorite 只代表收藏，

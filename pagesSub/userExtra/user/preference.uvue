@@ -52,7 +52,7 @@
 				</view>
 				<view id="edu-track" class="detents" @touchstart="onEduTrackTouchStart">
 					<view class="detent-line"></view>
-					<view class="detent-ind" :style="{ left: 'calc(' + eduIndex + ' * 100% / 9)' }"></view>
+					<view class="detent-ind" :style="{ left: 'calc(' + eduIndex + ' * 100% / 6)' }"></view>
 				</view>
 				<view class="detent-labels">
 					<text v-for="(label, index) in eduLabels" :key="label" class="detent-label" :class="{ 'detent-label-on': eduIndex == index }" @tap="setEduIndex(index)">{{ label }}</text>
@@ -130,6 +130,14 @@
 						</view>
 					</view>
 				</view>
+				<view class="plan-row">
+					<text class="plan-label">结婚时间</text>
+					<view class="keys plan-keys">
+						<view v-for="(option, oi) in marriageTimelineOptions" :key="option" class="key plan-key" :class="{ 'key-on': marriageTimelineIndex == oi }" @tap="setMarriageTimeline(oi)">
+							<text>{{ option }}</text>
+						</view>
+					</view>
+				</view>
 			</view>
 
 			<view class="mod">
@@ -148,22 +156,18 @@
 			</view>
 
 			<view class="mod">
-				<view class="mod-head"><text class="mod-name">关系期待</text><text class="mod-tip">可留空，再次点击可取消</text></view>
-                <view v-for="(group, gi) in planGroups" :key="group.key" class="plan-row">
-                    <text class="plan-label">{{ group.label }}</text>
-                    <view class="keys plan-keys">
-                        <view v-for="(option, oi) in group.opts" :key="option" class="key plan-key" :class="{ 'key-on': planValue(gi) == oi }" @tap="setPlan(gi, oi)"><text>{{ option }}</text></view>
-                    </view>
-                </view>
+				<view class="mod-head"><text class="mod-name">期望职业</text><text class="mod-tip">可不选</text></view>
+				<picker class="area-row" mode="selector" :range="occupationOptions" :value="occupationIndex" @change="onOccupationChange">
+					<view class="area-row-inner">
+						<text class="area-label">职业</text>
+						<view class="area-value"><text class="area-value-text">{{ occupationOptions[occupationIndex] }}</text><text class="area-arrow">›</text></view>
+					</view>
+				</picker>
 			</view>
 
 			<view class="mod">
-				<view class="mod-head"><text class="mod-name">期待</text><text class="mod-tip">可多选，不选也行</text></view>
-				<view class="keys">
-					<view v-for="option in extraOptions" :key="option" class="key" :class="{ 'key-on': extras.indexOf(option) >= 0 }" @tap="toggleExtra(option)">
-						<text>{{ option }}</text>
-					</view>
-				</view>
+				<view class="mod-head"><text class="mod-name">补充说明</text><text class="mod-tip">{{ extraNote.length }}/50</text></view>
+				<textarea class="note-input" :value="extraNote" maxlength="50" placeholder="可补充你的其他期待（50字以内）" @input="onExtraNoteInput"></textarea>
 			</view>
 
 			<view class="content-spacer"></view>
@@ -187,34 +191,22 @@ const AGE_MIN = 18
 const AGE_MAX = 60
 const HEIGHT_MIN = 140
 const HEIGHT_MAX = 220
-// 学历阶梯按升序展示（不限到博士）；education_min 存旧版降序下标（1 博士 - 8 小学），两者换算为 9 - 下标
-const eduLabels = ['不限', '小学', '初中', '高中', '中专', '大专', '本科', '硕士', '博士']
-// 吸烟/饮酒要求已由 smoking/drinking_requirement 结构化承载，不再进 extra_requirement；历史旧选项在下次保存时清除
-const BASE_EXTRA_OPTIONS = ['有稳定工作', '重视家庭', '愿意认真沟通']
-// extra_requirement 早期是枚举编码/自由文本，直接按白名单过滤会把旧值（例如 "1"）
-// 静默丢弃，用户只看到裸码或空白。这里把历史编码映射成文案，无法映射的旧值
-// 仍然保留成可点的选项，保证"看得见、能取消"，不会在保存时被无声抹掉。
-const LEGACY_EXTRA_MAP: Map<string, string> = new Map()
-LEGACY_EXTRA_MAP.set('1', '有稳定工作')
-LEGACY_EXTRA_MAP.set('2', '重视家庭')
-LEGACY_EXTRA_MAP.set('3', '愿意认真沟通')
-const extraOptions = ref(BASE_EXTRA_OPTIONS.slice())
+// 与全站学历域一致：1=高中及以下、2=大专、3=本科、4=硕士、5=博士；0=不限（不落库）。
+const eduLabels = ['不限', '高中及以下', '大专', '本科', '硕士', '博士']
 // 与后端 PreferenceUpdateRequest 对齐：婚姻 0 不限 1 未婚 2 离异 3 丧偶；住房 0 不限 1 有房 2 无房；烟酒 0 不限 1 不抽(饮) 2 可接受
 const marryOptions = ['不限', '未婚', '离异', '丧偶']
 const housingOptions = ['不限', '有房', '无房']
 const smokingOptions = ['不限', '不抽烟', '可接受']
 const drinkingOptions = ['不限', '不饮酒', '可接受']
+// 与后台 MarriageTimelineOption / OccupationRequirementOption 同文案，避免后台与 C 端对不上。
+const marriageTimelineOptions = ['不限', '一年内结婚', '两年内结婚', '三年内结婚', '时机成熟时结婚']
+const occupationOptions = ['不限', '私企员工', '央企/国企', '外企', '事业单位', '公务员', '教师', '医生', '护士', '互联网行业', '自由职业', '军人', '工人', '服务业', '金融', '律师', '求职中', '在校学生', '个体老板', '公司高管', '美容师', '健身教练']
 // income_min 与资料 income 同尺度（年收入，元），挡位对齐资料收入区间档
 const incomeLabels = ['不限', '10w', '20w', '30w', '50w', '100w']
 const incomeStopValues = [0, 100000, 200000, 300000, 500000, 1000000]
 const provinceList: any[] = Array.isArray(locationJson) ? locationJson as any[] : []
 const provinceOptions: string[] = ['不限']
 for (let i = 0; i < provinceList.length; i++) provinceOptions.push('' + provinceList[i].name)
-const planGroups = [
-	{ key: 'dating_goal', label: '我的关系目标', opts: ['倾向恋爱', '倾向结婚'] },
-	{ key: 'meeting_pace', label: '我期待的见面节奏', opts: ['倾向尽快见面', '真诚高效', '了解清楚再见面', '都行看对方的见面意愿'] },
-	{ key: 'children_intention', label: '我的生育意愿', opts: ['想要孩子', '看情况决定是否要孩子', '不想要孩子'] }
-] as any[]
 
 const loading = ref(true)
 const loaded = ref(false)
@@ -227,10 +219,9 @@ const heightMin = ref(null as any)
 const heightMax = ref(null as any)
 const eduMin = ref(null as any)
 const dist = ref(2)
-const planGoal = ref(-1)
-const planPace = ref(-1)
-const planKids = ref(-1)
-const extras = ref([] as string[])
+const marriageTimelineIndex = ref(0)
+const occupationIndex = ref(0)
+const extraNote = ref('')
 const smokeReq = ref(0)
 const drinkReq = ref(0)
 const houseReq = ref(0)
@@ -280,7 +271,10 @@ const heightReadout = computed(() : string => {
 	return '' + heightLo.value + ' ~ ' + heightHi.value
 })
 const heightUnit = computed(() : string => heightMin.value == null && heightMax.value == null ? '' : 'cm')
-const eduIndex = computed(() : number => eduMin.value == null ? 0 : 9 - Number(eduMin.value))
+const eduIndex = computed(() : number => {
+	const n = eduMin.value == null ? 0 : Number(eduMin.value)
+	return n >= 1 && n <= 5 ? n : 0
+})
 const eduReadout = computed(() : string => eduMin.value == null ? '不限' : eduLabels[eduIndex.value])
 const incomeIndex = computed(() : number => {
 	const v = incomeMin.value == null ? 0 : Number(incomeMin.value)
@@ -314,29 +308,30 @@ const segIndStyle = (count: number, index: number): string => {
 	return 'width: calc(' + cell + '); left: calc(6rpx + ' + cell + ' * ' + index + ');'
 }
 
-const planValue = (gi: number): number => gi == 0 ? planGoal.value : (gi == 1 ? planPace.value : planKids.value)
-
 const setDist = (value: number) => {
 	if (dist.value == value) return
 	dist.value = value
 	markDirty()
 }
-const setPlan = (gi: number, oi: number) => {
-	if (saving.value || saved.value) return
-	if (planValue(gi) == oi) oi = -1
-	if (gi == 0) planGoal.value = oi
-	else if (gi == 1) planPace.value = oi
-	else planKids.value = oi
-	markDirty()
-}
 const setEduIndex = (index: number) => {
 	if (eduIndex.value == index) return
-	eduMin.value = index == 0 ? null : (9 - index)
+	eduMin.value = index == 0 ? null : index
 	markDirty()
 }
 const setIncomeIndex = (index: number) => {
 	if (incomeIndex.value == index) return
 	incomeMin.value = index == 0 ? null : incomeStopValues[index]
+	markDirty()
+}
+const setMarriageTimeline = (index: number) => {
+	if (marriageTimelineIndex.value != index) { marriageTimelineIndex.value = index; markDirty() }
+}
+const onOccupationChange = (e: any) => {
+	const index = e.detail != null && e.detail.value != null ? Number(e.detail.value) : 0
+	if (index >= 0 && index < occupationOptions.length) { occupationIndex.value = index; markDirty() }
+}
+const onExtraNoteInput = (e: any) => {
+	extraNote.value = e.detail != null && e.detail.value != null ? '' + e.detail.value : ''
 	markDirty()
 }
 const setMarryReq = (v: number) => { if (marryReq.value != v) { marryReq.value = v; markDirty() } }
@@ -372,12 +367,6 @@ const togglePrefCity = (raw: any) => {
 		}
 		prefCities.value.push(code)
 	}
-	markDirty()
-}
-const toggleExtra = (option: string) => {
-	const index = extras.value.indexOf(option)
-	if (index >= 0) extras.value.splice(index, 1)
-	else extras.value.push(option)
 	markDirty()
 }
 
@@ -510,15 +499,13 @@ const load = async () => {
 			return
 		}
 		const data = response.data as any
-		planGoal.value = planGroups[0].opts.indexOf(data.dating_goal)
-		planPace.value = planGroups[1].opts.indexOf(data.meeting_pace)
-		planKids.value = planGroups[2].opts.indexOf(data.children_intention)
 		ageMin.value = data.age_min
 		ageMax.value = data.age_max
 		heightMin.value = data.height_min
 		heightMax.value = data.height_max
 		const eduNum = data.education_min == null ? null : Number(data.education_min)
-		eduMin.value = eduNum == null || eduNum == 0 ? null : eduNum
+		// 历史 6-8 是旧 9 档/反向映射的脏值，读入时直接归零，避免用户不改动保存又提交越界值。
+		eduMin.value = eduNum != null && eduNum >= 1 && eduNum <= 5 ? eduNum : null
 		const acceptLongDistance = data.accept_long_distance == true
 		const acceptCrossProvince = data.accept_cross_province == true
 		// 跨省必含异地；历史数据出现「跨省接受但异地不接受」时按更宽一档归一
@@ -527,6 +514,10 @@ const load = async () => {
 		drinkReq.value = clampInt(data.drinking_requirement, 0, 2, 0)
 		houseReq.value = clampInt(data.housing_requirement, 0, 2, 0)
 		marryReq.value = clampInt(data.marriage_status, 0, 3, 0)
+		const rawTimeline = data.marriage_timeline != null ? '' + data.marriage_timeline : ''
+		marriageTimelineIndex.value = Math.max(0, marriageTimelineOptions.indexOf(rawTimeline))
+		const rawOccupation = data.preferred_occupation != null ? '' + data.preferred_occupation : ''
+		occupationIndex.value = Math.max(0, occupationOptions.indexOf(rawOccupation))
 		const incomeNum = data.income_min == null ? null : Number(data.income_min)
 		incomeMin.value = incomeNum != null && !isNaN(incomeNum) && incomeNum > 0 ? incomeNum : null
 		const rawProvince = data.preferred_province_code != null ? '' + data.preferred_province_code : ''
@@ -540,20 +531,20 @@ const load = async () => {
 		}
 		prefCities.value = rawCities
 		prefProvince.value = rawProvince != '' ? rawProvince : (rawCities.length > 0 ? provinceCodeByCity(rawCities[0]) : '')
-		const rawExtra = data.extra_requirement != null ? '' + data.extra_requirement : ''
-		const parsed: string[] = []
-		if (rawExtra != '' && rawExtra != '无其他要求') {
-			const parts = rawExtra.split(',')
-			for (let i = 0; i < parts.length; i++) {
-				const part = parts[i].trim()
-				if (part == '') continue
-				const mapped = LEGACY_EXTRA_MAP.get(part)
-				const label = mapped != null ? mapped : part
-				if (extraOptions.value.indexOf(label) < 0) (extraOptions.value as string[]).push(label)
-				if (parsed.indexOf(label) < 0) parsed.push(label)
-			}
+		// 旧“期待”多选写的是 1/2/3 逗号串；改成补充说明时把已知编码翻成文案，避免用户看到裸码。
+		const rawExtraRaw = data.extra_requirement != null ? '' + data.extra_requirement : ''
+		const rawExtra = rawExtraRaw == '无其他要求' ? '' : rawExtraRaw
+		const legacyMap: any = { '1': '有稳定工作', '2': '重视家庭', '3': '愿意认真沟通' }
+		const extraParts = rawExtra.split(',')
+		let allLegacy = rawExtra != ''
+		const legacyLabels: string[] = []
+		for (let i = 0; i < extraParts.length; i++) {
+			const part = extraParts[i].trim()
+			if (part == '' || legacyMap[part] == null) { allLegacy = false; break }
+			legacyLabels.push(legacyMap[part])
 		}
-		extras.value = parsed
+		const noteText = allLegacy ? legacyLabels.join('、') : rawExtra
+		extraNote.value = noteText.length > 50 ? noteText.substring(0, 50) : noteText
 		ledDirty.value = false
 		loaded.value = true
 	} catch (error) {
@@ -590,10 +581,9 @@ const save = async () => {
 			housing_requirement: houseReq.value,
 			smoking_requirement: smokeReq.value,
 			drinking_requirement: drinkReq.value,
-			dating_goal: planGoal.value >= 0 ? planGroups[0].opts[planGoal.value] : null,
-			meeting_pace: planPace.value >= 0 ? planGroups[1].opts[planPace.value] : null,
-			children_intention: planKids.value >= 0 ? planGroups[2].opts[planKids.value] : null,
-			extra_requirement: extras.value.length > 0 ? extras.value.join(',') : null
+			marriage_timeline: marriageTimelineIndex.value == 0 ? null : marriageTimelineOptions[marriageTimelineIndex.value],
+			preferred_occupation: occupationIndex.value == 0 ? null : occupationOptions[occupationIndex.value],
+			extra_requirement: extraNote.value.trim() != '' ? extraNote.value.trim() : null
 		})
 		if (!response.success) {
 			uni.showToast({ title: response.message != null ? '' + response.message : '择偶标准保存失败', icon: 'none' })
@@ -648,7 +638,7 @@ onMounted(() => { load() })
 
 .detents { position: relative; height: 76rpx; }
 .detent-line { position: absolute; left: 0; right: 0; top: 37rpx; height: 3rpx; background: var(--line); }
-.detent-ind { position: absolute; top: 6rpx; height: 64rpx; width: calc(100% / 9); border-radius: 16rpx; background: var(--accent-glow); border: 3rpx solid var(--accent); transition: left 0.18s ease-out; }
+.detent-ind { position: absolute; top: 6rpx; height: 64rpx; width: calc(100% / 6); border-radius: 16rpx; background: var(--accent-glow); border: 3rpx solid var(--accent); transition: left 0.18s ease-out; }
 .detent-labels { display: flex; flex-direction: row; margin-top: 8rpx; }
 .detent-label { flex: 1; text-align: center; color: var(--muted); font-size: 20rpx; }
 .detent-label-on { color: var(--accent2); font-weight: 700; }
@@ -675,13 +665,13 @@ onMounted(() => { load() })
 .key-on { border-color: var(--accent); background: var(--accent-glow); box-shadow: 0 4rpx 0 var(--accent-glow); }
 .key-on > text { color: var(--accent2); }
 
-.area-row { display: block; margin-top: 22rpx; background: var(--canvas); border: 1px solid var(--line); border-radius: 20rpx; padding: 22rpx 24rpx; }
-.area-row-inner { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+.area-row { display: block; margin-top: 22rpx; background: var(--canvas); border: 1px solid var(--line); border-radius: 20rpx; padding: 22rpx 24rpx; }.area-row-inner { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
 .area-label { color: var(--ink2); font-size: 26rpx; font-weight: 600; }
 .area-value { display: flex; flex-direction: row; align-items: center; }
 .area-value-text { color: var(--ink); font-size: 26rpx; font-weight: 600; }
 .area-arrow { margin-left: 10rpx; color: var(--muted); font-size: 30rpx; }
 .area-keys { margin-top: 18rpx; }
+.note-input { margin-top: 22rpx; width: 100%; min-height: 140rpx; box-sizing: border-box; padding: 20rpx 24rpx; border-radius: 20rpx; background: var(--canvas); border: 1px solid var(--line); color: var(--ink); font-size: 26rpx; line-height: 1.5; }
 
 .hv-press { transform: scale(0.98); opacity: 0.85; }
 

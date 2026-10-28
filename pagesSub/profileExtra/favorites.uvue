@@ -1,26 +1,92 @@
 <template>
-	<view class="empty-page"><view class="empty-nav"><text class="ic ic-sys ic-fanhui back" @tap="back"></text><text>我的喜欢</text><view class="placeholder"></view></view><view class="tabs"><view class="tab active"><text>我的喜欢({{ favorites.length }})</text><view></view></view></view><scroll-view v-if="favorites.length > 0" class="favorite-list" scroll-y><view v-for="item in favorites" :key="item.id" class="favorite-row" @tap="openUser(item.userId)"><image :src="item.avatar" class="favorite-avatar" mode="aspectFill"></image><view class="favorite-info"><text class="favorite-name">{{ item.name }}</text><text class="favorite-meta">{{ item.ageText }}</text></view></view></scroll-view><view v-else class="empty-content"><text class="ic ic-home ic-search empty-icon"></text><text class="empty-copy">还没有喜欢的人</text><text class="empty-copy">喜欢仅自己可见，对方不会收到通知</text></view></view>
+	<view class="empty-page">
+		<view class="empty-nav">
+			<text class="ic ic-sys ic-fanhui back" @tap="back"></text>
+			<text>我的收藏</text>
+			<view class="placeholder"></view>
+		</view>
+		<view v-if="loading" class="state"><text>正在加载…</text></view>
+		<view v-else-if="error != ''" class="state" @tap="loadFavorites(true)"><text>{{ error }}，点击重试</text></view>
+		<scroll-view v-else-if="favorites.length > 0" class="favorite-list" scroll-y @scrolltolower="loadMore">
+			<view v-for="item in favorites" :key="item.id" class="favorite-row" @tap="openUser(item.userId)">
+				<image :src="item.avatar" class="favorite-avatar" mode="aspectFill"></image>
+				<view class="favorite-info">
+					<text class="favorite-name">{{ item.name }}</text>
+					<text class="favorite-meta">{{ item.ageText }}</text>
+				</view>
+			</view>
+			<view v-if="hasMore" class="load-more"><text>加载更多…</text></view>
+		</scroll-view>
+		<view v-else class="empty-content">
+			<text class="ic ic-home ic-search empty-icon"></text>
+			<text class="empty-copy">还没有收藏的人</text>
+			<text class="empty-copy">收藏仅自己可见，对方不会收到通知</text>
+		</view>
+	</view>
 </template>
 <script setup lang="uts">
 import { getMyLikedProfiles } from '@/api'
 const back = () => uni.navigateBack({ delta: 1 })
 const favorites = ref<any[]>([])
+const loading = ref(true)
+const error = ref('')
+const page = ref(1)
+const total = ref(0)
+const hasMore = ref(false)
 const openUser = (id: number) => { if (id > 0) uni.navigateTo({ url: '/pagesSub/userExtra/user/detail?userId=' + id }) }
-const loadFavorites = async () => {
-	// 定版：喜欢 = 原收藏，仅自己可见；数据源是 user_favorite.type=1（GET /relations/likes）。
-	// 不再读 /discovery/favorites（type=2 旧收藏），也不再展示「谁收藏我」——喜欢不通知对方。
-	const res = await getMyLikedProfiles(1, 20)
-	if (!res.success || res.data == null) return
-	const rows = res.data.items != null && Array.isArray(res.data.items) ? res.data.items as any[] : []
-	favorites.value = rows
+const loadFavorites = async (reset: boolean = true) => {
+	// 定版：收藏 = 原“喜欢”能力，仅自己可见；数据源是 user_favorite.type=1（GET /relations/likes）。
+	// 不再读 /discovery/favorites（type=2 旧收藏），也不再展示“谁收藏我”。
+	if (reset) { loading.value = true; error.value = ''; page.value = 1 }
+	try {
+		const res = await getMyLikedProfiles(page.value, 20)
+		if (!res.success || res.data == null) {
+			const message = res.message != null ? '' + res.message : '收藏加载失败'
+			if (reset) error.value = message
+			else uni.showToast({ title: message, icon: 'none' })
+			loading.value = false
+			return
+		}
+		const rows = res.data.items != null && Array.isArray(res.data.items) ? res.data.items as any[] : []
+		favorites.value = reset ? rows : favorites.value.concat(rows)
+		total.value = res.data.total != null ? Number(res.data.total) : favorites.value.length
+		hasMore.value = favorites.value.length < total.value
+	} catch (e) {
+		if (reset) error.value = '网络异常，请重试'
+		else uni.showToast({ title: '网络异常，请重试', icon: 'none' })
+	} finally {
+		loading.value = false
+	}
 }
-onMounted(() => { loadFavorites() })
+const loadMore = () => {
+	if (loading.value || !hasMore.value) return
+	page.value = page.value + 1
+	loadFavorites(false)
+}
+onMounted(() => { loadFavorites(true) })
 </script>
 <style scoped>
-.empty-page { min-height: 100vh; background: #F7F4F0; color: #2C2C2C; }.empty-nav { height: 100px; padding: 44px 18px 0; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: space-between; background: #FFFFFF; font-size: 20px; font-weight: 800; }.back,.placeholder { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }.back { font-size: 38px; font-weight: 300; }.tabs { height: 56px; display: flex; flex-direction: row; background: #FFFFFF; }.tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 8px; color: #8E8E8A; font-size: 16px; }.tab view { width: 28px; height: 5px; border-radius: 3px; background: transparent; }.tab.active { color: #2C2C2C; font-weight: 700; }.tab.active view { background: #8FA88A; }.empty-content { display: flex; flex-direction: column; align-items: center; padding-top: 45px; color: #C5C3BE; }.empty-icon { width: 100px; height: 100px; display: flex; align-items: center; justify-content: center; background: #FFFFFF; font-size: 64px; color: #D8D2CB; }.empty-copy { margin-top: 10px; font-size: 14px; color: #B8B2AB; }
-.favorite-list { height: calc(100vh - 156px); padding: 16px; box-sizing: border-box; }.favorite-row { display: flex; flex-direction: row; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #E7E3DD; }.favorite-avatar { width: 52px; height: 52px; border-radius: 26px; background: #F1ECE6; }.favorite-info { display: flex; flex-direction: column; gap: 5px; }.favorite-name { font-size: 15px; font-weight: 700; }.favorite-meta { color: #8E8E8A; font-size: 12px; }
+.empty-page { min-height: 100vh; background: #F7F4F0; color: #2C2C2C; }
+.empty-nav { height: 100px; padding: 44px 18px 0; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: space-between; background: #FFFFFF; font-size: 20px; font-weight: 800; }
+.back,.placeholder { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
+.back { font-size: 38px; font-weight: 300; }
+.state { display: flex; align-items: center; justify-content: center; padding: 80px 24px; color: #8E8E8A; font-size: 14px; }
+.empty-content { display: flex; flex-direction: column; align-items: center; padding-top: 45px; color: #C5C3BE; }
+.empty-icon { width: 100px; height: 100px; display: flex; align-items: center; justify-content: center; background: #FFFFFF; font-size: 64px; color: #D8D2CB; }
+.empty-copy { margin-top: 10px; font-size: 14px; color: #B8B2AB; }
+.favorite-list { height: calc(100vh - 100px); padding: 16px; box-sizing: border-box; }
+.favorite-row { display: flex; flex-direction: row; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #E7E3DD; }
+.favorite-avatar { width: 52px; height: 52px; border-radius: 26px; background: #F1ECE6; }
+.favorite-info { display: flex; flex-direction: column; gap: 5px; }
+.favorite-name { font-size: 15px; font-weight: 700; }
+.favorite-meta { color: #8E8E8A; font-size: 12px; }
+.load-more { padding: 16px 0; text-align: center; color: #B8B2AB; font-size: 12px; }
 @font-face { font-family: "iconfont-home"; src: url('/static/婚恋小程序图标/首页推荐与匹配/iconfont.woff2') format('woff2'); }
 @font-face { font-family: "iconfont-sys"; src: url('/static/婚恋小程序图标/系统通用/iconfont.woff2') format('woff2'); }
-.ic { font-style: normal; }.ic-home { font-family: "iconfont-home" !important; }.ic-sys { font-family: "iconfont-sys" !important; }.ic-fanhui:before { content: "\e606"; }.ic-search:before { content: "\e600"; }
+.ic { font-style: normal; }
+.ic-home { font-family: "iconfont-home" !important; }
+.ic-sys { font-family: "iconfont-sys" !important; }
+.ic-fanhui:before { content: "\e606"; }
+.ic-search:before { content: "\e600"; }
 .back { width: 40px; height: 40px; border-radius: 20px; background: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #2C2C2C; }
 </style>

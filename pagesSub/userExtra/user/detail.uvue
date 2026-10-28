@@ -78,9 +78,16 @@
 					<view v-if="user.detailInfo.length > 0" class="vip-section-card">
 						<text class="vip-section-title">详细资料</text>
 						<view class="detail-info-grid">
-							<view v-for="item in visibleDetailInfo" :key="item.label" class="detail-info-cell">
-								<text class="detail-info-label">{{ item.label }}</text>
-								<text class="detail-info-value">{{ item.value }}</text>
+							<view v-for="(row, ri) in detailInfoRows" :key="ri" class="detail-info-row">
+								<view
+									v-for="(item, ci) in row"
+									:key="item.label"
+									class="detail-info-cell"
+									:class="{ 'detail-info-cell-right': row.length > 1 && ci == 1 }"
+								>
+									<text class="detail-info-label">{{ item.label }}</text>
+									<text class="detail-info-value">{{ item.value }}</text>
+								</view>
 							</view>
 						</view>
 						<view v-if="user.detailInfo.length > DETAIL_COLLAPSED_COUNT" class="detail-info-toggle" @tap="detailExpanded = !detailExpanded">
@@ -94,8 +101,11 @@
 					</view>
 
 					<view v-if="user.lifePhotos.length > 0" id="anchor-moments" class="vip-section-card">
-						<text class="vip-section-title">Ta的瞬间</text>
-						<image v-for="(photo, index) in user.lifePhotos" :key="index" class="moment-hero" :src="photo" mode="aspectFill"></image>
+						<view class="section-heading-row">
+							<text class="vip-section-title">Ta的瞬间</text>
+							<text v-if="user.lifePhotos.length > MOMENTS_PREVIEW_COUNT" class="section-more" @tap="momentsExpanded = !momentsExpanded">{{ momentsExpanded ? '收起' : '查看全部 ' + user.lifePhotos.length + ' 张 ›' }}</text>
+						</view>
+						<image v-for="(photo, index) in visibleMoments" :key="index" class="moment-hero" :src="photo" mode="aspectFill"></image>
 					</view>
 
 					<view v-if="user.expect.length > 0" class="vip-section-card">
@@ -114,9 +124,16 @@
 							<text class="ideal-value">{{ idealPartner.heightText }}</text>
 						</view>
 						<view v-if="idealPartner.rows.length > 0" class="ideal-grid">
-							<view v-for="item in idealPartner.rows" :key="item.label" class="ideal-cell">
-								<text class="ideal-label">{{ item.label }}</text>
-								<text class="ideal-value">{{ item.value }}</text>
+							<view v-for="(row, ri) in idealRows" :key="ri" class="ideal-row-group">
+								<view
+									v-for="(item, ci) in row"
+									:key="item.label"
+									class="ideal-cell"
+									:class="{ 'ideal-cell-right': row.length > 1 && ci == 1 }"
+								>
+									<text class="ideal-label">{{ item.label }}</text>
+									<text class="ideal-value">{{ item.value }}</text>
+								</view>
 							</view>
 						</view>
 						<view v-if="idealPartner.extras.length > 0" class="tag-row ideal-tags">
@@ -382,6 +399,39 @@ const visibleDetailInfo = computed((): any[] => {
 	return detailExpanded.value ? all : all.slice(0, DETAIL_COLLAPSED_COUNT)
 })
 
+// 两列清单的排版：先按“长值优先通栏”两两分组，避免 50% cell 之间零间距、长值换行把行高拉乱。
+const chunkInfoRows = (items: any[], isLong: (item: any) => boolean): any[] => {
+	const rows: any[] = []
+	let index = 0
+	while (index < items.length) {
+		const first: any = items[index]
+		const second: any = index + 1 < items.length ? items[index + 1] : null
+		if (isLong(first) || second == null || isLong(second)) {
+			rows.push([first])
+			index += 1
+		} else {
+			rows.push([first, second])
+			index += 2
+		}
+	}
+	return rows
+}
+
+const detailInfoRows = computed((): any[] => {
+	return chunkInfoRows(visibleDetailInfo.value, (item: any): boolean => {
+		const label = '' + item.label
+		const value = '' + item.value
+		return label == '毕业学校' || label == '工作单位' || value.length > 8
+	})
+})
+
+const idealRows = computed((): any[] => {
+	const rows = idealPartner.value != null && Array.isArray(idealPartner.value.rows) ? idealPartner.value.rows as any[] : []
+	return chunkInfoRows(rows, (item: any): boolean => {
+		return item.label == '期望地区' || ('' + item.value).length > 8
+	})
+})
+
 // 认证标签 → 展示项。只翻译后端真实下发的标签，不凭空补"房产认证"之类的结论。
 const CERT_META: any = {
 	'实名': { icon: '盾', desc: '已通过平台实名认证' },
@@ -420,6 +470,14 @@ const dynamicsExpanded = ref(false)
 const visibleDynamics = computed((): any[] => {
 	const all = dynamics.value
 	return dynamicsExpanded.value ? all : all.slice(0, DYNAMICS_PREVIEW_COUNT)
+})
+
+// 瞬间：与动态同款，默认 3 张，点「查看全部」就地展开，避免一次把页面拉得很长。
+const MOMENTS_PREVIEW_COUNT = 3
+const momentsExpanded = ref(false)
+const visibleMoments = computed((): any[] => {
+	const all = user.value.lifePhotos as any[]
+	return momentsExpanded.value ? all : all.slice(0, MOMENTS_PREVIEW_COUNT)
 })
 
 const textValue = (value: any, fallback: string): string => {
@@ -1097,7 +1155,7 @@ const onApplySuccess = (_payload: any) => {
 }
 const onLike = async () => {
 	if (isOwnProfile.value) {
-		uni.showToast({ title: '不能喜欢自己', icon: 'none' })
+		uni.showToast({ title: '不能收藏自己', icon: 'none' })
 		return
 	}
 	const ok = await guardRealName('like')
@@ -1108,7 +1166,7 @@ const onLike = async () => {
 		if (res.success && res.data != null) {
 			const liked = res.data.liked == true
 			isLikedUser.value = liked
-			uni.showToast({ title: liked ? '已喜欢，仅你自己可见' : '已取消喜欢', icon: 'none' })
+			uni.showToast({ title: liked ? '已收藏，仅你自己可见' : '已取消收藏', icon: 'none' })
 		} else {
 			uni.showToast({ title: '操作失败，请重试', icon: 'none' })
 		}
@@ -1195,19 +1253,18 @@ const onLike = async () => {
 .basic-info-cell { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6rpx; padding: 18rpx 8rpx; border-radius: 12rpx; background-color: var(--canvas); }
 .basic-info-label { color: var(--muted); font-size: 20rpx; }
 .basic-info-value { color: var(--ink); font-size: 24rpx; font-weight: 600; }
-/* 详细资料：左右对齐的清单行，与基础资料的「田字格」区分开，避免 12 个格子变成表格 */
-.detail-info-grid { display: flex; flex-direction: row; flex-wrap: wrap; }
-.detail-info-cell { width: 50%; box-sizing: border-box; padding: 14rpx 0; display: flex; flex-direction: row; align-items: flex-start; justify-content: space-between; gap: 12rpx; border-bottom: 1rpx solid var(--line); }
-.detail-info-label { flex-shrink: 0; color: var(--muted); font-size: 22rpx; line-height: 1.5; }
-.detail-info-value { flex: 1; text-align: right; color: var(--ink); font-size: 23rpx; font-weight: 500; line-height: 1.5; overflow-wrap: break-word; }
+/* 详细资料 / Ta 的理想型：行容器 + 列间距 + label 固定宽 + value 左对齐；长值通栏。
+   不能再用“每个 cell 50% + space-between + value 右对齐”，否则相邻 cell 零间距会粘字。 */
+.detail-info-grid, .ideal-grid { display: flex; flex-direction: column; }
+.detail-info-row, .ideal-row-group { display: flex; flex-direction: row; border-bottom: 1rpx solid var(--line); }
+.detail-info-cell, .ideal-cell { flex: 1; min-width: 0; box-sizing: border-box; padding: 14rpx 0; display: flex; flex-direction: row; align-items: flex-start; gap: 12rpx; }
+.detail-info-cell-right, .ideal-cell-right { padding-left: 24rpx; border-left: 1rpx solid var(--line); }
+.detail-info-label, .ideal-label { flex: 0 0 112rpx; color: var(--muted); font-size: 22rpx; line-height: 1.5; }
+.detail-info-value, .ideal-value { flex: 1; min-width: 0; text-align: left; color: var(--ink); font-size: 23rpx; font-weight: 500; line-height: 1.5; word-break: break-all; }
 .detail-info-toggle { display: flex; flex-direction: row; align-items: center; justify-content: center; padding-top: 18rpx; }
 .detail-info-toggle-text { color: var(--accent2); font-size: 22rpx; }
-/* Ta 的理想型：数值区间通栏、枚举两列、期待走标签流 */
 .ideal-row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 14rpx 0; border-bottom: 1rpx solid var(--line); }
-.ideal-grid { display: flex; flex-direction: row; flex-wrap: wrap; }
-.ideal-cell { width: 50%; box-sizing: border-box; padding: 14rpx 0; display: flex; flex-direction: row; align-items: flex-start; justify-content: space-between; gap: 12rpx; border-bottom: 1rpx solid var(--line); }
-.ideal-label { flex-shrink: 0; color: var(--muted); font-size: 22rpx; line-height: 1.5; }
-.ideal-value { flex: 1; text-align: right; color: var(--ink); font-size: 23rpx; font-weight: 500; line-height: 1.5; overflow-wrap: break-word; }
+.ideal-row .ideal-value { text-align: right; }
 .ideal-tags { margin-top: 16rpx; }
 .moment-hero { width: 100%; height: 380rpx; border-radius: 16rpx; background-color: var(--warm); }
 .qa-card { display: flex; flex-direction: column; gap: 12rpx; padding: 24rpx; border-radius: 16rpx; background-color: var(--canvas); }

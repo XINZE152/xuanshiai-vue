@@ -74,6 +74,14 @@ export const normalizeIdealPartner = (raw: any): IdealPartnerSummary => {
 	pushRow('关系目标', data.dating_goal)
 	pushRow('见面节奏', data.meeting_pace)
 	pushRow('生育意愿', data.children_intention)
+	const timelineText = data.marriage_timeline_text != null && ('' + data.marriage_timeline_text).trim() != ''
+		? data.marriage_timeline_text
+		: data.marriage_timeline
+	const occupationText = data.preferred_occupation_text != null && ('' + data.preferred_occupation_text).trim() != ''
+		? data.preferred_occupation_text
+		: data.preferred_occupation
+	pushRow('结婚时间', timelineText)
+	pushRow('期望职业', occupationText)
 
 	const extras: string[] = []
 	const rawExtras = data.extras
