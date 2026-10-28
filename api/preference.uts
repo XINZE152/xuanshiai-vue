@@ -1,0 +1,112 @@
+/**
+ * 择偶偏好（详情页「Ta 的理想型」）
+ *
+ * 接口：GET /users/{user_id}/preference-public
+ * 状态：后端尚未实现（见《用户端测试问题-2026-10-27-后端报告-待交叉验证》C1）。
+ *       未上线时这里会拿到 404，调用方按「无数据」静默隐藏整块，不报错、不占位。
+ *
+ * 口径约束（重要）：**枚举文案一律由服务端给（*_text），前端不做本地映射。**
+ * 原因：`user_partner_preference.education_min` 的存储域是 1=高中及以下…5=博士，
+ * 而编辑态 pagesSub/userExtra/user/preference.uvue 的学历档位是 9 档
+ * （不限/小学/…/博士）。同一个数字在两处含义不同，前端自己算必错。
+ * 因此本文件只做两件安全的事：
+ *   ① 年龄/身高这类纯数值区间，前端可以自己拼；
+ *   ② 其余字段只认服务端下发的 `*_text`，没给就整行不渲染（不猜、不兜底成「不限」）。
+ */
+
+import { request } from './request.uts'
+
+/** 单行 label-value，空值行不生成 */
+export interface IdealPartnerRow {
+	label: string
+	value: string
+}
+
+/** 详情页直接消费的结构化结果 */
+export interface IdealPartnerSummary {
+	hasData: boolean
+	ageText: string
+	heightText: string
+	rows: IdealPartnerRow[]
+	extras: string[]
+}
+
+const textOf = (value: any): string => {
+	if (value == null) return ''
+	return ('' + value).trim()
+}
+
+/** 纯数值区间文案：「24 ~ 32岁」/「32岁以内」/「24岁以上」；两端都没填返回空 */
+const numberRangeText = (minValue: any, maxValue: any, unit: string): string => {
+	const minRaw = minValue == null || ('' + minValue).trim() == '' ? 0 : Number(minValue)
+	const maxRaw = maxValue == null || ('' + maxValue).trim() == '' ? 0 : Number(maxValue)
+	const min = isNaN(minRaw) ? 0 : minRaw
+	const max = isNaN(maxRaw) ? 0 : maxRaw
+	if (min > 0 && max > 0) return '' + min + ' ~ ' + max + unit
+	if (min > 0) return '' + min + unit + '以上'
+	if (max > 0) return '' + max + unit + '以内'
+	return ''
+}
+
+/**
+ * 把服务端 `_public_preference` 的返回归一成详情页结构。
+ * 同时适用于两个来源：
+ *   ① `GET /users/{id}/profile` 响应里的 `preference`（同一个归一结果，优先用这个，省一次请求）；
+ *   ② `GET /users/{id}/preference-public` 单独接口。
+ */
+export const normalizeIdealPartner = (raw: any): IdealPartnerSummary => {
+	const data = raw != null ? raw : {}
+	const rows: IdealPartnerRow[] = []
+	// 只认服务端文案；拿不到就跳过这一行，避免出现一排「不限」
+	const pushRow = (label: string, value: any) => {
+		const text = textOf(value)
+		if (text == '' || text == '不限') return
+		rows.push({ label: label, value: text })
+	}
+	pushRow('学历', data.education_min_text)
+	pushRow('收入', data.income_min_text)
+	pushRow('距离', data.distance_text)
+	pushRow('婚姻状况', data.marriage_text)
+	pushRow('住房要求', data.housing_text)
+	pushRow('吸烟要求', data.smoking_text)
+	pushRow('饮酒要求', data.drinking_text)
+	pushRow('期望地区', data.expected_area)
+	pushRow('关系目标', data.dating_goal)
+	pushRow('见面节奏', data.meeting_pace)
+	pushRow('生育意愿', data.children_intention)
+
+	const extras: string[] = []
+	const rawExtras = data.extras
+	if (rawExtras != null && Array.isArray(rawExtras)) {
+		for (let i = 0; i < (rawExtras as any[]).length; i++) {
+			const item = textOf((rawExtras as any[])[i])
+			if (item != '') extras.push(item)
+		}
+	}
+
+	const ageText = numberRangeText(data.age_min, data.age_max, '岁')
+	const heightText = numberRangeText(data.height_min, data.height_max, 'cm')
+	const hasData = data.has_data !== false && (ageText != '' || heightText != '' || rows.length > 0 || extras.length > 0)
+	return {
+		hasData: hasData,
+		ageText: ageText,
+		heightText: heightText,
+		rows: rows,
+		extras: extras
+	}
+}
+
+/**
+ * 拉取指定用户的择偶偏好。
+ * 约定：成功且 hasData 为 true 才渲染；其余情况（404 / 空数据 / 网络失败）一律当「无数据」，
+ * 由调用方静默隐藏，不写入 detailError，避免拖累主资料加载。
+ */
+export async function getUserPartnerPreference(userId: number) {
+	if (userId <= 0) return { success: false, data: null as any, code: -1, message: '' }
+	const res = await request({ url: '/users/' + userId + '/preference-public', method: 'GET' })
+	if (!res.success || res.data == null) {
+		return { success: false, data: null as any, code: res.code, message: res.message }
+	}
+	const summary = normalizeIdealPartner(res.data)
+	return { success: true, data: summary as any, code: res.code, message: res.message }
+}

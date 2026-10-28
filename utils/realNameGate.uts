@@ -25,6 +25,7 @@ export type GateAction =
   | 'activitySignup'
   | 'paperPlane'
   | 'apply'
+  | 'acceptApply'
 
 const ACTION_LABELS: Record<string, string> = {
   publish: '发布动态',
@@ -35,7 +36,8 @@ const ACTION_LABELS: Record<string, string> = {
   topicJoin: '加入话题',
   activitySignup: '报名活动',
   paperPlane: '使用纸飞机',
-  apply: '申请认识'
+  apply: '申请认识',
+  acceptApply: '回应认识申请'
 }
 
 /** 归一化历史状态值 */
@@ -105,14 +107,16 @@ export async function ensureRealName(action: GateAction | string = 'publish') {
     }
     const label = actionLabel(action)
     let message = `完成实名认证后即可${label}`
-    if (action == 'apply') {
+    // 申请认识与回应认识申请同属「建立关系」类动作：文案结构一致，只换动词。
+    if (action == 'apply' || action == 'acceptApply') {
+      const verb = action == 'acceptApply' ? '回应认识申请' : '申请认识'
       message = '需要实名认证'
       if (status == 'reviewing') {
-        message = '实名认证审核中，通过后即可申请认识'
+        message = `实名认证审核中，通过后即可${verb}`
       } else if (status == 'rejected') {
-        message = '实名认证未通过，请重新认证后再申请认识'
+        message = `实名认证未通过，请重新认证后再${verb}`
       } else if (status == 'revoked') {
-        message = '实名认证已撤销，请重新认证后再申请认识'
+        message = `实名认证已撤销，请重新认证后再${verb}`
       }
     } else if (status == 'reviewing') {
       message = `实名认证审核中，通过后即可${label}`
@@ -225,7 +229,7 @@ export async function guardRealName(action: GateAction | string = 'publish'): Pr
   uni.showModal({
     title: '需要实名认证',
     content: result.message,
-    confirmText: action == 'apply' ? '去认证' : '去实名',
+    confirmText: action == 'apply' || action == 'acceptApply' ? '去认证' : '去实名',
     cancelText: '稍后再说',
     success: (res) => {
       if (res.confirm) {

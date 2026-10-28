@@ -4,25 +4,44 @@
 		<view class="record-nav"><view class="back-button" @tap="goBack"><text class="ic ic-sys ic-fanhui"></text></view><text class="nav-title">浏览记录</text><view class="nav-placeholder"></view></view>
 		<view class="main-tabs"><view class="main-tab" @tap="goHistory"><text>我看过谁</text><view class="tab-line"></view></view><view class="main-tab active"><text>谁看过我</text><view class="tab-line"></view></view></view>
 		<scroll-view class="visitors-scroll" scroll-y>
-			<view class="unlock-banner"><view class="banner-top"><view class="banner-lock"><text class="ic ic-vip ic-huiyuan"></text></view><view class="banner-copy"><text class="banner-title">解锁查看全部访客</text><text class="banner-subtitle">开通VIP会员，查看谁在关注你</text></view></view><view class="banner-button" @tap="goVip"><text>立即开通会员</text></view></view>
+			<view v-if="!canViewDetails" class="unlock-banner"><view class="banner-top"><view class="banner-lock"><text class="ic ic-vip ic-huiyuan"></text></view><view class="banner-copy"><text class="banner-title">{{ bannerTitle }}</text><text class="banner-subtitle">开通VIP会员，查看谁在关注你</text></view></view><view class="banner-button" @tap="goVip"><text>立即开通会员</text></view></view>
 			<view class="visitor-heading"><text>最近访客</text><view class="sort"><text class="ic ic-sys ic-xiala"></text><text>按时间</text></view></view>
-			<view class="visitor-grid"><view class="visitor-card" v-for="visitor in visitors" :key="visitor.distance"><view class="photo-area"><view class="person-placeholder"><text class="ic ic-social ic-touxiang"></text></view><view class="photo-lock"><view class="photo-lock-circle"><text class="ic ic-vip ic-huiyuan"></text></view></view></view><view class="info-strip"><text>距你 {{ visitor.distance }}</text><text class="hot">合拍度 {{ visitor.compatText }}</text></view></view></view>
-			<view class="bottom-unlock"><view class="bottom-vip-icon"><text class="ic ic-vip ic-huiyuan"></text></view><text class="bottom-title">还有更多人在关注你</text><text class="bottom-desc">开通VIP会员后，所有访客记录将自动解锁，你可以查看对方的详细资料并发起互动</text><view class="bottom-button" @tap="goVip"><text>立即开通VIP · 解锁全部访客</text></view><view class="feature-list"><text>✓ 无限查看</text><text>✓ 清晰头像</text><text>✓ 详细资料</text></view></view>
+			<view v-if="visitors.length > 0" class="visitor-grid"><view class="visitor-card" v-for="visitor in visitors" :key="visitor.id"><view class="photo-area"><image v-if="visitor.avatar != ''" :src="visitor.avatar" style="width:100%;height:100%;" mode="aspectFill"></image><view v-else class="person-placeholder"><text class="ic ic-social ic-touxiang"></text></view><view v-if="visitor.locked" class="photo-lock"><view class="photo-lock-circle"><text class="ic ic-vip ic-huiyuan"></text></view></view></view><text v-if="canViewDetails" class="visitor-name" style="display:block;font-size:13px;font-weight:600;text-align:center;margin-top:6px;">{{ visitor.name }}</text><view class="info-strip"><text>距你 {{ visitor.distance }}</text><text class="hot">合拍度 {{ visitor.compatText }}</text></view></view></view>
+			<view v-else class="banner-subtitle" style="padding:40px 0;text-align:center;">{{ emptyText }}</view>
+			<view v-if="!canViewDetails" class="bottom-unlock"><view class="bottom-vip-icon"><text class="ic ic-vip ic-huiyuan"></text></view><text class="bottom-title">还有更多人在关注你</text><text class="bottom-desc">开通VIP会员后，所有访客记录将自动解锁，你可以查看对方的详细资料并发起互动</text><view class="bottom-button" @tap="goVip"><text>立即开通VIP · 解锁全部访客</text></view><view class="feature-list"><text>✓ 无限查看</text><text>✓ 清晰头像</text><text>✓ 详细资料</text></view></view>
 		</scroll-view>
 	</view>
 </template>
 
 <script setup lang="uts">
 import { getVisitors } from '@/api'
+import { resolveMediaUrl } from '@/api/config.uts'
 const visitors = ref<any[]>([])
+const canViewDetails = ref(false)
+const count = ref(0)
+// 后端 VisitorPage：非 VIP 直接 items=[] + can_view_details=false + count（不返回脱敏列表），
+// 所以身份判断只看 can_view_details，不需要再查会员状态。
+const bannerTitle = computed(() => count.value > 0 ? ('' + count.value + ' 人看过你') : '解锁查看全部访客')
+const emptyText = computed(() => canViewDetails.value ? '还没有人看过你' : '开通会员后可查看访客详情')
 const loadVisitors = async () => {
 	const res = await getVisitors(1, 20)
 	if (!res.success || res.data == null) return
-	const rows = res.data.items != null && Array.isArray(res.data.items) ? res.data.items as any[] : []
+	const body = res.data
+	canViewDetails.value = body.can_view_details == true
+	count.value = body.count != null ? Number(body.count) : 0
+	const rows = body.items != null && Array.isArray(body.items) ? body.items as any[] : []
 	const result: any[] = []
 	for (let i = 0; i < rows.length; i++) {
 		const card = rows[i].target != null ? rows[i].target : {}
-		result.push({ distance: card.distance_km != null ? Number(card.distance_km).toFixed(1) + 'km' : '未知', compatText: card.match_score != null ? Math.round(Number(card.match_score)) + '%' : '--' })
+		result.push({
+			id: Number(card.user_id != null ? card.user_id : i),
+			name: card.nickname != null ? '' + card.nickname : '匿名用户',
+			avatar: card.avatar != null ? resolveMediaUrl('' + card.avatar) : '',
+			age: card.age != null ? Number(card.age) : 0,
+			distance: card.distance_km != null ? Number(card.distance_km).toFixed(1) + 'km' : '未知',
+			compatText: card.match_score != null ? Math.round(Number(card.match_score)) + '%' : '--',
+			locked: card.detail_locked === true
+		})
 	}
 	visitors.value = result
 }

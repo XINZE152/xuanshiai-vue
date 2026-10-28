@@ -34,10 +34,9 @@
 				<text class="detail-line">3. 解锁会员专区语音介绍、图片视频等深度信息浏览限制；</text>
 				<text class="detail-line">4. 套餐附赠对应牵线次数；</text>
 				<text class="detail-line">5. 申请认识次数升级：普通用户每日仅3次免费「申请认识」，会员可提升至7次；每日次数定时刷新，剩余次数不累计叠加，操作时页面会展示当日剩余次数。</text>
-				<text class="detail-line">6. 无痕浏览：仅会员可在隐私设置开启无痕浏览，消除访客记录；普通用户点击开关会弹窗引导开通会员。</text>
-				<text class="detail-line">7. 高级筛选匹配：首页筛选区分基础筛选与VIP专属高级筛选，开放MBTI匹配功能。</text>
-				<text class="detail-line">8. 访客完整查看：可查看「谁看过我」完整详细访客列表。</text>
-				<text class="detail-line">9. 会员专享每日20次免费查看他人资料，免费额度耗尽仅可通过积分兑换浏览次数。</text>
+				<text class="detail-line">6. 高级筛选匹配：首页筛选区分基础筛选与VIP专属高级筛选，开放MBTI匹配功能。</text>
+				<text class="detail-line">7. 访客完整查看：可查看「谁看过我」完整详细访客列表。</text>
+				<text class="detail-line">8. 会员专享每日20次免费查看他人资料，免费额度耗尽仅可通过积分兑换浏览次数。</text>
 			</view>
 
 			<view class="vip-footer">
