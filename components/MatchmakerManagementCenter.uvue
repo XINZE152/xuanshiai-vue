@@ -21,7 +21,7 @@
 				</view>
 				<view class="metric-grid">
 					<view v-for="(item, index) in briefMetrics" :key="item.key" class="metric-item" :class="{ 'metric-sep': index > 0 }" @click="onMetricAction(item)">
-						<view class="metric-value"><text v-if="item.valuePrefix" class="metric-currency">{{ item.valuePrefix }}</text><text>{{ item.value }}</text><text v-if="item.badge" class="metric-badge">{{ item.badge }}</text></view>
+						<view class="metric-value"><text v-if="item.valuePrefix" class="metric-currency">{{ item.valuePrefix }}</text><text>{{ item.value }}</text></view>
 						<text class="metric-label">{{ item.label }}</text>
 					</view>
 				</view>
@@ -102,17 +102,18 @@ onMounted(() => {
 })
 
 const defaultMetrics = [
-	{ key: 'pending_review', label: '资料待审', value: '0', action: '资料待审', valuePrefix: '', badge: '' },
-	{ key: 'served_members', label: '我服务的', value: '0', action: '我服务的', valuePrefix: '', badge: '' },
-	{ key: 'online_commission', label: '线上分成', value: '0', action: '分成明细', valuePrefix: '￥', badge: '' },
-	{ key: 'offline_performance', label: '线下业绩', value: '0', action: '财务明细', valuePrefix: '￥', badge: '' },
-	{ key: 'pending_introduction', label: '待我牵线', value: '3', action: '牵线记录', valuePrefix: '', badge: '' },
-	{ key: 'introduction_succeeded', label: '牵线成功', value: '29', action: '牵线记录', valuePrefix: '', badge: '' },
-	{ key: 'meeting_requests', label: '约见申请', value: '2', action: '约见申请', valuePrefix: '', badge: '' },
-	{ key: 'pending_meeting', label: '等待见面', value: '1', action: '约会管理', valuePrefix: '', badge: '' }
+	{ key: 'pending_review', label: '资料待审', value: '0', action: '资料待审', valuePrefix: '' },
+	{ key: 'served_members', label: '我服务的', value: '0', action: '我服务的', valuePrefix: '' },
+	{ key: 'online_commission', label: '线上分成', value: '1,871.40', action: '分成明细', valuePrefix: '￥' },
+	{ key: 'offline_performance', label: '线下业绩', value: '10,820.00', action: '财务明细', valuePrefix: '￥' },
+	{ key: 'pending_introduction', label: '待我牵线', value: '3', action: '牵线记录', valuePrefix: '' },
+	{ key: 'introduction_succeeded', label: '牵线成功', value: '29', action: '牵线记录', valuePrefix: '' },
+	{ key: 'meeting_requests', label: '约见申请', value: '2', action: '约见申请', valuePrefix: '' },
+	{ key: 'pending_meeting', label: '等待见面', value: '1', action: '约会管理', valuePrefix: '' }
 ]
 
 // 本地联调时后端可能尚未准备业务记录；仅在四项业务指标全为 0 时提供可点击的演示计数。
+// 「线上分成 / 线下业绩」的演示取值与工作区「分成明细 / 财务明细」的演示逐笔汇总保持一致。
 const validationMetricValues: any = {
 	pending_introduction: '3',
 	introduction_succeeded: '29',
@@ -255,7 +256,7 @@ const navigationItems = computed(() => {
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .metric-item { box-sizing: border-box; padding: 10rpx 6rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9rpx; }
 .metric-sep { border-left: 1rpx solid var(--metric-div); }
-.metric-value { position: relative; min-height: 54rpx; display: flex; flex-direction: row; align-items: baseline; color: var(--metric-num); font-family: var(--serif); font-size: 54rpx; line-height: 1; font-weight: 700; }.metric-currency { margin-right: 3rpx; font-family: var(--sans); font-size: 24rpx; font-weight: 700; }.metric-badge { position: absolute; top: -22rpx; right: -40rpx; padding: 4rpx 10rpx; border-radius: 999rpx; background: var(--match-coral); color: var(--paper); font-family: var(--sans); font-size: 19rpx; font-weight: 800; line-height: 1.1; white-space: nowrap; }
+.metric-value { position: relative; min-height: 54rpx; display: flex; flex-direction: row; align-items: baseline; color: var(--metric-num); font-family: var(--serif); font-size: 54rpx; line-height: 1; font-weight: 700; }.metric-currency { margin-right: 3rpx; font-family: var(--sans); font-size: 24rpx; font-weight: 700; }
 .metric-label { color: var(--muted); font-size: 22rpx; line-height: 1.3; text-align: center; }
 .quick-actions { padding: 25rpx 16rpx; border-radius: 20rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: row; justify-content: space-between; gap: 8rpx; }
 .quick-action { width: 20%; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 10rpx; }

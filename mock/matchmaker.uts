@@ -130,6 +130,49 @@ export const mockMatchmakerWorkspaceMeetingRequests: any[] = [
 ]
 
 /**
+ * 「分成明细 / 财务明细」演示数据。
+ * 仅用于本机联调与演示：不对应真实分成、账本、提现或结算；
+ * 服务端接入后由真实数据替换，届时工作台会自动切回真实列表。
+ */
+const buildCommissionEntry = (index: number, gender: number, item: string, amount: string, time: string) => ({
+  time: time,
+  name: gender == 1 ? demoMen[index % demoMen.length] : demoWomen[index % demoWomen.length],
+  avatar: matchmakingAnimeAvatar(index, gender),
+  item: item,
+  amount: amount
+})
+
+/** 分成明细：线上消费事件分成（事件口径与后台「总店红娘-分成明细」一致）。 */
+export const mockMatchmakerCommissionEntries: any[] = [
+  buildCommissionEntry(0, 2, '会员爆灯 · 单次曝光', '+￥38.00', '2026-10-22 10:12'),
+  buildCommissionEntry(1, 1, 'VIP会员 · 季度开通', '+￥297.00', '2026-10-21 20:45'),
+  buildCommissionEntry(2, 2, '活动报名 · 脱单派对', '+￥59.20', '2026-10-21 09:30'),
+  buildCommissionEntry(3, 1, '会员爆灯 · 月度套餐', '+￥168.00', '2026-10-20 16:08'),
+  buildCommissionEntry(4, 2, '推广展示 · 首页置顶', '+￥45.00', '2026-10-19 11:52'),
+  buildCommissionEntry(5, 1, 'VIP会员 · 年度开通', '+￥996.00', '2026-10-18 15:26'),
+  buildCommissionEntry(6, 2, '活动报名 · 相亲大会', '+￥31.20', '2026-10-17 14:03'),
+  buildCommissionEntry(7, 1, '牵线套餐 · 三次卡', '+￥237.00', '2026-10-15 19:37')
+]
+
+/** 分成标准：各消费事件的计提比例与入账说明（演示配置）。 */
+export const mockMatchmakerCommissionRates: any[] = [
+  { event: '会员爆灯', rate: '10%', note: '按订单实付金额计提，T+1 计入余额' },
+  { event: 'VIP会员', rate: '15%', note: '按开通订单实付金额计提，当日入账' },
+  { event: '活动报名', rate: '8%', note: '按活动报名实付金额计提，活动结束后入账' },
+  { event: '推广展示', rate: '5%', note: '按置顶 / 推广订单实付金额计提' }
+]
+
+/** 财务明细：线下业绩与开单收款（演示数据）。 */
+export const mockMatchmakerFinanceEntries: any[] = [
+  buildCommissionEntry(2, 1, '线下VIP · 季度服务', '+￥1,200.00', '2026-10-22 14:20'),
+  buildCommissionEntry(0, 2, '线下开单 · 私人定制', '+￥2,800.00', '2026-10-20 10:05'),
+  buildCommissionEntry(3, 1, '门店服务 · 约见跟进', '+￥680.00', '2026-10-18 16:40'),
+  buildCommissionEntry(4, 2, '线下VIP · 年度服务', '+￥3,600.00', '2026-10-16 09:58'),
+  buildCommissionEntry(5, 1, '活动收款 · 相亲大会', '+￥1,560.00', '2026-10-14 15:12'),
+  buildCommissionEntry(6, 2, '线下开单 · 形象指导', '+￥980.00', '2026-10-12 11:30')
+]
+
+/**
  * 服务红娘「资料待审」本地工作台数据。
  * 这是前端暂存的数据源：用于完整走通审核、跟进、弃海和捞取流程；
  * 后端接入时以同名字段替换读写实现即可。

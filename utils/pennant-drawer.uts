@@ -1,0 +1,162 @@
+/**
+ * 锦旗在线生成：把五段文字按竖排画到空白锦旗底图上，导出临时图片。
+ * 只在客户端绘制，不写后台——锦旗墙的数据仍来自后台「运营工具-锦旗管理」。
+ */
+
+const PENNANT_BG = '/static/generated/pennant-blank-bg.jpg'
+const GOLD = '#F7D66E'
+// 底图实测的可用红面：x 约 0.15~0.85、y 约 0.11~0.70，0.70 往下是波浪金穗边，字不能压上去。
+const BIG_TOP = 0.14
+const BIG_BOTTOM = 0.69
+const GIVER_TOP = 0.13
+const SMALL_END = 0.665
+const SMALL_MIN_TOP = 0.30
+const LINE_SPACING = 1.06
+// 画布按 3 倍导出，页面上只显示 200x280，成图 600x840 足够发出去。
+const PENNANT_SCALE = 3
+
+export interface PennantContent {
+  giver: string
+  receiver: string
+  leftWords: string
+  rightWords: string
+  dateText: string
+}
+
+function drawColumn(ctx: any, text: string, cx: number, top: number, size: number) {
+  if (text.length == 0) return
+  const px = Math.round(size)
+  ctx.font = 'bold ' + px.toString() + 'px sans-serif'
+  ctx.fillStyle = GOLD
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  let y = top
+  for (let i = 0; i < text.length; i++) {
+    ctx.fillText(text.substring(i, i + 1), cx, y)
+    y += px * LINE_SPACING
+  }
+}
+
+/** 字数多时按可用列高回缩字号，保证最长的落款也留在红面内。 */
+function fitSize(count: number, top: number, bottom: number, h: number, maxSize: number): number {
+  if (count <= 0) return maxSize
+  const usable = (bottom - top) * h
+  const limited = usable / (count * LINE_SPACING)
+  return limited < maxSize ? limited : maxSize
+}
+
+function renderPennantText(ctx: any, content: PennantContent, w: number, h: number) {
+  const bigCount = content.rightWords.length > content.leftWords.length ? content.rightWords.length : content.leftWords.length
+  const bigSize = fitSize(bigCount, BIG_TOP, BIG_BOTTOM, h, 0.085 * h)
+  drawColumn(ctx, content.rightWords, 0.60 * w, BIG_TOP * h, bigSize)
+  drawColumn(ctx, content.leftWords, 0.40 * w, BIG_TOP * h, bigSize)
+  drawColumn(ctx, content.giver.length > 0 ? '赠：' + content.giver : '', 0.78 * w, GIVER_TOP * h, 0.036 * h)
+
+  const receiverSize = fitSize(content.receiver.length, SMALL_MIN_TOP, SMALL_END, h, 0.036 * h)
+  drawColumn(ctx, content.receiver, 0.285 * w, SMALL_END * h - content.receiver.length * receiverSize * LINE_SPACING, receiverSize)
+  const dateSize = fitSize(content.dateText.length, SMALL_MIN_TOP, SMALL_END, h, 0.036 * h)
+  drawColumn(ctx, content.dateText, 0.195 * w, SMALL_END * h - content.dateText.length * dateSize * LINE_SPACING, dateSize)
+}
+
+function exportPennant(
+  canvasId: string,
+  component: any,
+  outWidth: number,
+  outHeight: number,
+  resolve: (value: string) => void,
+  reject: (reason: any) => void
+) {
+  const exportParams: any = {
+    x: 0,
+    y: 0,
+    width: outWidth,
+    height: outHeight,
+    destWidth: outWidth,
+    destHeight: outHeight,
+    fileType: 'png',
+    quality: 1,
+    success: (res: any) => {
+      const path = String(res.tempFilePath ?? '')
+      if (path == '') reject(new Error('锦旗导出路径为空'))
+      else resolve(path)
+    },
+    fail: (err: any) => reject(err)
+  }
+  // #ifdef MP-WEIXIN
+  const query = uni.createSelectorQuery()
+  const scopedQuery = component != null ? query.in(component) : query
+  scopedQuery.select('#' + canvasId).fields({ node: true, size: true }).exec((res: any) => {
+    if (res == null || res.length == 0 || res[0] == null || res[0].node == null) {
+      reject(new Error('无法获取锦旗 Canvas 节点'))
+      return
+    }
+    exportParams.canvas = res[0].node
+    uni.canvasToTempFilePath(exportParams)
+  })
+  // #endif
+  // #ifndef MP-WEIXIN
+  uni.canvasToTempFilePath(exportParams, component)
+  // #endif
+}
+
+/**
+ * 画一面锦旗：底图 + 五段金字，画在页面已有的 canvas 上。
+ * canvasId: 页面里 canvas 的 id；component: 组件实例（微信小程序内必传，页面传页面实例即可）
+ * cssWidth/cssHeight: 画布在页面上的显示尺寸，底图比例 700:981
+ */
+async function paintPennant(
+  canvasId: string,
+  component: any,
+  content: PennantContent,
+  cssWidth: number,
+  cssHeight: number
+): Promise<any> {
+  const context: any = await new Promise<any>((resolve, reject) => {
+    uni.createCanvasContextAsync({
+      id: canvasId,
+      component: component,
+      success: (created: any) => resolve(created),
+      fail: (err: any) => reject(err)
+    })
+  })
+  const ctx = context.getContext('2d')
+  if (ctx == null) throw new Error('无法创建锦旗画布上下文')
+  const canvas = ctx.canvas
+  canvas.width = cssWidth * PENNANT_SCALE
+  canvas.height = cssHeight * PENNANT_SCALE
+  ctx.scale(PENNANT_SCALE, PENNANT_SCALE)
+
+  const image = canvas.createImage()
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve()
+    image.onerror = (err: any) => reject(err)
+    image.src = PENNANT_BG
+  })
+  ctx.drawImage(image, 0, 0, cssWidth, cssHeight)
+  renderPennantText(ctx, content, cssWidth, cssHeight)
+}
+
+/** 只刷新页面上的锦旗预览，不导出图片。 */
+export async function renderPennant(
+  canvasId: string,
+  component: any,
+  content: PennantContent,
+  cssWidth: number = 200,
+  cssHeight: number = 280
+): Promise<void> {
+  await paintPennant(canvasId, component, content, cssWidth, cssHeight)
+}
+
+/** 绘制锦旗并导出临时文件路径。 */
+export async function drawPennant(
+  canvasId: string,
+  component: any,
+  content: PennantContent,
+  cssWidth: number = 200,
+  cssHeight: number = 280
+): Promise<string> {
+  await paintPennant(canvasId, component, content, cssWidth, cssHeight)
+  return new Promise<string>((resolve, reject) => {
+    exportPennant(canvasId, component, cssWidth * PENNANT_SCALE, cssHeight * PENNANT_SCALE, resolve, reject)
+  })
+}

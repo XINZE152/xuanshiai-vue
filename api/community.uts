@@ -16,6 +16,7 @@ import {
   mockPaperPlanes,
   mockPaperPlaneConversations,
   mockActivities,
+  demoFallbackActivities,
   mockCommunityBanners,
   mockCommunityNotifications,
   mockReportReasons,
@@ -26,6 +27,9 @@ import {
   mockMeProfile,
   mockCommunityQuotas
 } from '@/mock'
+
+/** 与红娘工作台一致：仅本机联调（127.0.0.1）允许接口无数据时回退演示活动。 */
+const canUseActivityDemoFallback = !USE_MOCK && API_BASE_URL.indexOf('127.0.0.1') >= 0
 
 
 const PAPER_PLANE_STORAGE_KEY = 'xsa_paper_plane_state_v1'
@@ -1710,6 +1714,13 @@ export async function getActivities(filter: string = 'all') {
     method: 'GET',
     data: { filter: f, page: 1, page_size: 50 }
   })
+  const serverItems = res.success && res.data != null && res.data.items != null ? (res.data.items as any[]) : []
+  // 本机联调且服务端暂无活动时，回退到演示活动，避免「相亲活动」入口空列表。
+  if (canUseActivityDemoFallback && (!res.success || serverItems.length == 0)) {
+    let demoList = cloneList(demoFallbackActivities as any[])
+    if (f == 'recruiting') demoList = demoList.filter((a: any) => a.status == 'recruiting')
+    return okRes(demoList)
+  }
   if (!res.success) return res
   const items = res.data != null && res.data.items != null ? (res.data.items as any[]) : []
   const list: any[] = []
@@ -1736,7 +1747,14 @@ export async function getActivityDetail(activityId: number) {
     url: '/community/activities/' + activityId,
     method: 'GET'
   })
-  if (!res.success) return res
+  if (!res.success || res.data == null) {
+    // 演示活动（id 9001+）详情回退：服务端无数据时按同 id 取演示详情，保证列表可点入。
+    if (canUseActivityDemoFallback) {
+      const demo = (demoFallbackActivities as any[]).find((item: any) => item.id == activityId)
+      if (demo != null) return okRes(cloneList(demo))
+    }
+    return res
+  }
   return okRes(mapActivity(res.data))
 }
 

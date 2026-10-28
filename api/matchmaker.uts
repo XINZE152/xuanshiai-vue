@@ -58,6 +58,8 @@ function toMatchmakerCard(item: any) {
     successRate: 0,
     tags: item.certification_tags != null ? item.certification_tags : [],
     badge: '平台认证',
+    slogan: item.slogan != null ? String(item.slogan).trim() : '',
+    specialties: Array.isArray(item.specialties) ? (item.specialties as any[]).map((entry: any) : String => String(entry).trim()).filter((entry: string) => entry.length > 0) : [] as string[],
     price: null,
     priceUnit: '',
     status: item.is_available === true ? 'online' : 'busy',
@@ -134,8 +136,7 @@ function normalizeMatchmakerManagementCenterSnapshot(data: any) {
       label: item.label != null ? String(item.label) : '',
       value: item.value != null ? String(item.value) : '0',
       action: item.action != null ? String(item.action) : '',
-      valuePrefix: item.value_prefix != null ? String(item.value_prefix) : (item.valuePrefix != null ? String(item.valuePrefix) : ''),
-      badge: item.badge != null ? String(item.badge) : ''
+      valuePrefix: item.value_prefix != null ? String(item.value_prefix) : (item.valuePrefix != null ? String(item.valuePrefix) : '')
     }))
   }
 }
@@ -336,12 +337,16 @@ export async function getMatchmakerReviewMembers(data: any | null = null) {
   return request({ url: '/matchmaker/workbench/members', method: 'GET', data: query })
 }
 
-/** 红娘后台录入会员；走工作台域接口，单次调用完成建档+待审+分派。 */
+/** 红娘后台录入会员；走工作台域接口，单次调用完成建档+待审+分派。
+ *  建档接口是可多次带料的旧契约，红娘端现在只在「建号」这一步收必要项，
+ *  未提供的资料一律传 null，让后端 exclude_none 跳过——否则缺省值会把会员
+ *  自己还没填的字段（如婚况）提前占位，基础信息门槛被系统代填。 */
 export async function createMatchmakerWorkspaceMember(data: any) {
   const source = data != null ? data : {}
   const maritalText = source.maritalStatus != null ? String(source.maritalStatus) : ''
-  const maritalMap: any = { '未婚': 1, '离异': 2, '离婚': 2, '丧偶': 3, '离婚未育': 4, '离异未带孩': 5, '离异带女孩': 6, '离异带男孩': 7 }
-  const isMarried = maritalMap[maritalText] != null ? maritalMap[maritalText] : 1
+  // 写入域与会员端「资料编辑」的三档一致；库里 4~7 是旧的离异细分档，只读展示仍支持，但写 4~7 会被后端 422。
+  const maritalMap: any = { '未婚': 1, '离异': 2, '离婚': 2, '丧偶': 3 }
+  const isMarried = maritalMap[maritalText] != null ? maritalMap[maritalText] : null
   const heightText = source.height != null && String(source.height).trim() != '' ? Number(source.height) : null
   const weightText = source.weight != null && String(source.weight).trim() != '' ? Number(source.weight) : null
   // 收入：支持直接传数值（月收入），或传档位文案（录入表单选择）。档位映射与后台 INCOME_VALUES 一致。
@@ -408,6 +413,54 @@ export async function createMatchmakerWorkspaceMember(data: any) {
 /** 查询当前红娘工作台资料（含 user_id，供"我的"过滤与改派预选）。 */
 export async function getMatchmakerWorkspaceProfile() {
   return request({ url: '/matchmaker/workbench/profile', method: 'GET' })
+}
+
+/**
+ * 读取当前红娘可编辑的主页资料。
+ * 服务端把昵称、签名、擅长领域、介绍、成功案例都落在入驻申请表，与公开主页同一份数据；
+ * 图片一律返回入库原值（/storage/... 相对路径），展示侧再解析，保存时才能原样写回。
+ */
+export async function getMatchmakerWorkspaceHomepage() {
+  const result = await request({ url: '/matchmaker/workbench/homepage', method: 'GET' })
+  if (!result.success || result.data == null) return result
+  const source: any = result.data
+  const rawCases = Array.isArray(source.success_cases) ? source.success_cases as any[] : []
+  return {
+    success: true,
+    data: {
+      userId: source.user_id != null ? Number(source.user_id) : 0,
+      nickname: source.nickname != null ? String(source.nickname) : '',
+      avatar: source.avatar != null ? String(source.avatar) : '',
+      slogan: source.slogan != null ? String(source.slogan) : '',
+      specialties: Array.isArray(source.specialties) ? (source.specialties as any[]).map((item: any) => String(item)) : [] as string[],
+      introduction: source.introduction != null ? String(source.introduction) : '',
+      cases: rawCases.map((item: any) => ({
+        description: item.description != null ? String(item.description) : '',
+        images: Array.isArray(item.images) ? (item.images as any[]).map((image: any) => String(image)) : [] as string[]
+      }))
+    },
+    code: result.code,
+    message: result.message
+  }
+}
+
+/** 保存红娘主页；只提交传入的字段，头像走会员侧头像接口，不在这里写。 */
+export async function updateMatchmakerWorkspaceHomepage(changes: any) {
+  const source = changes != null ? changes : {}
+  const data: any = {}
+  if (source.nickname != null) data.nickname = String(source.nickname).trim()
+  if (source.slogan != null) data.slogan = String(source.slogan).trim()
+  if (source.specialties != null) {
+    data.specialties = (source.specialties as any[]).map((item: any) => String(item).trim()).filter((item: string) => item.length > 0)
+  }
+  if (source.introduction != null) data.introduction = String(source.introduction).trim()
+  if (source.cases != null) {
+    data.success_cases = (source.cases as any[]).map((item: any) => ({
+      description: item.description != null ? String(item.description).trim() : '',
+      images: Array.isArray(item.images) ? (item.images as any[]).map((image: any) => String(image).trim()).filter((image: string) => image.length > 0) : []
+    })).filter((item: any) => item.description.length > 0)
+  }
+  return request({ url: '/matchmaker/workbench/homepage', method: 'PATCH', data: data })
 }
 
 /** 查询当前服务红娘工作范围内的客源线索。 */
@@ -632,6 +685,148 @@ export async function getMatchmakerWorkspaceMeetingRequests() {
     code: useDemoFallback ? 0 : result.code,
     message: useDemoFallback ? '本地测试数据' : result.message
   }
+}
+
+/** 服务端对无名一侧返回占位串「未命名会员」，前端按空处理，卡片上就不渲染这一侧。 */
+function newsPersonName(raw: any): string {
+  const name = raw != null ? String(raw).trim() : ''
+  return name == '未命名会员' ? '' : name
+}
+
+/** 红娘喜讯：只读后台「运营工具-喜讯管理」的内容域，服务端已按红娘范围与公开开关过滤。 */
+export async function getMatchmakerWorkspaceGoodNews(stage: string, page: number, pageSize: number) {
+  const result = await request({
+    url: '/matchmaker/workbench/good-news',
+    method: 'GET',
+    data: { stage: stage, page: page, page_size: pageSize }
+  })
+  if (!result.success || result.data == null) return result
+  const source = result.data
+  const items = Array.isArray(source.items) ? source.items : []
+  return {
+    success: true,
+    data: {
+      items: items.map((item: any) => {
+        const images: string[] = []
+        if (item.images != null) {
+          const sourceImages = item.images as any[]
+          for (let i = 0; i < sourceImages.length; i++) {
+            const image = resolveMediaUrl(String(sourceImages[i]).trim())
+            if (image.length > 0) images.push(image)
+          }
+        }
+        return {
+          id: item.id != null ? String(item.id) : '',
+          stage: item.stage != null ? String(item.stage) : '',
+          fromUserId: item.from_user_id != null ? String(item.from_user_id) : '',
+          toUserId: item.to_user_id != null ? String(item.to_user_id) : '',
+          // 服务端对没有姓名的历史行给的是占位串，前端按「这一侧没人」处理，不显示占位文案。
+          fromName: newsPersonName(item.from_name),
+          toName: newsPersonName(item.to_name),
+          fromAvatar: item.from_avatar != null ? resolveMediaUrl(String(item.from_avatar)) : '',
+          toAvatar: item.to_avatar != null ? resolveMediaUrl(String(item.to_avatar)) : '',
+          matchmakerName: item.matchmaker_name != null ? String(item.matchmaker_name) : '服务红娘',
+          meetDuration: item.meet_duration != null ? String(item.meet_duration) : '',
+          images: images,
+          content: item.content != null ? String(item.content) : '',
+          blessing: item.blessing != null ? String(item.blessing) : '',
+          blessingCount: item.blessing_count != null ? Number(item.blessing_count) : 0,
+          pendingReview: item.pending_review === true,
+          createdAt: formatWorkspaceTime(item.created_at)
+        }
+      }),
+      total: source.total != null ? Number(source.total) : items.length,
+      page: source.page != null ? Number(source.page) : page,
+      hasMore: source.has_more === true
+    },
+    code: result.code,
+    message: result.message
+  }
+}
+
+/** 锦旗墙：后台「运营工具-锦旗管理」的内容域，普通红娘只看到受赠人是自己的锦旗。 */
+export async function getMatchmakerWorkspaceGoodNewsPennants(page: number, pageSize: number) {
+  const result = await request({
+    url: '/matchmaker/workbench/good-news/pennants',
+    method: 'GET',
+    data: { page: page, page_size: pageSize }
+  })
+  if (!result.success || result.data == null) return result
+  const source = result.data
+  const items = Array.isArray(source.items) ? source.items : []
+  return {
+    success: true,
+    data: {
+      items: items.map((item: any) => ({
+        id: item.id != null ? String(item.id) : '',
+        maker: item.maker != null ? String(item.maker) : '',
+        giver: item.giver != null ? String(item.giver) : '',
+        target: item.target != null ? String(item.target) : '',
+        words: item.words != null ? String(item.words) : '',
+        imageUrl: item.image_url != null ? resolveMediaUrl(String(item.image_url)) : '',
+        createdAt: formatWorkspaceTime(item.created_at)
+      })),
+      total: source.total != null ? Number(source.total) : items.length,
+      page: source.page != null ? Number(source.page) : page,
+      hasMore: source.has_more === true
+    },
+    code: result.code,
+    message: result.message
+  }
+}
+
+/** 报喜图片上传：返回的 url 是服务端相对路径，直接写入 extra.images，展示时再拼域名。 */
+export async function uploadWorkspaceGoodNewsPhoto(filePath: string) {
+  return new Promise<any>((resolve) => {
+    uni.uploadFile({
+      url: buildApiUrl('/matchmaker/workbench/good-news/photo'),
+      filePath: filePath,
+      name: 'file',
+      header: getAccessToken() != '' ? { Authorization: 'Bearer ' + getAccessToken() } : {},
+      success: (res: any) => {
+        if (res.statusCode == 401) clearAuthTokens()
+        let data: any = null
+        try {
+          data = JSON.parse('' + res.data)
+        } catch (e) {
+          resolve({ success: false, data: null, code: res.statusCode, message: '上传响应解析失败' })
+          return
+        }
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve({ success: true, data, code: res.statusCode, message: 'success' })
+        } else {
+          const detail = data != null && data.detail != null ? data.detail : '上传失败'
+          resolve({ success: false, data, code: res.statusCode, message: '' + detail })
+        }
+      },
+      fail: (err: any) => {
+        const message = err != null && err.errMsg != null ? '' + err.errMsg : '上传失败，请检查网络'
+        resolve({ success: false, data: null, code: -1, message })
+      }
+    })
+  })
+}
+
+/** 报喜-反馈喜讯：写入后台喜讯内容域的待审行，放行由后台「喜讯管理」操作。 */
+export async function createMatchmakerWorkspaceGoodNews(data: any) {
+  const source = data != null ? data : {}
+  const images: string[] = []
+  if (source.images != null) {
+    const sourceImages = source.images as any[]
+    for (let i = 0; i < sourceImages.length; i++) {
+      const image = String(sourceImages[i]).trim()
+      if (image.length > 0) images.push(image)
+    }
+  }
+  return request({
+    url: '/matchmaker/workbench/good-news', method: 'POST', data: {
+      stage: String(source.stage || '').trim(),
+      partner_name: String(source.partnerName || '').trim(),
+      meet_duration: String(source.meetDuration || '').trim(),
+      content: String(source.content || '').trim(),
+      images: images
+    }
+  })
 }
 
 /** 添加牵线记录：双方须为工作范围内会员，成功需完成时间、失败需原因。 */

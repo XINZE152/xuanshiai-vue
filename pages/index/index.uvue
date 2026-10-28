@@ -822,7 +822,8 @@
 	// ========== 推荐页数据 ==========
 	const formatIncomeDisplay = (raw: any): string => incomeDisplayText(raw)
 	const educationText = (raw: any): string => {
-		const labels = ['', '博士', '硕士', '本科', '大专', '高中', '中专', '初中', '小学']
+		// education_level 存储刻度：1=高中及以下 … 5=博士（与后端筛选字典、档案编辑页一致）。
+		const labels = ['', '高中及以下', '大专', '本科', '硕士', '博士']
 		if (raw == null || raw === '') return '未填写'
 		const text = '' + raw
 		const level = Number(text)

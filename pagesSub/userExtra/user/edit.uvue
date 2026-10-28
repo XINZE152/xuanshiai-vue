@@ -71,7 +71,7 @@
 				</view>
 				<view class="nickname-edit-row">
 					<input class="nickname-edit-input" :value="formData.nickname" placeholder="请输入昵称" @input="onInput('nickname', $event)" />
-					<view class="nickname-edit-save" @tap="saveNickname"><text>保存</text></view>
+					<view class="nickname-edit-save" @tap="saveNickname"><text>保存昵称</text></view>
 				</view>
 			</view>
 
@@ -149,6 +149,13 @@
 				</view>
 			</view>
 		</scroll-view>
+
+		<view class="page-save-bar" v-if="!loading && profileLoaded">
+			<text class="page-save-status">{{ saveStatusText }}</text>
+			<view class="page-save-button" :class="{ disabled: saving || uploadingMedia }" @tap="handleSave">
+				<text class="page-save-button-text">{{ saving ? '保存中…' : (isMemberEdit ? '保存会员资料' : '保存资料') }}</text>
+			</view>
+		</view>
 
 		<view class="sheet-overlay" v-if="detailSheetVisible" @click="detailSheetVisible = false">
 			<view class="sheet-panel" @click.stop>
@@ -314,6 +321,8 @@
 	const refreshing = ref(false)
 	const loadError = ref('')
 	const profileLoaded = ref(false)
+	// 统一保存的比对基线：昵称单独走接口，不进 buildProfilePayload
+	const savedNickname = ref('')
 	const saving = ref(false)
 	const uploadingMedia = ref(false)
 	const cropConfirming = ref(false)
@@ -673,6 +682,12 @@
 	}
 
 	const hasUnsavedProfileChanges = (): boolean => lastSavedPayloadJson.value != '' && JSON.stringify(buildProfilePayload()) != lastSavedPayloadJson.value
+	const hasUnsavedChanges = (): boolean => hasUnsavedProfileChanges() || textValue(formData.value.nickname) != savedNickname.value
+	const saveStatusText = computed((): string => {
+		if (uploadingMedia.value) return '照片上传中，请稍候再保存'
+		if (saving.value) return '正在保存…'
+		return hasUnsavedChanges() ? '有修改尚未保存' : '资料已与后台一致'
+	})
 	const savedProfileHash = (): string => {
 		try {
 			if (lastSavedPayloadJson.value != '') return payloadHash(JSON.parse(lastSavedPayloadJson.value))
@@ -896,6 +911,7 @@
 			}
 			await refreshCompletion()
 			lastSavedPayloadJson.value = JSON.stringify(buildProfilePayload())
+			savedNickname.value = textValue(formData.value.nickname)
 			clearPendingEditedKeys()
 			if (!isMemberEdit.value) loadThoughtfulness()
 		} catch (e) {
@@ -1455,7 +1471,23 @@
 	const onPreview = () => uni.navigateTo({ url: '/pagesSub/userExtra/user/detail?own=true&preview=true' })
 
 	const onCancel = () => {
-		uni.navigateBack({ delta: 1 })
+		if (saving.value || uploadingMedia.value) return
+		if (!hasUnsavedChanges()) {
+			uni.navigateBack({ delta: 1 })
+			return
+		}
+		// 退出只丢一次改动是不够的：代编场景里改完直接返回就等于白填，这里必须让他选。
+		uni.showModal({
+			title: '尚未保存',
+			content: '资料有修改还没保存，直接退出会丢失这些改动。',
+			confirmText: '保存退出',
+			cancelText: '直接退出',
+			success: (result: any) => {
+				if (result == null) return
+				if (result.confirm == true) { handleSave(); return }
+				uni.navigateBack({ delta: 1 })
+			}
+		})
 	}
 	const openBasicEditor = () => {
 		editSheetMode.value = 'basic'
@@ -1469,7 +1501,6 @@
 		const payload: any = {
 			gender: formData.value.gender,
 			birthday: formData.value.birthday != '' ? formData.value.birthday : null,
-			is_married: formData.value.isMarried,
 			height: optionalNumber(formData.value.height),
 			weight: optionalNumber(formData.value.weight),
 			occupation: textValue(formData.value.occupation) || null,
@@ -1485,6 +1516,14 @@
 			self_intro: textValue(formData.value.introduction) || null,
 			qa_answers: buildQaPayload(-1, ''),
 			mbti: textValue(formData.value.mbti).toUpperCase() || null
+		}
+		// 婚况写入域只有 1/2/3：库里 0 是「未填」的列默认值，4~7 是旧的离异细分档，读接口会原样带回，
+		// 直接回传会被后端 422 拒掉；没有在弹层里重新选择过就不提交这个键。
+		const married = formData.value.isMarried
+		if (married == null) {
+			payload.is_married = null
+		} else if (Number(married) >= 1 && Number(married) <= 3) {
+			payload.is_married = Number(married)
 		}
 		return payload
 	}
@@ -1508,6 +1547,7 @@
 				return
 			}
 			formData.value.nickname = value
+			savedNickname.value = value
 			await refreshCompletion()
 			uni.showToast({ title: '昵称已保存', icon: 'success' })
 		} finally {
@@ -1517,19 +1557,24 @@
 
 	const handleSave = async () => {
 		if (saving.value || uploadingMedia.value) return
+		const nickname = textValue(formData.value.nickname).trim()
+		if (nickname == '') {
+			uni.showToast({ title: '昵称不能为空', icon: 'none' })
+			return
+		}
 		const height = optionalNumber(formData.value.height)
 		const weight = optionalNumber(formData.value.weight)
 		if (height != null && (height < 140 || height > 220)) {
 			uni.showToast({ title: '身高需在140至220厘米之间', icon: 'none' })
 			return
 		}
-		if (weight != null && (weight < 40 || weight > 120)) {
-			uni.showToast({ title: '体重需在40至120千克之间', icon: 'none' })
+		if (weight != null && (weight < 30 || weight > 150)) {
+			uni.showToast({ title: '体重需在30至150千克之间', icon: 'none' })
 			return
 		}
 		saving.value = true
 		try {
-			const nicknameRes = await apiUpdateNickname(textValue(formData.value.nickname))
+			const nicknameRes = await apiUpdateNickname(nickname)
 			if (!nicknameRes.success) {
 				uni.showToast({ title: nicknameRes.message != null ? '' + nicknameRes.message : '昵称保存失败', icon: 'none' })
 				return
@@ -1539,6 +1584,8 @@
 				uni.showToast({ title: profileRes.message != null ? '' + profileRes.message : '基础资料保存失败', icon: 'none' })
 				return
 			}
+			formData.value.nickname = nickname
+			savedNickname.value = nickname
 			await refreshCompletion()
 			uni.showToast({ title: isMemberEdit.value ? '会员资料已保存' : '资料已保存', icon: 'success' })
 			// AI 用心度:对本次保存的编辑内容触发评审,不阻塞保存/返回流程（会员资料代编不参与本人用心度）
@@ -1547,6 +1594,8 @@
 				clearPendingEditedKeys()
 				lastSavedPayloadJson.value = JSON.stringify(buildProfilePayload())
 				triggerThoughtfulness('save', editedKeys)
+			} else {
+				lastSavedPayloadJson.value = JSON.stringify(buildProfilePayload())
 			}
 			if (detailSheetVisible.value) detailSheetVisible.value = false
 			else setTimeout(() => uni.navigateBack({ delta: 1 }), 700)
@@ -1706,6 +1755,12 @@
 .save-button.disabled { opacity: 0.55; }
 /* 旧版用 calc(100vh - 312px) 的空占位块把页面往下顶出近整屏空白，
    底部避让统一交给 .scroll-content 的 padding-bottom 处理。 */
+/* 页面级统一保存条：始终贴在内容区底部，避免只有弹层里才有整体保存 */
+.page-save-bar { flex-shrink: 0; display: flex; flex-direction: row; align-items: center; gap: 12px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--paper); border-top: 1px solid var(--line); }
+.page-save-status { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); line-height: 1.4; }
+.page-save-button { flex-shrink: 0; min-width: 132px; height: 44px; padding: 0 18px; display: flex; align-items: center; justify-content: center; border-radius: 22px; background: var(--sage); box-shadow: 0 4px 12px rgba(51,141,107,0.25); }
+.page-save-button-text { font-size: 15px; font-weight: 700; color: var(--text-invert); }
+.page-save-button.disabled { opacity: 0.55; }
 
 /* Sheet overlay */
 .sheet-overlay { position: fixed; left: 0; right: 0; top: 0; bottom: 0; width: 100%; height: 100vh; background: rgba(12,19,19,0.36); z-index: 100; display: flex; align-items: flex-end; }

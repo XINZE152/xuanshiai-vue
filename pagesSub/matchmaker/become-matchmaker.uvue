@@ -30,19 +30,44 @@
 		/>
 		<scroll-view v-else-if="workspaceVisible" scroll-y class="workspace-scroller" :class="{ 'ls-scroll': isLeadEntryStudio }" :show-scrollbar="false" :scroll-top="workspaceScrollTop">
 			<view class="workspace-content">
-				<view class="workspace-heading">
+				<view v-if="workspaceKind != 'news'" class="workspace-heading">
 					<text class="workspace-title">{{ workspaceTitle }}</text>
 					<text class="workspace-copy">{{ workspaceKind == 'entry' ? '提交后自动分派到您名下，信息仅用于平台牵线服务。' : '仅展示服务端已提供的数据，未开放能力不会创建本地记录。' }}</text>
 				</view>
 				<view v-if="workspaceKind != 'entry'" class="workspace-tabs">
 					<view v-for="item in workspaceTabs" :key="item" class="workspace-tab" :class="{ active: workspaceActiveTab == item }" @click="selectWorkspaceTab(item)"><text>{{ item }}</text></view>
 				</view>
-				<view v-if="workspaceKind != 'entry'" class="workspace-search"><text class="workspace-search-glyph">⌕</text><input :placeholder="workspaceSearchPlaceholder" :value="workspaceKeyword" @input="onWorkspaceKeywordInput"/><view class="workspace-search-submit" @click="runWorkspaceSearch"><text class="workspace-search-glyph">⌕</text></view></view>
+				<view v-if="workspaceKind != 'entry' && workspaceKind != 'news'" class="workspace-search"><text class="workspace-search-glyph">⌕</text><input :placeholder="workspaceSearchPlaceholder" :value="workspaceKeyword" @input="onWorkspaceKeywordInput"/><view class="workspace-search-submit" @click="runWorkspaceSearch"><text class="workspace-search-glyph">⌕</text></view></view>
 
 				<view v-if="workspaceKind == 'commission'">
-					<view class="workspace-cash"><text>资金结算</text><text class="workspace-cash-value">--</text><text>分成、账本和提现不在本期范围内。</text></view>
-					<view class="workspace-notice"><text class="workspace-notice-title">温馨提示</text><text>专属推广链接与海报将在后端配置后开放。</text></view>
-					<view v-for="row in workspaceCommissionRows" :key="row.time" class="workspace-commission-row"><text>{{ row.time }}</text><view><image :src="row.avatar" mode="aspectFill"/><view><text>{{ row.name }}</text><text>{{ row.item }}</text></view><text>{{ row.amount }}</text></view></view>
+					<view class="workspace-cash"><text>资金结算</text><text class="workspace-cash-value">{{ workspaceTitle == '财务明细' ? workspaceFinanceTotal : workspaceCommissionTotal }}</text><text>{{ workspaceCashNote }}</text></view>
+
+					<!-- 专属推广工具：推广能力未开放，保留原提示 -->
+					<view v-if="workspaceTitle == '专属推广工具'" class="workspace-notice"><text class="workspace-notice-title">温馨提示</text><text>专属推广链接与海报将在后端配置后开放。</text></view>
+
+					<!-- 分成标准：各消费事件计提比例 -->
+					<view v-else-if="workspaceActiveTab == '分成标准'">
+						<view class="workspace-demo-notice"><text>当前显示本地测试数据；服务端配置分成标准后将自动切换。</text></view>
+						<view v-for="rate in workspaceCommissionRates" :key="rate.event" class="workspace-info-card">
+							<view><text>{{ rate.event }}</text><text class="workspace-rate-value">{{ rate.rate }}</text></view>
+							<text class="workspace-muted">{{ rate.note }}</text>
+						</view>
+					</view>
+
+					<!-- 财务明细 · 结算说明 -->
+					<view v-else-if="workspaceTitle == '财务明细' && workspaceActiveTab == '结算说明'" class="workspace-notice"><text class="workspace-notice-title">结算说明</text><text>线下业绩含门店服务、线下 VIP 与活动收款，由平台按月统一结算；当前为本地演示数据，不对应真实账本。</text></view>
+
+					<!-- 财务明细 · 逐笔记录 -->
+					<view v-else-if="workspaceTitle == '财务明细'">
+						<view class="workspace-demo-notice"><text>当前显示本地测试数据；服务端产生记录后将自动切换为真实数据。</text></view>
+						<view v-for="row in workspaceFinanceRows" :key="row.time" class="workspace-commission-row"><text>{{ row.time }}</text><view><image :src="row.avatar" mode="aspectFill"/><view><text>{{ row.name }}</text><text>{{ row.item }}</text></view><text>{{ row.amount }}</text></view></view>
+					</view>
+
+					<!-- 分成明细 · 逐笔记录 -->
+					<view v-else>
+						<view class="workspace-demo-notice"><text>当前显示本地测试数据；服务端产生记录后将自动切换为真实数据。</text></view>
+						<view v-for="row in workspaceCommissionRows" :key="row.time" class="workspace-commission-row"><text>{{ row.time }}</text><view><image :src="row.avatar" mode="aspectFill"/><view><text>{{ row.name }}</text><text>{{ row.item }}</text></view><text>{{ row.amount }}</text></view></view>
+					</view>
 				</view>
 
 				<view v-else-if="workspaceKind == 'lead'">
@@ -72,7 +97,6 @@
 					</view>
 					<view v-else>
 					<view class="workspace-lead-toolbar">
-						<view class="workspace-lead-tool" :class="{ active: leadExceptionOnly }" @click="toggleLeadException"><text>{{ leadExceptionOnly ? '返回全部' : '异常线索' }}</text></view>
 						<view class="workspace-lead-tool" :class="{ active: leadFilterStatus.length > 0 || leadFilterIntention > 0 }" @click="openLeadFilterSheet"><text>筛选</text></view>
 						<view class="workspace-lead-tool primary" @click="openLeadAddSheet"><text>+ 添加线索</text></view>
 					</view>
@@ -113,9 +137,8 @@
 								<text @click="copyLeadProfile(row)">复制资料</text>
 								<text v-if="row.status != 'LOST'" @click="confirmAbandonLead(row)">放弃线索</text>
 								<text v-else @click="confirmRestoreLead(row)">恢复客源</text>
-													<text v-if="row.status != 'CONVERTED' && row.status != 'CLOSED' && row.status != 'LOST'" @click="confirmConvertLead(row)">一键入库</text>
-													<text v-else-if="row.status == 'LOST'" @click="confirmRestoreLead(row)">先恢复客源</text>
-													<text v-else @click="showToast('已入库，编号 ' + row.convertedUserId)">已入库</text>
+								<text v-if="row.status != 'CONVERTED' && row.status != 'CLOSED' && row.status != 'LOST'" @click="confirmConvertLead(row)">一键入库</text>
+								<text v-else-if="row.status != 'LOST'" @click="showToast('已入库，编号 ' + row.convertedUserId)">已入库</text>
 							</view>
 						</view>
 					</view>
@@ -128,7 +151,7 @@
 					<view v-if="workspaceMatchesLoading" class="workspace-state"><text>正在加载牵线记录…</text></view>
 					<view v-else-if="workspaceMatchesError.length > 0" class="workspace-state"><text>{{ workspaceMatchesError }}</text><text class="workspace-state-action" @click="loadWorkspaceMatches">重新加载</text></view>
 					<view v-else-if="workspaceVisibleMatches.length == 0" class="workspace-state"><text>没有符合条件的牵线记录</text></view>
-					<view v-else><view v-for="row in workspaceVisibleMatches" :key="row.id" class="workspace-match-card"><view class="workspace-match-card-top"><text>申请时间：{{ row.time }}</text><view class="workspace-match-status-btn" :class="'t-' + row.status" @click="openMatchStatusSheet(row)"><text>{{ row.statusLabel }}</text><view class="workspace-match-status-arrow"><i></i></view></view></view><view class="workspace-match-person"><view class="workspace-match-person-side"><view class="workspace-match-avatar-wrap" @click="openWorkspaceMemberProfile(row.fromUser)"><image :src="row.fromUser.avatar" mode="aspectFill"/><text class="workspace-match-role role-applicant">申请人</text></view><view class="workspace-match-person-copy"><view class="workspace-match-person-name"><text>{{ row.fromUser.name }}</text><text class="workspace-match-gender" :class="row.fromUser.gender == '女' ? 'female' : 'male'">{{ row.fromUser.gender == '女' ? '♀' : '♂' }}</text><text v-if="isVipPerson(row.fromUser)" class="workspace-match-vip">VIP</text></view><text class="workspace-match-person-code">编号：{{ row.fromUser.id }}</text></view></view><view class="workspace-match-contact" @tap="openWorkspaceContact(row.fromUser)"><text>联系Ta</text></view></view><view class="workspace-match-person"><view class="workspace-match-person-side"><view class="workspace-match-avatar-wrap" @click="openWorkspaceMemberProfile(row.toUser)"><image :src="row.toUser.avatar" mode="aspectFill"/><text class="workspace-match-role role-target">牵线人</text></view><view class="workspace-match-person-copy"><view class="workspace-match-person-name"><text>{{ row.toUser.name }}</text><text class="workspace-match-gender" :class="row.toUser.gender == '女' ? 'female' : 'male'">{{ row.toUser.gender == '女' ? '♀' : '♂' }}</text><text v-if="isVipPerson(row.toUser)" class="workspace-match-vip">VIP</text></view><text class="workspace-match-person-code">编号：{{ row.toUser.id }}</text></view></view><view class="workspace-match-contact" @tap="openWorkspaceContact(row.toUser)"><text>联系Ta</text></view></view><text v-if="row.failureReason.length > 0" class="workspace-match-reason">失败原因：{{ row.failureReason }}</text><text class="workspace-match-owner">服务红娘：{{ row.owner }}</text></view></view>
+					<view v-else><view v-for="row in workspaceVisibleMatches" :key="row.id" class="workspace-match-card"><view class="workspace-match-card-top"><text>申请时间：{{ row.time }}</text><view class="workspace-match-status-btn" :class="'t-' + row.status" @click="openMatchStatusSheet(row)"><text>{{ row.statusLabel }}</text><view class="workspace-match-status-arrow"><i></i></view></view></view><view class="workspace-match-person"><view class="workspace-match-person-side"><view class="workspace-match-avatar-wrap" @click="openWorkspaceMemberProfile(row.fromUser)"><image :src="row.fromUser.avatar" mode="aspectFill"/><text class="workspace-match-role role-applicant">申请人</text></view><view class="workspace-match-person-copy"><view class="workspace-match-person-name"><text>{{ row.fromUser.name }}</text><text class="workspace-match-gender" :class="row.fromUser.gender == '女' ? 'female' : 'male'">{{ row.fromUser.gender == '女' ? '♀' : '♂' }}</text><text v-if="isVipPerson(row.fromUser)" class="workspace-match-vip">VIP</text></view><text class="workspace-match-person-code">编号：{{ row.fromUser.id }}</text></view></view><view class="workspace-match-contact" @tap="openWorkspaceContact(row.fromUser, row)"><text>联系Ta</text></view></view><view class="workspace-match-person"><view class="workspace-match-person-side"><view class="workspace-match-avatar-wrap" @click="openWorkspaceMemberProfile(row.toUser)"><image :src="row.toUser.avatar" mode="aspectFill"/><text class="workspace-match-role role-target">牵线人</text></view><view class="workspace-match-person-copy"><view class="workspace-match-person-name"><text>{{ row.toUser.name }}</text><text class="workspace-match-gender" :class="row.toUser.gender == '女' ? 'female' : 'male'">{{ row.toUser.gender == '女' ? '♀' : '♂' }}</text><text v-if="isVipPerson(row.toUser)" class="workspace-match-vip">VIP</text></view><text class="workspace-match-person-code">编号：{{ row.toUser.id }}</text></view></view><view class="workspace-match-contact" @tap="openWorkspaceContact(row.toUser, row)"><text>联系Ta</text></view></view><text v-if="row.failureReason.length > 0" class="workspace-match-reason">失败原因：{{ row.failureReason }}</text><text class="workspace-match-owner">服务红娘：{{ row.owner }}</text></view></view>
 				</view>
 				<view v-else-if="workspaceKind == 'meeting'">
 					<view class="workspace-meeting-intro"><view class="workspace-meeting-intro-head"><text class="workspace-meeting-intro-mark">T</text><text class="workspace-meeting-intro-title">须知</text></view><text class="workspace-meeting-intro-text">在这里您可以看到所有会员在平台上点击"申请安排见面"提交的记录，平台和红娘可以通过该信息进行精准销售或牵线服务，利用本功能可大大提升将会员引导到线下门店面谈的成功率。</text></view>
@@ -150,7 +173,7 @@
 					</view>
 
 					<view class="workspace-entry-formcard workspace-entry-formcard-typo">
-						<view class="workspace-entry-card-head"><text class="workspace-entry-step">1</text><view class="workspace-entry-card-head-copy"><text class="workspace-entry-card-title">基础信息</text><text class="workspace-entry-card-require">姓名、昵称、手机为必填</text></view></view>
+						<view class="workspace-entry-card-head"><text class="workspace-entry-step">1</text><view class="workspace-entry-card-head-copy"><text class="workspace-entry-card-title">建号信息</text><text class="workspace-entry-card-require">姓名、昵称、手机为必填，其余资料下一步在同一页填写</text></view></view>
 						<view class="workspace-entry-row"><text class="workspace-entry-label">姓名</text><input :value="memberEntry.realName" @input="memberEntry.realName = $event.detail.value" placeholder="真实姓名（保密存储）" :maxlength="20"/></view>
 						<view class="workspace-entry-row"><text class="workspace-entry-label">昵称</text><input :value="memberEntry.nickname" @input="memberEntry.nickname = $event.detail.value" placeholder="会员展示昵称" :maxlength="20"/></view>
 						<view class="workspace-entry-block">
@@ -160,392 +183,13 @@
 								<view class="ls-chip ls-tone-pink" :class="{ active: memberEntry.gender == 2 }" @click="memberEntry.gender = memberEntry.gender == 2 ? 0 : 2"><text>女</text></view>
 							</view>
 						</view>
-						<view class="workspace-entry-row"><text class="workspace-entry-label">手机</text><input :value="memberEntry.phone" @input="memberEntry.phone = $event.detail.value" placeholder="11 位手机号" type="number" :maxlength="11"/></view>
-						<view class="workspace-entry-row last"><text class="workspace-entry-label">微信</text><input :value="memberEntry.wechat" @input="memberEntry.wechat = $event.detail.value" placeholder="微信号"/></view>
-					</view>
-
-					<view class="workspace-entry-formcard workspace-entry-formcard-typo">
-						<view class="workspace-entry-card-head"><text class="workspace-entry-step">2</text><view class="workspace-entry-card-head-copy"><text class="workspace-entry-card-title">身形与属地</text><text class="workspace-entry-card-require">选填</text></view></view>
-						<picker mode="date" :value="memberEntry.birthday" start="1950-01-01" end="2007-12-31" @change="memberEntry.birthday = $event.detail.value"><view class="workspace-entry-row"><text class="workspace-entry-label">生日</text><view class="workspace-entry-picker"><text>{{ memberEntry.birthday }}</text><i></i></view></view></picker>
-						<view class="workspace-entry-row"><text class="workspace-entry-label">身高</text><input :value="memberEntry.height" @input="memberEntry.height = $event.detail.value" placeholder="cm，如 165" type="number" :maxlength="3"/></view>
-						<view class="workspace-entry-row"><text class="workspace-entry-label">体重</text><input :value="memberEntry.weight" @input="memberEntry.weight = $event.detail.value" placeholder="kg，如 50" type="number" :maxlength="3"/></view>
-						<view class="workspace-entry-row"><text class="workspace-entry-label">家乡</text><input :value="memberEntry.hometown" @input="memberEntry.hometown = $event.detail.value" placeholder="如：江苏省 南京市"/></view>
-						<picker mode="multiSelector" :range="memberResidenceRange" :value="memberResidenceValue" @columnchange="onMemberResidenceColumnChange" @change="onMemberRegionChange('residence', $event)"><view class="workspace-entry-row"><text class="workspace-entry-label">现居</text><view class="workspace-entry-picker"><text>{{ memberEntry.residence.length > 0 ? memberEntry.residence : '点击选择省市区' }}</text><i></i></view></view></picker>
-						<picker mode="multiSelector" :range="memberResidenceRange" :value="memberResidenceValue" @columnchange="onMemberResidenceColumnChange" @change="onMemberRegionChange('household', $event)"><view class="workspace-entry-row last"><text class="workspace-entry-label">户口</text><view class="workspace-entry-picker"><text>{{ memberEntry.household.length > 0 ? memberEntry.household : '点击选择省市区' }}</text><i></i></view></view></picker>
-					</view>
-
-					<view class="workspace-entry-formcard">
-						<view class="workspace-entry-card-head"><text class="workspace-entry-step">3</text><view class="workspace-entry-card-head-copy"><text class="workspace-entry-card-title">教育与婚况</text><text class="workspace-entry-card-require">点选即填</text></view></view>
-						<view class="workspace-entry-block" :class="{ 'workspace-entry-block-floating': memberEducationPickerVisible }">
-							<text class="workspace-entry-block-label">学历</text>
-							<view class="workspace-select">
-								<view class="workspace-select-trigger" @click="memberEducationPickerVisible = !memberEducationPickerVisible">
-									<text :class="{ 'workspace-select-placeholder': memberEducationValue.length == 0 }">{{ memberEducationLabel }}</text>
-									<view class="workspace-select-caret">
-										<view class="workspace-select-caret-up"></view>
-										<view class="workspace-select-caret-down"></view>
-									</view>
-								</view>
-								<view v-if="memberEducationPickerVisible" class="workspace-select-menu">
-									<view v-for="e in memberEducationOptions" :key="e" class="workspace-select-option" :class="{ active: memberEducationValue == e }" @click="pickMemberEducation(e)"><text>{{ e }}</text></view>
-								</view>
-							</view>
-						</view>
-						<view class="workspace-entry-block" :class="{ 'workspace-entry-block-floating': memberMaritalPickerVisible }">
-							<text class="workspace-entry-block-label">婚况</text>
-							<view class="workspace-select">
-								<view class="workspace-select-trigger" @click="memberMaritalPickerVisible = !memberMaritalPickerVisible">
-									<text :class="{ 'workspace-select-placeholder': memberMaritalValue.length == 0 }">{{ memberMaritalLabel }}</text>
-									<view class="workspace-select-caret">
-										<view class="workspace-select-caret-up"></view>
-										<view class="workspace-select-caret-down"></view>
-									</view>
-								</view>
-								<view v-if="memberMaritalPickerVisible" class="workspace-select-menu">
-									<view v-for="m in memberMaritalOptions" :key="m" class="workspace-select-option" :class="{ active: memberMaritalValue == m }" @click="pickMemberMarital(m)"><text>{{ m }}</text></view>
-								</view>
-							</view>
-						</view>
-						<view class="workspace-entry-block">
-							<text class="workspace-entry-block-label">职业</text>
-							<view class="workspace-select">
-								<picker class="workspace-select-picker" :range="memberOccupationOptionsAll" :value="memberOccupationIndex" @change="onMemberOccupationChange">
-									<view class="workspace-select-trigger">
-										<text :class="{ 'workspace-select-placeholder': memberOccupationValue.length == 0 }">{{ memberOccupationLabel }}</text>
-										<view class="workspace-select-caret">
-											<view class="workspace-select-caret-up"></view>
-											<view class="workspace-select-caret-down"></view>
-										</view>
-									</view>
-								</picker>
-							</view>
-							<input v-if="memberEntry.occupation == '其他'" class="workspace-entry-custom-input" :value="memberEntry.occupationCustom" @input="memberEntry.occupationCustom = $event.detail.value" placeholder="请填写具体职业"/>
-						</view>
-						<view class="workspace-entry-block" :class="{ 'workspace-entry-block-floating': memberIncomePickerVisible }">
-							<text class="workspace-entry-block-label">月收入</text>
-							<view class="workspace-select">
-								<view class="workspace-select-trigger" @click="memberIncomePickerVisible = !memberIncomePickerVisible">
-									<text :class="{ 'workspace-select-placeholder': memberIncomeValue.length == 0 }">{{ memberIncomeLabel }}</text>
-									<view class="workspace-select-caret">
-										<view class="workspace-select-caret-up"></view>
-										<view class="workspace-select-caret-down"></view>
-									</view>
-								</view>
-								<view v-if="memberIncomePickerVisible" class="workspace-select-menu">
-									<view v-for="i in memberIncomeOptions" :key="i" class="workspace-select-option" :class="{ active: memberIncomeValue == i }" @click="pickMemberIncome(i)"><text>{{ i }}</text></view>
-								</view>
-							</view>
-						</view>
-						<view class="workspace-entry-block">
-							<text class="workspace-entry-block-label">民族</text>
-							<view class="workspace-select">
-								<picker class="workspace-select-picker" :range="memberEthnicityOptions" :value="memberEthnicityIndex" @change="onMemberEthnicityChange">
-									<view class="workspace-select-trigger">
-										<text :class="{ 'workspace-select-placeholder': memberEntry.ethnicity.length == 0 }">{{ memberEntry.ethnicity.length > 0 ? memberEntry.ethnicity : '请选择民族' }}</text>
-										<view class="workspace-select-caret">
-											<view class="workspace-select-caret-up"></view>
-											<view class="workspace-select-caret-down"></view>
-										</view>
-									</view>
-								</picker>
-							</view>
-						</view>
-						<view class="workspace-entry-block last">
-							<text class="workspace-entry-block-label">属相</text>
-							<view class="workspace-select">
-								<picker class="workspace-select-picker" :range="memberZodiacOptions" :value="memberZodiacIndex" @change="onMemberZodiacChange">
-									<view class="workspace-select-trigger">
-										<text :class="{ 'workspace-select-placeholder': memberZodiacValue.length == 0 }">{{ memberZodiacLabel }}</text>
-										<view class="workspace-select-caret">
-											<view class="workspace-select-caret-up"></view>
-											<view class="workspace-select-caret-down"></view>
-										</view>
-									</view>
-								</picker>
-							</view>
-						</view>
-					</view>
-
-					<view class="workspace-entry-formcard">
-						<view class="workspace-entry-card-head"><text class="workspace-entry-step">4</text><view class="workspace-entry-card-head-copy"><text class="workspace-entry-card-title">生活与习惯</text><text class="workspace-entry-card-require">点选即填</text></view></view>
-						<view class="workspace-entry-block" :class="{ 'workspace-entry-block-floating': memberHousePickerVisible }">
-							<text class="workspace-entry-block-label">购房</text>
-							<view class="workspace-select">
-								<view class="workspace-select-trigger" @click="memberHousePickerVisible = !memberHousePickerVisible">
-									<text :class="{ 'workspace-select-placeholder': memberHouseValue.length == 0 }">{{ memberHouseLabel }}</text>
-									<view class="workspace-select-caret">
-										<view class="workspace-select-caret-up"></view>
-										<view class="workspace-select-caret-down"></view>
-									</view>
-								</view>
-								<view v-if="memberHousePickerVisible" class="workspace-select-menu">
-									<view v-for="h in memberHouseOptions" :key="h" class="workspace-select-option" :class="{ active: memberHouseValue == h }" @click="pickMemberHouse(h)"><text>{{ h }}</text></view>
-								</view>
-							</view>
-						</view>
-						<view class="workspace-entry-block" :class="{ 'workspace-entry-block-floating': memberCarPickerVisible }">
-							<text class="workspace-entry-block-label">购车</text>
-							<view class="workspace-select">
-								<view class="workspace-select-trigger" @click="memberCarPickerVisible = !memberCarPickerVisible">
-									<text :class="{ 'workspace-select-placeholder': memberCarValue.length == 0 }">{{ memberCarLabel }}</text>
-									<view class="workspace-select-caret">
-										<view class="workspace-select-caret-up"></view>
-										<view class="workspace-select-caret-down"></view>
-									</view>
-								</view>
-								<view v-if="memberCarPickerVisible" class="workspace-select-menu">
-									<view v-for="v in memberCarOptions" :key="v" class="workspace-select-option" :class="{ active: memberCarValue == v }" @click="pickMemberCar(v)"><text>{{ v }}</text></view>
-								</view>
-							</view>
-						</view>
-						<view class="workspace-entry-block" :class="{ 'workspace-entry-block-floating': memberSmokePickerVisible }">
-							<text class="workspace-entry-block-label">吸烟</text>
-							<view class="workspace-select">
-								<view class="workspace-select-trigger" @click="memberSmokePickerVisible = !memberSmokePickerVisible">
-									<text :class="{ 'workspace-select-placeholder': memberSmokeValue.length == 0 }">{{ memberSmokeLabel }}</text>
-									<view class="workspace-select-caret">
-										<view class="workspace-select-caret-up"></view>
-										<view class="workspace-select-caret-down"></view>
-									</view>
-								</view>
-								<view v-if="memberSmokePickerVisible" class="workspace-select-menu">
-									<view v-for="o in memberSmokeOptions" :key="o" class="workspace-select-option" :class="{ active: memberSmokeValue == o }" @click="pickMemberSmoking(o)"><text>{{ o }}</text></view>
-								</view>
-							</view>
-						</view>
-						<view class="workspace-entry-block last">
-							<text class="workspace-entry-block-label">喝酒</text>
-							<view class="workspace-select">
-								<view class="workspace-select-trigger" @click="memberDrinkPickerVisible = !memberDrinkPickerVisible">
-									<text :class="{ 'workspace-select-placeholder': memberDrinkValue.length == 0 }">{{ memberDrinkLabel }}</text>
-									<view class="workspace-select-caret">
-										<view class="workspace-select-caret-up"></view>
-										<view class="workspace-select-caret-down"></view>
-									</view>
-								</view>
-								<view v-if="memberDrinkPickerVisible" class="workspace-select-menu">
-									<view v-for="o in memberDrinkOptions" :key="o" class="workspace-select-option" :class="{ active: memberDrinkValue == o }" @click="pickMemberDrinking(o)"><text>{{ o }}</text></view>
-								</view>
-							</view>
-						</view>
-					</view>
-
-					<view class="workspace-entry-formcard">
-						<view class="workspace-entry-card-head"><text class="workspace-entry-step">5</text><view class="workspace-entry-card-head-copy"><text class="workspace-entry-card-title">补充说明</text><text class="workspace-entry-card-require">选填</text></view></view>
-						<view class="workspace-entry-block">
-							<text class="workspace-entry-block-label">宗教</text>
-							<view class="workspace-select">
-								<view class="workspace-select-trigger">
-									<input :value="memberEntry.religion" @input="memberEntry.religion = $event.detail.value" placeholder="如：无"/>
-								</view>
-							</view>
-						</view>
-						<view class="workspace-entry-block" :class="{ 'workspace-entry-block-floating': memberMarriagePlanPickerVisible }">
-							<text class="workspace-entry-block-label">结婚计划</text>
-							<view class="workspace-select">
-								<view class="workspace-select-trigger" @click="memberMarriagePlanPickerVisible = !memberMarriagePlanPickerVisible">
-									<text :class="{ 'workspace-select-placeholder': memberMarriagePlanValue.length == 0 }">{{ memberMarriagePlanLabel }}</text>
-									<view class="workspace-select-caret">
-										<view class="workspace-select-caret-up"></view>
-										<view class="workspace-select-caret-down"></view>
-									</view>
-								</view>
-								<view v-if="memberMarriagePlanPickerVisible" class="workspace-select-menu">
-									<view v-for="w in memberPrefWeddingOptions" :key="w" class="workspace-select-option" :class="{ active: memberMarriagePlanValue == w }" @click="pickMemberMarriagePlan(w)"><text>{{ w }}</text></view>
-								</view>
-							</view>
-						</view>
-						<view class="workspace-entry-block">
-							<text class="workspace-entry-block-label">会员标签</text>
-							<view class="workspace-tag-cloud">
-								<view v-for="t in memberTagOptions" :key="t" class="workspace-tag-chip" :class="{ active: memberEntry.tags.indexOf(t) >= 0 }" @click="toggleMemberTag(t)">
-									<text class="workspace-tag-check" :class="{ on: memberEntry.tags.indexOf(t) >= 0 }">✓</text>
-									<text>{{ t }}</text>
-								</view>
-								<view v-if="memberEntry.tags.length > 0" class="workspace-tag-reset" @click="clearMemberTags"><text>清空</text></view>
-							</view>
-						</view>
-						<view class="workspace-entry-block last"><text class="workspace-entry-block-label">备注</text><textarea class="workspace-entry-textarea" :value="memberEntry.remark" @input="memberEntry.remark = $event.detail.value" placeholder="性格、兴趣爱好、择偶要求等补充信息" :maxlength="500" auto-height/></view>
-					</view>
-
-					<view class="workspace-entry-formcard">
-						<view class="workspace-entry-card-head"><text class="workspace-entry-step">6</text><view class="workspace-entry-card-head-copy"><text class="workspace-entry-card-title">择偶要求</text><text class="workspace-entry-card-require">选填，帮助精准匹配</text></view></view>
-						<view class="workspace-entry-block">
-							<text class="workspace-entry-block-label">年龄（岁）</text>
-							<view class="member-range-plate">
-								<view class="member-range-track" @touchstart="onMemberAgeTouchStart" @touchmove="onMemberAgeTouchMove" @touchend="onMemberAgeTouchEnd">
-									<view class="member-range-rail"></view>
-									<view class="member-range-fill"></view>
-									<view id="member-age-range" class="member-range-travel">
-										<view class="member-range-band" :style="{ left: memberAgeZoneLeft, width: memberAgeZoneWidth }"></view>
-										<view class="member-range-knob" :style="{ left: memberAgeLoLeft }">
-											<view class="member-range-knob-dot"></view>
-										</view>
-										<view class="member-range-knob" :style="{ left: memberAgeHiLeft }">
-											<view class="member-range-knob-dot"></view>
-										</view>
-										<view class="member-range-bubble" :style="{ left: memberAgeLoBubbleLeft }">
-											<view class="member-range-bubble-box"><text class="member-range-bubble-text">{{ memberAgeLo }}</text></view>
-											<view class="member-range-bubble-tail"></view>
-										</view>
-										<view class="member-range-bubble" :style="{ left: memberAgeHiBubbleLeft }">
-											<view class="member-range-bubble-box"><text class="member-range-bubble-text">{{ memberAgeHi }}</text></view>
-											<view class="member-range-bubble-tail"></view>
-										</view>
-									</view>
-								</view>
-								<view class="member-range-scale">
-									<view class="member-range-scale-item" :style="{ left: memberAgeScaleLeft0 }"><text class="member-range-scale-text">18</text></view>
-									<view class="member-range-scale-item" :style="{ left: memberAgeScaleLeft1 }"><text class="member-range-scale-text">36</text></view>
-									<view class="member-range-scale-item" :style="{ left: memberAgeScaleLeft2 }"><text class="member-range-scale-text">54</text></view>
-									<view class="member-range-scale-item" :style="{ left: memberAgeScaleLeft3 }"><text class="member-range-scale-text">72</text></view>
-									<view class="member-range-scale-item" :style="{ left: memberAgeScaleLeft4 }"><text class="member-range-scale-text">90</text></view>
-								</view>
-							</view>
-						</view>
-						<view class="workspace-entry-block">
-							<text class="workspace-entry-block-label">身高（cm）</text>
-							<view class="member-range-plate">
-								<view class="member-range-track" @touchstart="onMemberHeightTouchStart" @touchmove="onMemberHeightTouchMove" @touchend="onMemberHeightTouchEnd">
-									<view class="member-range-rail"></view>
-									<view class="member-range-fill"></view>
-									<view id="member-height-range" class="member-range-travel">
-										<view class="member-range-band" :style="{ left: memberHeightBandLeft, width: memberHeightBandWidth }"></view>
-										<view class="member-range-knob" :style="{ left: memberHeightLoLeft }">
-											<view class="member-range-knob-dot"></view>
-										</view>
-										<view class="member-range-knob" :style="{ left: memberHeightHiLeft }">
-											<view class="member-range-knob-dot"></view>
-										</view>
-										<view class="member-range-bubble" :style="{ left: memberHeightLoBubbleLeft }">
-											<view class="member-range-bubble-box"><text class="member-range-bubble-text">{{ memberHeightLo }}</text></view>
-											<view class="member-range-bubble-tail"></view>
-										</view>
-										<view class="member-range-bubble" :style="{ left: memberHeightHiBubbleLeft }">
-											<view class="member-range-bubble-box"><text class="member-range-bubble-text">{{ memberHeightHi }}</text></view>
-											<view class="member-range-bubble-tail"></view>
-										</view>
-									</view>
-								</view>
-								<view class="member-range-scale">
-									<view class="member-range-scale-item" :style="{ left: memberHeightScaleLeft0 }"><text class="member-range-scale-text">150</text></view>
-									<view class="member-range-scale-item" :style="{ left: memberHeightScaleLeft1 }"><text class="member-range-scale-text">162</text></view>
-									<view class="member-range-scale-item" :style="{ left: memberHeightScaleLeft2 }"><text class="member-range-scale-text">175</text></view>
-									<view class="member-range-scale-item" :style="{ left: memberHeightScaleLeft3 }"><text class="member-range-scale-text">188</text></view>
-									<view class="member-range-scale-item" :style="{ left: memberHeightScaleLeft4 }"><text class="member-range-scale-text">200</text></view>
-								</view>
-							</view>
-						</view>
-						<view class="workspace-entry-block" :class="{ 'workspace-entry-block-floating': memberPrefIncomePickerVisible }">
-							<text class="workspace-entry-block-label">收入</text>
-							<view class="workspace-select">
-								<view class="workspace-select-trigger" @click="memberPrefIncomePickerVisible = !memberPrefIncomePickerVisible">
-									<text :class="{ 'workspace-select-placeholder': memberPrefIncomeValue.length == 0 }">{{ memberPrefIncomeLabel }}</text>
-									<view class="workspace-select-caret">
-										<view class="workspace-select-caret-up"></view>
-										<view class="workspace-select-caret-down"></view>
-									</view>
-								</view>
-								<view v-if="memberPrefIncomePickerVisible" class="workspace-select-menu">
-									<view v-for="i in memberPrefIncomeOptions" :key="i" class="workspace-select-option" :class="{ active: memberPrefIncomeValue == i }" @click="pickMemberPrefIncome(i)"><text>{{ i }}</text></view>
-								</view>
-							</view>
-						</view>
-						<view class="workspace-entry-block" :class="{ 'workspace-entry-block-floating': memberPrefEducationPickerVisible }">
-							<text class="workspace-entry-block-label">学历</text>
-							<view class="workspace-select">
-								<view class="workspace-select-trigger" @click="memberPrefEducationPickerVisible = !memberPrefEducationPickerVisible">
-									<text :class="{ 'workspace-select-placeholder': memberPrefEducationValue.length == 0 }">{{ memberPrefEducationLabel }}</text>
-									<view class="workspace-select-caret">
-										<view class="workspace-select-caret-up"></view>
-										<view class="workspace-select-caret-down"></view>
-									</view>
-								</view>
-								<view v-if="memberPrefEducationPickerVisible" class="workspace-select-menu">
-									<view v-for="e in memberPrefEducationOptions" :key="e" class="workspace-select-option" :class="{ active: memberPrefEducationValue == e }" @click="pickMemberPrefEducation(e)"><text>{{ e }}</text></view>
-								</view>
-							</view>
-						</view>
-						<view class="workspace-entry-block">
-							<text class="workspace-entry-block-label">职业</text>
-							<view class="workspace-select">
-								<picker class="workspace-select-picker" :range="memberPrefOccupationRange" :value="memberPrefOccupationIndex" @change="onMemberPrefOccupationChange">
-									<view class="workspace-select-trigger">
-										<text>{{ memberEntry.pref.occupation.length > 0 ? memberEntry.pref.occupation : '不限' }}</text>
-										<view class="workspace-select-caret">
-											<view class="workspace-select-caret-up"></view>
-											<view class="workspace-select-caret-down"></view>
-										</view>
-									</view>
-								</picker>
-							</view>
-						</view>
-						<view class="workspace-entry-block" :class="{ 'workspace-entry-block-floating': memberPrefMarriagePickerVisible }">
-							<text class="workspace-entry-block-label">婚况</text>
-							<view class="workspace-select">
-								<view class="workspace-select-trigger" @click="memberPrefMarriagePickerVisible = !memberPrefMarriagePickerVisible">
-									<text :class="{ 'workspace-select-placeholder': memberPrefMarriageValue.length == 0 }">{{ memberPrefMarriageLabel }}</text>
-									<view class="workspace-select-caret">
-										<view class="workspace-select-caret-up"></view>
-										<view class="workspace-select-caret-down"></view>
-									</view>
-								</view>
-								<view v-if="memberPrefMarriagePickerVisible" class="workspace-select-menu">
-									<view v-for="m in memberPrefMarriageOptions" :key="m" class="workspace-select-option" :class="{ active: memberPrefMarriageValue == m }" @click="pickMemberPrefMarriage(m)"><text>{{ m }}</text></view>
-								</view>
-							</view>
-						</view>
-						<view class="workspace-entry-block" :class="{ 'workspace-entry-block-floating': memberPrefHousingPickerVisible }">
-							<text class="workspace-entry-block-label">住房</text>
-							<view class="workspace-select">
-								<view class="workspace-select-trigger" @click="memberPrefHousingPickerVisible = !memberPrefHousingPickerVisible">
-									<text :class="{ 'workspace-select-placeholder': memberPrefHousingValue.length == 0 }">{{ memberPrefHousingLabel }}</text>
-									<view class="workspace-select-caret">
-										<view class="workspace-select-caret-up"></view>
-										<view class="workspace-select-caret-down"></view>
-									</view>
-								</view>
-								<view v-if="memberPrefHousingPickerVisible" class="workspace-select-menu">
-									<view v-for="h in memberPrefHousingOptions" :key="h" class="workspace-select-option" :class="{ active: memberPrefHousingValue == h }" @click="pickMemberPrefHousing(h)"><text>{{ h }}</text></view>
-								</view>
-							</view>
-						</view>
-						<view class="workspace-entry-block" :class="{ 'workspace-entry-block-floating': memberPrefSmokingPickerVisible }">
-							<text class="workspace-entry-block-label">吸烟</text>
-							<view class="workspace-select">
-								<view class="workspace-select-trigger" @click="memberPrefSmokingPickerVisible = !memberPrefSmokingPickerVisible">
-									<text :class="{ 'workspace-select-placeholder': memberPrefSmokingValue.length == 0 }">{{ memberPrefSmokingLabel }}</text>
-									<view class="workspace-select-caret">
-										<view class="workspace-select-caret-up"></view>
-										<view class="workspace-select-caret-down"></view>
-									</view>
-								</view>
-								<view v-if="memberPrefSmokingPickerVisible" class="workspace-select-menu">
-									<view v-for="s in memberPrefSmokingOptions" :key="s" class="workspace-select-option" :class="{ active: memberPrefSmokingValue == s }" @click="pickMemberPrefSmoking(s)"><text>{{ s }}</text></view>
-								</view>
-							</view>
-						</view>
-						<view class="workspace-entry-block last" :class="{ 'workspace-entry-block-floating': memberPrefWeddingPickerVisible }">
-							<text class="workspace-entry-block-label">结婚</text>
-							<view class="workspace-select">
-								<view class="workspace-select-trigger" @click="memberPrefWeddingPickerVisible = !memberPrefWeddingPickerVisible">
-									<text :class="{ 'workspace-select-placeholder': memberPrefWeddingValue.length == 0 }">{{ memberPrefWeddingLabel }}</text>
-									<view class="workspace-select-caret">
-										<view class="workspace-select-caret-up"></view>
-										<view class="workspace-select-caret-down"></view>
-									</view>
-								</view>
-								<view v-if="memberPrefWeddingPickerVisible" class="workspace-select-menu">
-									<view v-for="w in memberPrefWeddingOptions" :key="w" class="workspace-select-option" :class="{ active: memberPrefWeddingValue == w }" @click="pickMemberPrefWedding(w)"><text>{{ w }}</text></view>
-								</view>
-							</view>
-						</view>
+						<view class="workspace-entry-row last"><text class="workspace-entry-label">手机</text><input :value="memberEntry.phone" @input="memberEntry.phone = $event.detail.value" placeholder="11 位手机号" type="number" :maxlength="11"/></view>
 					</view>
 
 					<view v-if="memberEntryError.length > 0" class="workspace-form-error"><text>{{ memberEntryError }}</text></view>
 
-					<view class="workspace-entry-submit" :class="{ disabled: memberEntrySubmitting }" @click="submitMemberEntry"><text>{{ memberEntrySubmitting ? '提交中…' : '完成录入' }}</text></view>
-					<view class="workspace-entry-foot"><text>提交后进入待审核状态，仅用于平台牵线服务</text></view>
+					<view class="workspace-entry-submit" :class="{ disabled: memberEntrySubmitting }" @click="submitMemberEntry"><text>{{ memberEntrySubmitting ? '提交中…' : '建号并补资料' }}</text></view>
+					<view class="workspace-entry-foot"><text>建号后立刻打开「编辑资料」补齐会员资料，与会员本人填写的是同一张表单；未补齐前会员仍在待审名单</text></view>
 				</view>
 
 				<view v-else-if="workspaceKind == 'entry' && workspaceTitle == '录入客源线索'" class="workspace-entry-page lead-studio">
@@ -571,11 +215,11 @@
 						</view>
 						<view class="ls-field">
 							<text class="ls-label">电话</text>
-							<input :value="leadFormPhone" @input="leadFormPhone = $event.detail.value" placeholder="11 位手机号" type="number" :maxlength="11"/>
+							<input :value="leadFormPhone" @input="leadFormPhone = $event.detail.value" placeholder="手机号（必填，用于联系与入库）" type="number" :maxlength="11"/>
 						</view>
 						<view class="ls-field">
 							<text class="ls-label">微信</text>
-							<input :value="leadFormWechat" @input="leadFormWechat = $event.detail.value" placeholder="微信号，可与电话相同"/>
+							<input :value="leadFormWechat" @input="leadFormWechat = $event.detail.value" placeholder="微信号（选填），可与电话相同"/>
 						</view>
 					</view>
 
@@ -635,12 +279,106 @@
 				</view>
 
 				<view v-else-if="workspaceKind == 'activity'">
+					<view class="workspace-demo-notice"><text>当前显示本地测试数据；服务端接入活动报名后将自动切换。</text></view>
 					<view v-for="activity in workspaceActivities" :key="activity.title" class="workspace-info-card"><text>{{ activity.title }}</text><text class="workspace-muted">{{ activity.time }} · {{ activity.city }}</text><view><text>报名人数</text><text>{{ activity.count }} 人</text></view><view><text>审核状态</text><text>{{ activity.status }}</text></view><view class="workspace-actions"><text @click="showToast('已打开报名名单')">报名名单</text><text @click="showToast('已打开活动编辑')">编辑</text><text @click="showToast('报名审核已保存')">报名审核</text></view></view>
+				</view>
+
+				<view v-else-if="workspaceKind == 'news'">
+					<!-- 栏目头色带 + 压边白卡（阶段筛选）+ 反馈条，结构借鉴模板稿 -->
+					<view class="news-band">
+						<view class="news-band-copy">
+							<text class="news-band-title">脱单喜讯</text>
+							<text class="news-band-sub">会员回访里的每一步进展，都会记在这里</text>
+						</view>
+						<view class="news-band-count"><text class="news-band-count-value">{{ newsTotal }}</text><text class="news-band-count-label">条喜讯</text></view>
+					</view>
+					<view class="news-stage-card">
+						<view class="news-stage-grid">
+							<view v-for="item in newsStages" :key="item.label" class="news-stage" :class="{ active: isNewsStageActive(item.label) }" @click="selectNewsStage(item.label)">
+								<text class="news-stage-glyph" :class="item.tone">{{ item.glyph }}</text>
+								<text class="news-stage-label">{{ item.label }}</text>
+							</view>
+						</view>
+					</view>
+					<view v-if="workspaceActiveTab == '喜讯'" class="news-feedback">
+						<text class="news-feedback-glyph">💌</text>
+						<text class="news-feedback-text">收到您的脱单反馈，是我们最幸福的时刻</text>
+						<view class="news-feedback-btn" @click="openNewsReportSheet"><text>报喜</text><text class="news-feedback-arrow">›</text></view>
+					</view>
+
+					<view v-if="workspaceActiveTab == '锦旗'">
+						<view v-if="pennantsLoading" class="workspace-state"><text>正在加载锦旗…</text></view>
+						<view v-else-if="pennantsError.length > 0" class="workspace-state"><text>{{ pennantsError }}</text><text class="workspace-state-action" @click="loadWorkspacePennants">重新加载</text></view>
+						<view v-else-if="workspacePennants.length == 0" class="workspace-state"><text>还没有会员送来锦旗</text></view>
+						<view v-else>
+							<view v-for="row in workspacePennants" :key="row.id" class="news-pennant-card">
+								<image v-if="row.imageUrl.length > 0" class="news-pennant-image" :src="row.imageUrl" mode="aspectFill" @click="previewPennantImage(row.imageUrl)"/>
+								<view v-else class="news-pennant-plate"><text class="news-pennant-words">{{ row.words }}</text><text class="news-pennant-plate-mark">锦旗</text></view>
+								<view class="news-pennant-meta">
+									<text class="news-pennant-giver">{{ row.giver }} 敬赠</text>
+									<text class="news-pennant-target">受赠红娘：{{ row.target }}</text>
+									<text v-if="row.maker.length > 0" class="news-pennant-maker">制作方：{{ row.maker }}</text>
+									<text v-if="row.date.length > 0" class="news-pennant-date">{{ row.date }}</text>
+								</view>
+							</view>
+						</view>
+					</view>
+
+					<view v-else>
+						<view class="news-section"><text class="news-section-title">全部喜讯</text><text v-if="newsStage.length > 0" class="news-section-filter" @click="selectNewsStage(newsStage)">已筛选：{{ newsStage }} ✕</text></view>
+						<view v-if="newsLoading" class="workspace-state"><text>正在加载红娘喜讯…</text></view>
+						<view v-else-if="newsError.length > 0" class="workspace-state"><text>{{ newsError }}</text><text class="workspace-state-action" @click="loadWorkspaceNews">重新加载</text></view>
+						<view v-else-if="workspaceNews.length == 0" class="workspace-state"><text>{{ newsStage.length > 0 ? '这个阶段的喜讯还没上传' : '还没有匹配的喜讯' }}</text></view>
+						<view v-else>
+							<view v-for="row in workspaceNews" :key="row.id" class="news-card">
+								<view class="news-card-head">
+									<view class="news-card-head-left">
+										<text class="news-card-stage" :class="row.stageTone">{{ row.stage.length > 0 ? row.stage : '喜讯' }}</text>
+										<text v-if="row.pendingReview" class="news-card-pending">待审</text>
+									</view>
+									<view class="news-card-couple">
+										<view v-if="row.fromName.length > 0" class="news-card-person" @click="openNewsMemberProfile(row.fromUserId)">
+											<image class="news-card-avatar" :src="row.fromAvatar" mode="aspectFill"/>
+											<text class="news-card-name">{{ row.fromName }}</text>
+										</view>
+										<view v-if="row.toName.length > 0" class="news-card-person" @click="openNewsMemberProfile(row.toUserId)">
+											<image class="news-card-avatar" :src="row.toAvatar" mode="aspectFill"/>
+											<text class="news-card-name">{{ row.toName }}</text>
+										</view>
+									</view>
+								</view>
+								<view class="news-card-meta">
+									<text class="news-card-meta-glyph">👤</text><text class="news-card-meta-item">服务红娘：{{ row.matchmakerName }}</text>
+									<text class="news-card-meta-divider">|</text>
+									<text class="news-card-meta-glyph">🕐</text><text class="news-card-meta-item">相识时间：{{ row.meetDuration.length > 0 ? row.meetDuration : '未填写' }}</text>
+								</view>
+								<view v-if="row.images.length > 0" class="news-card-images">
+									<image v-for="(img, idx) in row.images" :key="img" class="news-card-image" :src="img" mode="aspectFill" @click="previewNewsImage(row.images, idx)"/>
+								</view>
+								<view v-if="newsDetailId == row.id" class="news-card-detail">
+									<text v-if="row.content.length > 0" class="news-card-content">{{ row.content }}</text>
+									<text v-else class="news-card-content news-card-content-empty">这条喜讯还没有填写正文</text>
+									<text v-if="row.blessing.length > 0" class="news-card-blessing">祝福语：{{ row.blessing }}</text>
+									<text v-if="row.createdAt.length > 0" class="news-card-date">发布于 {{ row.createdAt }}</text>
+									<view class="news-card-bless-btn" @click="blessGoodNews"><text>送祝福</text></view>
+								</view>
+								<view class="news-card-foot">
+									<text class="news-card-blessing-count" @click="blessGoodNews">{{ row.blessingText }}</text>
+									<view class="news-card-toggle" @click="toggleNewsDetail(row.id)"><text>{{ newsDetailId == row.id ? '收起' : '详情' }}</text><text class="news-card-toggle-arrow" :class="{ open: newsDetailId == row.id }">›</text></view>
+								</view>
+							</view>
+						</view>
+					</view>
 				</view>
 
 				<view v-else><view v-for="row in workspaceGenericRows" :key="row.title" class="workspace-generic-card"><view><text>{{ row.icon }}</text></view><view><text>{{ row.title }}</text><text>{{ row.desc }}</text></view><text @click="showToast(row.action)">{{ row.action }} ></text></view></view>
 			</view>
-			<view v-if="workspaceKind != 'meeting' && workspaceKind != 'entry'" class="workspace-add" :class="{ 'match-add': workspaceKind == 'match' }" @click="workspaceKind == 'lead' ? openLeadAddSheet() : (workspaceKind == 'match' ? openMatchAddSheet() : showToast('新增记录表单已打开'))"><text>+</text><text>添加</text></view>
+			<view v-if="workspaceKind != 'meeting' && workspaceKind != 'entry' && workspaceKind != 'news'" class="workspace-add" :class="{ 'match-add': workspaceKind == 'match' }" @click="workspaceKind == 'lead' ? openLeadAddSheet() : (workspaceKind == 'match' ? openMatchAddSheet() : showToast('新增记录表单已打开'))"><text>+</text><text>添加</text></view>
+			<!-- 红娘喜讯：报喜入口沿用资料待审筛选键的位置与圆形样式 -->
+			<view v-if="workspaceKind == 'news'" class="workspace-add news-report" @click="openNewsReportSheet">
+				<text class="news-report-glyph">🌷</text>
+				<text class="news-report-label">报喜</text>
+			</view>
 		</scroll-view>
 		<MatchmakerManagementCenter
 			v-else-if="managementCenterVisible && managementCenterSnapshot != null"
@@ -932,6 +670,88 @@
 			</view>
 		</view>
 
+		<!-- 喜讯：报喜入口（反馈喜讯 / 赠送锦旗） -->
+		<XsaSheet :visible="newsReportSheetVisible" title="报喜" @close="newsReportSheetVisible = false">
+			<view class="news-report-grid">
+				<view class="news-report-tile lavender" @click="chooseNewsReportKind('news')">
+					<view class="news-report-icon lavender"><text>🌷</text></view>
+					<text class="news-report-tile-label">反馈喜讯</text>
+				</view>
+				<view class="news-report-tile blush" @click="chooseNewsReportKind('pennant')">
+					<view class="news-report-icon blush"><text>🎏</text></view>
+					<text class="news-report-tile-label">赠送锦旗</text>
+				</view>
+			</view>
+			<text class="news-report-note">喜讯由红娘在会员回访后代为登记，提交后进后台喜讯管理审核；锦旗只在本地按文字生成图片，可自行保存发送。</text>
+		</XsaSheet>
+
+		<!-- 喜讯：反馈喜讯表单（红娘代会员登记，提交后进后台喜讯管理待审） -->
+		<XsaSheet :visible="newsFeedbackSheetVisible" title="反馈喜讯" @close="newsFeedbackSheetVisible = false">
+			<view class="news-form-privacy">
+				<text class="news-form-privacy-title">隐私提示</text>
+				<text class="news-form-privacy-text">我们会充分考虑隐私保护，您与对方的个人信息（头像、照片、聊天截图）都会经过隐私处理，且在得到您的允许的前提才会在平台中展示。</text>
+			</view>
+			<view class="news-form-row">
+				<text class="news-form-label">对方称呼</text>
+				<input class="news-form-input" :value="newsFormPartner" @input="newsFormPartner = $event.detail.value" placeholder="请输入" :maxlength="40"/>
+			</view>
+			<view class="news-form-row">
+				<text class="news-form-label">相识时间</text>
+				<input class="news-form-input" :value="newsFormMeetDuration" @input="newsFormMeetDuration = $event.detail.value" placeholder="请输入" type="number" :maxlength="8"/>
+				<text class="news-form-unit">个月</text>
+			</view>
+			<picker mode="selector" :range="newsStageOptions" :value="newsFormStageIndex" @change="onNewsFormStageChange">
+				<view class="news-form-row">
+					<text class="news-form-label">当前状态</text>
+					<view class="news-form-picker-value"><text :class="{ placeholder: newsFormStage.length == 0 }">{{ newsFormStage.length > 0 ? newsFormStage : '选择' }}</text><text class="news-form-chevron">›</text></view>
+				</view>
+			</picker>
+			<textarea class="news-form-textarea" :value="newsFormContent" @input="newsFormContent = $event.detail.value" placeholder="请输入一段您目前情感状态的描述，以及对我们的服务的反馈" :maxlength="1000" auto-height/>
+			<text class="news-form-subtitle">上传图片</text>
+			<view class="news-form-images">
+				<view v-for="(item, index) in newsFormImages" :key="item.url" class="news-form-image-cell">
+					<image class="news-form-image" :src="item.display" mode="aspectFill" @click="previewNewsFormImage(index)"/>
+					<text class="news-form-image-remove" @click="removeNewsFormImage(index)">✕</text>
+				</view>
+				<view v-if="newsFormImages.length < 9" class="news-form-image-add" @click="chooseNewsFormImage"><text class="news-form-image-add-glyph">＋</text><text class="news-form-image-add-label">选择图片</text></view>
+			</view>
+			<text v-if="newsFormError.length > 0" class="workspace-form-error news-form-error">{{ newsFormError }}</text>
+			<view class="news-form-submit" :class="{ disabled: newsFormSubmitting }" @click="submitNewsFeedback"><text>{{ newsFormSubmitting ? '提交中…' : '提交我的反馈' }}</text></view>
+		</XsaSheet>
+
+		<!-- 锦旗：赠送锦旗（只在本地画一张锦旗图，不写后台锦旗墙） -->
+		<XsaSheet :visible="pennantSheetVisible" title="赠送锦旗" :tall="true" @close="pennantSheetVisible = false">
+			<view class="news-form-privacy">
+				<text class="news-form-privacy-text">只需要输入对应文字立即免费在线生成锦旗，经济环保。</text>
+			</view>
+			<view class="pennant-preview">
+				<canvas id="pennantCanvas" width="200" height="280" class="pennant-canvas" style="width: 200px; height: 280px;"></canvas>
+			</view>
+			<view class="news-form-row">
+				<text class="news-form-label">赠送人</text>
+				<input class="news-form-input" :value="pennantGiver" @input="pennantGiver = $event.detail.value" placeholder="如：李先生" :maxlength="10"/>
+			</view>
+			<view class="news-form-row">
+				<text class="news-form-label">赠送给</text>
+				<input class="news-form-input" :value="pennantReceiver" @input="pennantReceiver = $event.detail.value" placeholder="如：爱在合肥" :maxlength="10"/>
+			</view>
+			<view class="news-form-row">
+				<text class="news-form-label">感谢语(左)</text>
+				<input class="news-form-input" :value="pennantLeftWords" @input="pennantLeftWords = $event.detail.value" placeholder="如：感谢红娘牵线" :maxlength="8"/>
+			</view>
+			<view class="news-form-row">
+				<text class="news-form-label">感谢语(右)</text>
+				<input class="news-form-input" :value="pennantRightWords" @input="pennantRightWords = $event.detail.value" placeholder="如：成就美好姻缘" :maxlength="8"/>
+			</view>
+			<view class="news-form-row">
+				<text class="news-form-label">日期</text>
+				<input class="news-form-input" :value="pennantDate" @input="pennantDate = $event.detail.value" placeholder="如：二零二四年八月十五" :maxlength="12"/>
+			</view>
+			<text v-if="pennantError.length > 0" class="workspace-form-error news-form-error">{{ pennantError }}</text>
+			<text v-else-if="pennantReady" class="pennant-hint">锦旗已生成并存入手机相册，可直接发给对方。</text>
+			<view class="news-form-submit" :class="{ disabled: pennantWorking }" @click="generatePennant"><text>{{ pennantWorking ? '生成中…' : '立即生成锦旗' }}</text></view>
+		</XsaSheet>
+
 		<!-- 线索：状态选择 -->
 		<XsaSheet :visible="leadStatusSheetVisible" title="状态" @close="leadStatusSheetVisible = false">
 			<view class="workspace-option-list">
@@ -990,7 +810,7 @@
 			<view class="workspace-lead-form">
 				<view class="workspace-form-row"><text>姓名</text><input :value="leadFormRealName" @input="leadFormRealName = $event.detail.value" placeholder="真实姓名（选填）"/></view>
 				<view class="workspace-form-row"><text>称呼</text><input :value="leadFormName" @input="leadFormName = $event.detail.value" placeholder="客户称呼（必填）"/></view>
-				<view class="workspace-form-row"><text>电话</text><input :value="leadFormPhone" @input="leadFormPhone = $event.detail.value" placeholder="手机号" type="number"/></view>
+				<view class="workspace-form-row"><text>电话</text><input :value="leadFormPhone" @input="leadFormPhone = $event.detail.value" placeholder="手机号（必填）" type="number" :maxlength="11"/></view>
 				<view class="workspace-form-row"><text>微信</text><input :value="leadFormWechat" @input="leadFormWechat = $event.detail.value" placeholder="微信号"/></view>
 				<view class="workspace-form-row"><text>性别</text>
 					<view class="workspace-entry-options">
@@ -1048,19 +868,40 @@
 			</view>
 		</XsaSheet>
 
-		<!-- 会员选择弹层（添加牵线记录用） -->
-		<XsaSheet :visible="matchAddPickerVisible" :title="matchAddPickerKind == 'from' ? '选择牵线会员' : '选择被牵线会员'" @close="matchAddPickerVisible = false">
-			<view class="workspace-match-add-picker">
-				<view v-if="!matchAddLoading && matchAddCandidates.length > 0" class="workspace-search"><text class="workspace-search-glyph">⌕</text><input placeholder="输入名字 / 编号搜索会员" :value="matchAddSearch" @input="onMatchAddSearchInput"/></view>
-				<view v-if="matchAddLoading" class="workspace-state"><text>正在加载会员…</text></view>
-				<view v-else-if="matchAddCandidates.length == 0" class="workspace-state"><text>服务范围内暂无会员</text></view>
-				<view v-else-if="matchAddFilteredCandidates.length == 0" class="workspace-state"><text>没有匹配「{{ matchAddSearch }}」的会员</text></view>
-				<view v-else class="workspace-option-list">
-					<view v-for="m in matchAddFilteredCandidates" :key="m.id" class="workspace-option" :class="{ selected: isMatchAddPicked(m.id) }" @click="pickMatchAddMember(m)">
-						<text>{{ m.name }}（{{ m.gender }} · {{ m.id }}）</text>
-						<text v-if="isMatchAddPicked(m.id)" class="workspace-option-check">✓</text>
+		<!-- 会员选择弹层（添加牵线记录用）：命令面板式模板，头部 / 搜索 / 键位提示 / 带头像结果行 -->
+		<XsaSheet :visible="matchAddPickerVisible" title="" :show-handle="false" @close="matchAddPickerVisible = false">
+			<view class="mp-pick">
+				<view class="mp-pick-head">
+					<view class="mp-pick-back" @click="matchAddPickerVisible = false"><i class="mp-pick-back-glyph"></i></view>
+					<text class="mp-pick-title">{{ matchAddPickerKind == 'from' ? '选择牵线会员' : '选择被牵线会员' }}</text>
+					<view v-if="!matchAddLoading && matchAddCandidates.length > 0" class="mp-pick-total"><text>{{ matchAddCandidates.length }}</text></view>
+				</view>
+				<view v-if="!matchAddLoading && matchAddCandidates.length > 0" class="mp-pick-search">
+					<text class="mp-pick-search-glyph">⌕</text>
+					<input class="mp-pick-search-input" placeholder="输入名字 / 编号搜索会员" placeholder-class="mp-pick-search-ph" :value="matchAddSearch" @input="onMatchAddSearchInput"/>
+					<view class="mp-pick-clear-slot">
+						<view v-if="matchAddSearch.length > 0" class="mp-pick-clear" @click="matchAddSearch = ''"><text>✕</text></view>
 					</view>
 				</view>
+				<view class="mp-pick-hints">
+					<view class="mp-pick-hint"><text class="mp-pick-hint-key">点按</text><text class="mp-pick-hint-label">选择会员</text></view>
+					<view class="mp-pick-hint"><text class="mp-pick-hint-key">⌕</text><text class="mp-pick-hint-label">名字 / 编号可搜</text></view>
+					<view class="mp-pick-hint"><text class="mp-pick-hint-key">返回</text><text class="mp-pick-hint-label">关闭名单</text></view>
+				</view>
+				<scroll-view scroll-y :show-scrollbar="false" class="mp-pick-scroll">
+					<view v-if="matchAddLoading" class="mp-pick-state"><text>正在加载会员…</text></view>
+					<view v-else-if="matchAddCandidates.length == 0" class="mp-pick-state"><text>服务范围内暂无会员</text></view>
+					<view v-else-if="matchAddFilteredCandidates.length == 0" class="mp-pick-state"><text>没有匹配「{{ matchAddSearch }}」的会员</text></view>
+					<view v-else class="mp-pick-results">
+						<text class="mp-pick-results-label">{{ matchAddResultsLabel }}</text>
+						<view v-for="m in matchAddFilteredCandidates" :key="m.id" class="mp-pick-row" :class="{ picked: isMatchAddPicked(m.id) }" @click="pickMatchAddMember(m)">
+							<image class="mp-pick-avatar" :src="m.avatar" mode="aspectFill"/>
+							<text class="mp-pick-name">{{ m.name }}</text>
+							<text class="mp-pick-meta">{{ m.gender }} · {{ m.id }}</text>
+							<view class="mp-pick-tail"><text v-if="isMatchAddPicked(m.id)" class="mp-pick-tail-check">✓</text></view>
+						</view>
+					</view>
+				</scroll-view>
 			</view>
 		</XsaSheet>
 
@@ -1182,22 +1023,27 @@
 			</view>
 		</view>
 
-		<!-- 复制资料（设计稿：居中弹窗 + 浅紫字段卡片 + 渐变一键复制；字段口径与后台 CopyProfileModal 一致，
-		     同样内联实现：常驻挂载 + open 类控制显隐，避免新增组件文件热编译不识别） -->
-		<view class="cp-overlay" :class="{ open: copyProfileVisible }" @tap="closeCopyProfile">
+		<!-- 复制资料（客源线索）：模板照搬资料待审的「复制资料」——先预览全文，可改文本再一键复制。
+		     文案口径 = 编辑线索表单的全量字段，未填写留空。
+		     仍是内联实现：常驻挂载 + open 类控制显隐，避免新增组件文件热编译不识别。 -->
+		<view class="cp-overlay" :class="{ open: copyVisible }" @tap="closeCopyProfile">
 			<view class="cp-card" @tap.stop>
-				<view class="cp-head">
-					<text class="cp-title">复制资料</text>
-					<view class="cp-close" @tap="closeCopyProfile"><text>✕</text></view>
+				<view class="cpd-icon"><text class="cpd-icon-glyph">◈</text></view>
+				<text class="cpd-title">复制客源资料</text>
+				<text class="cpd-subtitle">确认下方文本后再复制，可先修改。</text>
+				<view v-if="copyEditing" class="cpd-body cpd-editor">
+					<textarea class="cpd-textarea" maxlength="2000" :value="copyText" @input="onCopyText" />
+					<text class="cpd-note">这里的修改只影响要复制的文本，不会改动该客源的资料。</text>
 				</view>
-				<scroll-view scroll-y class="cp-body" :show-scrollbar="false">
-					<view v-if="copyProfileLoading" class="cp-state"><text>资料加载中...</text></view>
-					<view v-else class="cp-rows">
-						<view v-if="copyProfileError.length > 0" class="cp-error"><text>{{ copyProfileError }}</text></view>
-						<view v-for="row in copyProfileRows" :key="row.label" class="cp-row"><text class="cp-row-text">{{ row.label }}：{{ row.value }}</text></view>
+				<scroll-view v-else scroll-y class="cpd-body" :show-scrollbar="false">
+					<view class="cpd-lines">
+						<text v-for="(line, index) in copyLines" :key="index" class="cpd-line">{{ line }}</text>
 					</view>
 				</scroll-view>
-				<view class="cp-copy-btn" :class="{ disabled: copyProfileLoading }" @tap="confirmCopyProfile"><text>{{ copyProfileCopied ? '已复制到剪贴板 ✓' : '一键复制' }}</text></view>
+				<view class="cpd-footer">
+					<view class="cpd-btn" @tap="toggleCopyEdit"><text>{{ copyEditing ? '预览' : '修改' }}</text></view>
+					<view class="cpd-btn primary" @tap="confirmCopyProfile"><text>{{ copyCopied ? '已复制 ✓' : '一键复制' }}</text></view>
+				</view>
 			</view>
 		</view>
 
@@ -1237,14 +1083,22 @@ import {
 	deleteMatchmakerMeetingRequest,
 	getMatchmakerWorkspaceIntroductions,
 	getMatchmakerWorkspaceMeetingRequests,
+	getMatchmakerWorkspaceGoodNews,
+	getMatchmakerWorkspaceGoodNewsPennants,
+	uploadWorkspaceGoodNewsPhoto,
+	createMatchmakerWorkspaceGoodNews,
 	getMatchmakerMemberContact,
-	getMatchmakerMemberProfile,
-	getMatchmakerMemberPreferences,
-	getRegionProvinces,
-	getRegionCities,
-	getRegionDistricts,
 	submitMatchmakerApplication
 } from '@/api'
+import { resolveMediaUrl } from '@/api/config.uts'
+import { getCurrentInstance, nextTick } from 'vue'
+import { drawPennant, renderPennant, type PennantContent } from '@/utils/pennant-drawer.uts'
+import { savePosterToPhotos } from '@/utils/moxiang-poster-drawer.uts'
+import {
+	mockMatchmakerCommissionEntries,
+	mockMatchmakerCommissionRates,
+	mockMatchmakerFinanceEntries
+} from '@/mock'
 
 // ===== 基本信息 =====
 const realName = ref('')
@@ -1302,7 +1156,11 @@ const workspaceMeetingTabs = ['全部', '待处理', '待见面', '已完成', '
 // 录入客源线索页的「轻档案卡」风格开关
 const isLeadEntryStudio = computed(() => workspaceVisible.value && workspaceKind.value == 'entry' && workspaceTitle.value == '录入客源线索')
 const workspaceTabs = computed(() => {
-	if (workspaceKind.value == 'commission') return workspaceCommissionTabs
+	if (workspaceKind.value == 'commission') {
+		// 「线上分成」与「财务明细」共用 commission 工作区，按标题切换页签与内容。
+		return workspaceTitle.value == '财务明细' ? ['财务明细', '结算说明'] : workspaceCommissionTabs
+	}
+	if (workspaceKind.value == 'news') return ['喜讯', '锦旗']
 	if (workspaceKind.value == 'lead') return workspaceLeadTabs
 	if (workspaceKind.value == 'match') return workspaceMatchTabs
 	if (workspaceKind.value == 'meeting') return workspaceMeetingTabs
@@ -1314,7 +1172,87 @@ const workspaceSearchPlaceholder = computed(() => {
 	if (workspaceKind.value == 'meeting') return '请输入申请人、邀约对象或编号'
 	return '请输入关键词'
 })
-const workspaceCommissionRows: any[] = []
+// 分成明细 / 财务明细 / 活动报名为纯演示数据（服务端未接入这些能力），由 mock 层驱动。
+const workspaceCommissionRows: any[] = mockMatchmakerCommissionEntries.map((row: any) => ({ ...row }))
+const workspaceCommissionRates: any[] = mockMatchmakerCommissionRates.map((row: any) => ({ ...row }))
+const workspaceFinanceRows: any[] = mockMatchmakerFinanceEntries.map((row: any) => ({ ...row }))
+// 红娘喜讯与锦旗墙读服务端接口（数据源为后台「运营工具-喜讯管理」内容域），不再有本地演示数。
+const workspaceNews = ref<any[]>([])
+const workspacePennants = ref<any[]>([])
+const newsLoading = ref(false)
+const newsError = ref('')
+const newsStage = ref('')
+const newsTotal = ref(0)
+const newsDetailId = ref('')
+const newsReportSheetVisible = ref(false)
+// 报喜-反馈喜讯表单：当前状态取上方阶段格里除「锦旗飘扬」之外的 7 个分类。
+const newsFeedbackSheetVisible = ref(false)
+const newsStageOptions: string[] = ['牵手成功', '恋爱生活', '已见父母', '已订婚', '已领证', '已办婚礼', '婚后生活']
+const newsFormStage = ref('')
+const newsFormStageIndex = ref(0)
+const newsFormPartner = ref('')
+const newsFormMeetDuration = ref('')
+const newsFormContent = ref('')
+const newsFormImages = ref<any[]>([])
+const newsFormError = ref('')
+const newsFormSubmitting = ref(false)
+// 报喜-赠送锦旗：只在本地画一张锦旗图，不写后台锦旗墙。
+const pennantSheetVisible = ref(false)
+const pennantGiver = ref('')
+const pennantReceiver = ref('')
+const pennantLeftWords = ref('')
+const pennantRightWords = ref('')
+const pennantDate = ref('')
+const pennantError = ref('')
+const pennantWorking = ref(false)
+const pennantReady = ref(false)
+const pennantInstance = getCurrentInstance()
+const pennantsLoading = ref(false)
+const pennantsError = ref('')
+const pennantsLoaded = ref(false)
+// 阶段筛选与后台栏目配置的 8 个分类同名；最后一项跳「锦旗」页签，不参与喜讯阶段过滤。
+const newsStages: any[] = [
+	{ label: '牵手成功', glyph: '💞', tone: 't-coral' },
+	{ label: '恋爱生活', glyph: '💬', tone: 't-sky' },
+	{ label: '已见父母', glyph: '👪', tone: 't-sage' },
+	{ label: '已订婚', glyph: '💍', tone: 't-plum' },
+	{ label: '已领证', glyph: '📕', tone: 't-apricot' },
+	{ label: '已办婚礼', glyph: '🎉', tone: 't-mint' },
+	{ label: '婚后生活', glyph: '🏠', tone: 't-lilac' },
+	{ label: '锦旗飘扬', glyph: '🎏', tone: 't-blush' }
+]
+const newsStageTone = (stage: string): string => {
+	for (let i = 0; i < newsStages.length; i++) {
+		if (newsStages[i].label == stage) return String(newsStages[i].tone)
+	}
+	return 't-sage'
+}
+const parseDemoAmount = (text: string): number => {
+	let digits = ''
+	for (let i = 0; i < text.length; i++) {
+		const ch = text.charAt(i)
+		if ((ch >= '0' && ch <= '9') || ch == '.') digits += ch
+	}
+	return digits.length > 0 ? Number(digits) : 0
+}
+const formatDemoAmount = (rows: any[]): string => {
+	let total = 0
+	rows.forEach((row: any) => { total += parseDemoAmount(String(row.amount)) })
+	const fixed = total.toFixed(2)
+	const segments = fixed.split('.')
+	let intPart = segments[0]
+	let grouped = ''
+	while (intPart.length > 3) {
+		grouped = ',' + intPart.substring(intPart.length - 3) + grouped
+		intPart = intPart.substring(0, intPart.length - 3)
+	}
+	return '￥' + intPart + grouped + '.' + segments[1]
+}
+const workspaceCommissionTotal = computed((): string => formatDemoAmount(workspaceCommissionRows))
+const workspaceFinanceTotal = computed((): string => formatDemoAmount(workspaceFinanceRows))
+const workspaceCashNote = computed((): string => workspaceTitle.value == '财务明细'
+	? '线下业绩与开单收款为本地演示数据，服务端接入后自动切换。'
+	: '分成金额计入账号余额，可申请提现；当前为本地演示数据。')
 const workspaceLeads = ref<any[]>([])
 // 九级意向独立保存，便于按 A-J 完整筛选与回显。
 const leadIntentionDetails = ref<any>({})
@@ -1406,7 +1344,13 @@ const refreshServedMemberCount = async () => {
 	}
 }
 const onPendingReviewServedCount = (count: number) => { applyServedMemberCount(Number(count)) }
-const workspaceActivities: any[] = []
+// 活动报名工作区：本地演示活动（服务端未接入活动报名能力）。
+const workspaceActivities: any[] = [
+	{ title: '金秋相亲大会', time: '2026-10-25 14:00', city: '杭州 · 下沙', count: 86, status: '报名审核中 · 12 人待审' },
+	{ title: '8090 脱单派对', time: '2026-11-01 18:30', city: '杭州 · 钱塘', count: 54, status: '招募中 · 余 26 席' },
+	{ title: '家长相亲见面会', time: '2026-11-08 09:30', city: '杭州 · 滨江', count: 42, status: '报名审核中 · 5 人待审' },
+	{ title: '线上互选 · 程序员专场', time: '2026-11-15 20:00', city: '线上', count: 128, status: '已截止 · 互选进行中' }
+]
 const workspaceGenericRows: any[] = []
 const workspaceVisibleMembers = computed(() => {
 	let rows = workspaceMembers.value
@@ -1423,7 +1367,6 @@ const workspaceVisibleLeads = computed(() => {
 	let rows = workspaceLeads.value
 	if (workspaceActiveTab.value == '已放弃线索') rows = rows.filter((item: any) => item.status == 'LOST')
 	if (workspaceActiveTab.value == '客源线索') rows = rows.filter((item: any) => item.status != 'LOST')
-	if (leadExceptionOnly.value) rows = rows.filter((item: any) => item.isStale == true)
 	if (leadFilterStatus.value.length > 0) rows = rows.filter((item: any) => leadFilterStatus.value.indexOf(item.status) >= 0)
 	if (leadFilterIntention.value > 0) rows = rows.filter((item: any) => Number(item.intentionValue) == leadFilterIntention.value)
 	const keyword = workspaceKeyword.value.trim().toLowerCase()
@@ -1495,12 +1438,11 @@ const canEnterManagementCenter = computed(() => {
 const managementAccessDescription = computed(() => {
 	if (managementAccessLoading.value) return '正在核验服务红娘开通状态…'
 	if (managementAccess.value == null) return '暂时无法核验开通状态，请稍后重试。'
-	if (canEnterManagementCenter.value) {
-		return '服务开通已确认，可进入工作台处理门店服务事项。'
-	}
-	if (managementAccess.value.roleStatus != 'active') return '服务红娘申请审核通过并激活后，即可进入管理中心。'
-	return managementAccess.value.message != null && String(managementAccess.value.message).length > 0
-		? String(managementAccess.value.message)
+	// 文案一律取服务端 message，成功与拒绝同一个来源，前端不再各自写一句话。
+	const serverMessage = managementAccess.value.message != null ? String(managementAccess.value.message).trim() : ''
+	if (serverMessage.length > 0) return serverMessage
+	return canEnterManagementCenter.value
+		? '服务开通已确认，可进入工作台处理门店服务事项。'
 		: '当前账号暂未获得管理中心权限。'
 })
 
@@ -1643,7 +1585,7 @@ const loadWorkspaceMembers = async () => {
 				id: String(item.user_id),
 				avatar: item.avatar != null && String(item.avatar).length > 0
 					? String(item.avatar)
-					: (Number(item.gender) == 1 ? '/static/portraits/profile-man-light.jpg' : '/static/portraits/profile-woman-main.jpg'),
+					: (Number(item.gender) == 1 ? '/static/portraits/profile-man-light.webp' : '/static/portraits/profile-woman-main.webp'),
 				name: item.nickname != null ? String(item.nickname) : '未命名会员',
 				gender: gender,
 				type: Number(item.profile_completion_score) >= 90 ? '资料完善' : '待完善',
@@ -1759,15 +1701,8 @@ const loadWorkspaceLeads = async () => {
 }
 
 // ===== 客源线索：工具栏与筛选 =====
-const leadExceptionOnly = ref(false)
 const leadFilterStatus = ref<string[]>([])
 const leadFilterIntention = ref(0)
-
-const toggleLeadException = () => {
-	leadExceptionOnly.value = !leadExceptionOnly.value
-	leadFilterStatus.value = []
-	leadFilterIntention.value = 0
-}
 
 const leadFilterSheetVisible = ref(false)
 const openLeadFilterSheet = () => { leadFilterSheetVisible.value = true }
@@ -2007,6 +1942,13 @@ const pickLeadFormSource = (value: string) => {
 // 录入视图示例数据：一键填充全表单便于联调，再点一次清空。
 const leadDemoFilled = computed(() => leadFormRealName.value != '' || leadFormName.value != '' || leadFormPhone.value != '' || leadFormWechat.value != '' || leadFormRemark.value != '')
 const leadSourceOptions = ['抖音', '微信群', '本地群', '身边朋友', '同行群', '朋友圈', 'QQ', '其他渠道', '落地页']
+const DEMO_FEMALE_OCCUPATIONS: string[] = ['平面设计师', '幼儿园教师', '会计', '护士', '产品经理', '咖啡师', '律师助理', '摄影师']
+const DEMO_MALE_OCCUPATIONS: string[] = ['软件工程师', '中学教师', '健身教练', '机械工程师', '医生', '销售主管', '摄影师', '会计师']
+const DEMO_EDUCATIONS: string[] = ['大专', '本科', '本科', '硕士']
+const DEMO_FEMALE_WISHES: string[] = ['希望找同城、有稳定工作的对象', '希望找性格沉稳、愿意沟通的先生', '希望对方同样未婚，计划在本地长期发展']
+const DEMO_MALE_WISHES: string[] = ['希望找同城、未婚的伴侣', '希望找性格温和、有共同话题的女生', '希望对方以结婚为目标交往，不接受异地']
+const demoTwo = (value: number): string => String(value).padStart(2, '0')
+// 线索示例：每次点换一个新人设、手机号重新生成，方便连续提交多条线索不撞手机号。
 const fillLeadDemo = () => {
 	if (leadDemoFilled.value) {
 		leadFormRealName.value = ''
@@ -2022,560 +1964,82 @@ const fillLeadDemo = () => {
 		leadFormError.value = ''
 		return
 	}
-	leadFormRealName.value = '林晚意'
-	leadFormName.value = '林晚意（示例）'
-	leadFormPhone.value = '13922223333'
-	leadFormWechat.value = 'wx_demo_linyi'
-	leadFormSource.value = '身边朋友'
-	leadFormIntention.value = 2
-	leadFormGender.value = 2
-	leadFormBirthday.value = '1999-08-12'
-	leadFormRemark.value = '27 岁，本科，平面设计师，身高 163cm，未婚。性格温和，希望找同城、有稳定工作的对象。'
+	const gender = demoPersonaGender[nextDemoPersona()]
+	const realName = demoPick(gender == 2 ? DEMO_FEMALE_SURNAMES : DEMO_MALE_SURNAMES) + demoPick(gender == 2 ? DEMO_FEMALE_GIVENS : DEMO_MALE_GIVENS)
+	const age = gender == 2 ? demoInt(23, 36) : demoInt(25, 40)
+	const birthYear = new Date().getFullYear() - age
+	const birthday = String(birthYear) + '-' + demoTwo(demoInt(1, 12)) + '-' + demoTwo(demoInt(1, 28))
+	const height = gender == 2 ? demoInt(156, 170) : demoInt(168, 183)
+	const education = demoPick(DEMO_EDUCATIONS)
+	const occupation = demoPick(gender == 2 ? DEMO_FEMALE_OCCUPATIONS : DEMO_MALE_OCCUPATIONS)
+	const wish = demoPick(gender == 2 ? DEMO_FEMALE_WISHES : DEMO_MALE_WISHES)
+	leadFormRealName.value = realName
+	leadFormName.value = realName + '（示例）'
+	leadFormPhone.value = demoPick(DEMO_PHONE_PREFIXES) + String(demoInt(10000000, 99999999))
+	leadFormWechat.value = 'wxid_' + String(demoInt(100000, 999999))
+	leadFormSource.value = demoPick(leadSourceOptions)
+	leadFormIntention.value = demoInt(1, 3)
+	leadFormGender.value = gender
+	leadFormBirthday.value = birthday
+	leadFormRemark.value = String(age) + ' 岁，' + education + '，' + occupation + '，身高 ' + String(height) + 'cm，未婚。' + wish + '。'
 	leadFormError.value = ''
 }
 
-// ===== 录入会员：分区表单 + 示例填充，提交走工作台域创建接口。 =====
+// ===== 录入会员 = 会员账号建档：只收建号必需的三项 + 保密姓名，
+// 资料字段一律交给「编辑资料」页（与会员本人「我的-资料编辑」同一张表单），提交后当场跳过去补。 =====
 const emptyMemberEntry = (): any => ({
-	nickname: '', realName: '', gender: 1, phone: '', wechat: '',
-	birthday: '1996-08-12', height: '', weight: '', hometown: '', residence: '', household: '',
-	education: '', maritalStatus: '', occupation: '', occupationCustom: '', income: '', ethnicity: '', zodiac: '',
-	housing: '', vehicle: '', smoking: '', drinking: '', religion: '', marriagePlan: '', tags: [] as string[], remark: '',
-	pref: { ageMin: 18, ageMax: 90, heightMin: 150, heightMax: 200, income: '', education: '', occupation: '', marriageAccept: '', housing: '', smoking: '', weddingPlan: '' }
+	nickname: '', realName: '', gender: 1, phone: ''
 })
 const memberEntry = ref<any>(emptyMemberEntry())
 const memberEntrySubmitting = ref(false)
 const memberEntryError = ref('')
-const memberEducationOptions = ['高中及以下', '大专', '本科', '硕士', '博士']
-// 婚况 6 项（与后端 is_married 编码 1/3/4/5/6/7 对应）
-const memberMaritalOptions = ['未婚', '离婚未育', '离异未带孩', '离异带女孩', '离异带男孩', '丧偶']
-// 职业 20 项 + 其他（手动填写）
-const memberOccupationOptions = [
-	'私企员工', '央企/国企', '外企', '事业单位', '公务员', '教师', '医生', '护士', '互联网行业', '自由职业',
-	'军人', '工人', '服务业', '金融', '律师', '求职中', '在校学生', '个体老板', '公司高管', '美容师/健身教练'
-]
-// 收入 8 档
-const memberIncomeOptions = ['3千元以下', '3-5千元', '5-8千元', '8千-1万元', '1-2万元', '2万以上', '5万以上', '年入百万']
-// 56 民族
-const memberEthnicityOptions = [
-	'汉族', '蒙古族', '回族', '藏族', '维吾尔族', '苗族', '彝族', '壮族', '布依族', '朝鲜族',
-	'满族', '侗族', '瑶族', '白族', '土家族', '哈尼族', '哈萨克族', '傣族', '黎族', '傈僳族',
-	'佤族', '畲族', '高山族', '拉祜族', '水族', '东乡族', '纳西族', '景颇族', '柯尔克孜族', '土族',
-	'达斡尔族', '仫佬族', '羌族', '布朗族', '撒拉族', '毛南族', '仡佬族', '锡伯族', '阿昌族', '普米族',
-	'塔吉克族', '怒族', '乌孜别克族', '俄罗斯族', '鄂温克族', '德昂族', '保安族', '裕固族', '京族', '塔塔尔族',
-	'独龙族', '鄂伦春族', '赫哲族', '门巴族', '珞巴族', '基诺族'
-]
-// 12 属相
-const memberZodiacOptions = ['鼠', '牛', '虎', '兔', '龙', '蛇', '马', '羊', '猴', '鸡', '狗', '猪']
-const memberHouseOptions = ['未购房', '正在考虑购房', '已购婚房有贷款', '已购婚房无贷款', '暂无购房能力']
-// 购房改为下拉选择：面板在表单内展开，点选项或再点触发条收起。
-const memberHousePickerVisible = ref(false)
-const memberHouseValue = computed<string>(() => memberEntry.value.housing != null ? String(memberEntry.value.housing) : '')
-const memberHouseLabel = computed<string>(() => memberHouseValue.value.length > 0 ? memberHouseValue.value : '请选择购房情况')
-const pickMemberHouse = (value: string) => {
-	memberEntry.value.housing = value
-	memberHousePickerVisible.value = false
-}
-const memberCarOptions = ['未购车', '已购车', '需要时购置']
-const memberCarPickerVisible = ref(false)
-const memberCarValue = computed<string>(() => memberEntry.value.vehicle != null ? String(memberEntry.value.vehicle) : '')
-const memberCarLabel = computed<string>(() => memberCarValue.value.length > 0 ? memberCarValue.value : '请选择购车情况')
-const pickMemberCar = (value: string) => {
-	memberEntry.value.vehicle = value
-	memberCarPickerVisible.value = false
-}
-const memberSmokePickerVisible = ref(false)
-const memberSmokeValue = computed<string>(() => memberEntry.value.smoking != null ? String(memberEntry.value.smoking) : '')
-const memberSmokeLabel = computed<string>(() => memberSmokeValue.value.length > 0 ? memberSmokeValue.value : '请选择吸烟情况')
-const pickMemberSmoking = (value: string) => {
-	memberEntry.value.smoking = value
-	memberSmokePickerVisible.value = false
-}
-const memberDrinkPickerVisible = ref(false)
-const memberDrinkValue = computed<string>(() => memberEntry.value.drinking != null ? String(memberEntry.value.drinking) : '')
-const memberDrinkLabel = computed<string>(() => memberDrinkValue.value.length > 0 ? memberDrinkValue.value : '请选择喝酒情况')
-const pickMemberDrinking = (value: string) => {
-	memberEntry.value.drinking = value
-	memberDrinkPickerVisible.value = false
-}
-const memberSmokeOptions = ['不吸烟', '偶尔吸烟', '经常吸烟']
-const memberDrinkOptions = ['不喝酒', '偶尔小酌', '应酬时需要饮酒', '经常喝酒']
-// 学历/婚况/职业 与择偶要求的收入/学历/住房/吸烟/结婚：与购房同一套下拉（面板在表单内展开）。
-const memberEducationPickerVisible = ref(false)
-const memberEducationValue = computed<string>(() => memberEntry.value.education != null ? String(memberEntry.value.education) : '')
-const memberEducationLabel = computed<string>(() => memberEducationValue.value.length > 0 ? memberEducationValue.value : '请选择学历')
-const pickMemberEducation = (value: string) => {
-	memberEntry.value.education = value
-	memberEducationPickerVisible.value = false
-}
-const memberMaritalPickerVisible = ref(false)
-const memberMaritalValue = computed<string>(() => memberEntry.value.maritalStatus != null ? String(memberEntry.value.maritalStatus) : '')
-const memberMaritalLabel = computed<string>(() => memberMaritalValue.value.length > 0 ? memberMaritalValue.value : '请选择婚况')
-const pickMemberMarital = (value: string) => {
-	memberEntry.value.maritalStatus = value
-	memberMaritalPickerVisible.value = false
-}
-// 职业 21 项（20 项 + 其他）：选项多，走原生滚轮 picker，点击条套在气泡外壳里；选「其他」时下方展开手写框。
-const memberOccupationOptionsAll = memberOccupationOptions.concat(['其他'])
-const memberOccupationValue = computed<string>(() => memberEntry.value.occupation != null ? String(memberEntry.value.occupation) : '')
-const memberOccupationLabel = computed<string>(() => memberOccupationValue.value.length > 0 ? memberOccupationValue.value : '请选择职业')
-const memberOccupationIndex = computed((): number => {
-	const idx = memberOccupationOptionsAll.indexOf(memberEntry.value.occupation)
-	return idx >= 0 ? idx : 0
-})
-const onMemberOccupationChange = (event: any) => {
-	const val = Number(event.detail.value)
-	memberEntry.value.occupation = memberOccupationOptionsAll[val] != null ? memberOccupationOptionsAll[val] : ''
-}
-// 属相 12 项：同样改为原生滚轮 picker + 气泡点击条
-const memberZodiacValue = computed<string>(() => memberEntry.value.zodiac != null ? String(memberEntry.value.zodiac) : '')
-const memberZodiacLabel = computed<string>(() => memberZodiacValue.value.length > 0 ? memberZodiacValue.value : '请选择属相')
-const memberZodiacIndex = computed((): number => {
-	const idx = memberZodiacOptions.indexOf(memberEntry.value.zodiac)
-	return idx >= 0 ? idx : 0
-})
-const onMemberZodiacChange = (event: any) => {
-	const val = Number(event.detail.value)
-	memberEntry.value.zodiac = memberZodiacOptions[val] != null ? memberZodiacOptions[val] : ''
-}
-const memberPrefIncomePickerVisible = ref(false)
-const memberPrefIncomeValue = computed<string>(() => memberEntry.value.pref.income != null ? String(memberEntry.value.pref.income) : '')
-const memberPrefIncomeLabel = computed<string>(() => memberPrefIncomeValue.value.length > 0 ? memberPrefIncomeValue.value : '请选择收入要求')
-const pickMemberPrefIncome = (value: string) => {
-	memberEntry.value.pref.income = value
-	memberPrefIncomePickerVisible.value = false
-}
-const memberPrefEducationPickerVisible = ref(false)
-const memberPrefEducationValue = computed<string>(() => memberEntry.value.pref.education != null ? String(memberEntry.value.pref.education) : '')
-const memberPrefEducationLabel = computed<string>(() => memberPrefEducationValue.value.length > 0 ? memberPrefEducationValue.value : '请选择学历要求')
-const pickMemberPrefEducation = (value: string) => {
-	memberEntry.value.pref.education = value
-	memberPrefEducationPickerVisible.value = false
-}
-const memberPrefHousingPickerVisible = ref(false)
-const memberPrefHousingValue = computed<string>(() => memberEntry.value.pref.housing != null ? String(memberEntry.value.pref.housing) : '')
-const memberPrefHousingLabel = computed<string>(() => memberPrefHousingValue.value.length > 0 ? memberPrefHousingValue.value : '请选择住房要求')
-const pickMemberPrefHousing = (value: string) => {
-	memberEntry.value.pref.housing = value
-	memberPrefHousingPickerVisible.value = false
-}
-const memberPrefSmokingPickerVisible = ref(false)
-const memberPrefSmokingValue = computed<string>(() => memberEntry.value.pref.smoking != null ? String(memberEntry.value.pref.smoking) : '')
-const memberPrefSmokingLabel = computed<string>(() => memberPrefSmokingValue.value.length > 0 ? memberPrefSmokingValue.value : '请选择吸烟要求')
-const pickMemberPrefSmoking = (value: string) => {
-	memberEntry.value.pref.smoking = value
-	memberPrefSmokingPickerVisible.value = false
-}
-const memberPrefWeddingPickerVisible = ref(false)
-const memberPrefWeddingValue = computed<string>(() => memberEntry.value.pref.weddingPlan != null ? String(memberEntry.value.pref.weddingPlan) : '')
-const memberPrefWeddingLabel = computed<string>(() => memberPrefWeddingValue.value.length > 0 ? memberPrefWeddingValue.value : '请选择结婚计划')
-const pickMemberPrefWedding = (value: string) => {
-	memberEntry.value.pref.weddingPlan = value
-	memberPrefWeddingPickerVisible.value = false
-}
-const memberIncomePickerVisible = ref(false)
-const memberIncomeValue = computed<string>(() => memberEntry.value.income != null ? String(memberEntry.value.income) : '')
-const memberIncomeLabel = computed<string>(() => memberIncomeValue.value.length > 0 ? memberIncomeValue.value : '请选择月收入')
-const pickMemberIncome = (value: string) => {
-	memberEntry.value.income = value
-	memberIncomePickerVisible.value = false
-}
-const memberPrefMarriagePickerVisible = ref(false)
-const memberPrefMarriageValue = computed<string>(() => memberEntry.value.pref.marriageAccept != null ? String(memberEntry.value.pref.marriageAccept) : '')
-const memberPrefMarriageLabel = computed<string>(() => memberPrefMarriageValue.value.length > 0 ? memberPrefMarriageValue.value : '请选择对婚况的要求')
-const pickMemberPrefMarriage = (value: string) => {
-	memberEntry.value.pref.marriageAccept = value
-	memberPrefMarriagePickerVisible.value = false
-}
-// 补充说明的结婚计划：选项与样式都复刻择偶要求的「结婚」
-const memberMarriagePlanPickerVisible = ref(false)
-const memberMarriagePlanValue = computed<string>(() => memberEntry.value.marriagePlan != null ? String(memberEntry.value.marriagePlan) : '')
-const memberMarriagePlanLabel = computed<string>(() => memberMarriagePlanValue.value.length > 0 ? memberMarriagePlanValue.value : '请选择结婚计划')
-const pickMemberMarriagePlan = (value: string) => {
-	memberEntry.value.marriagePlan = value
-	memberMarriagePlanPickerVisible.value = false
-}
-// 会员标签 12 项；同类互斥（职业性质、985/211 各只保留最后选中的一个）
-const memberTagOptions = ['高颜值', '高收入', '985毕业', '211毕业', '事业单位', '双一流', '海归', '身材好', '博士', '央国企', '银行金融', '公务员']
-// 择偶要求选项（口径与后台一致）
-const memberPrefIncomeOptions = ['不限', '3千元以下', '3-5千元', '5-8千元', '8千-1万元', '1-2万元', '2万元以上', '5万元以上', '年入百万']
-const memberPrefEducationOptions = ['不限', '初中', '技校', '高中', '大专', '本科', '硕士', '博士']
-const memberPrefMarriageOptions = ['不接受离异', '可接受离异未育', '接受离异带娃', '视情况而定']
-const memberPrefHousingOptions = ['不限', '愿意和父母同住', '要有独立婚房']
-const memberPrefSmokingOptions = ['不限', '不接受吸烟', '可以偶尔吸烟']
-const memberPrefWeddingOptions = ['不限', '计划一年内', '计划两年内', '计划三年内', '时机成熟时结婚', '不婚']
-const memberExclusiveTagGroups: string[][] = [['事业单位', '央国企', '银行金融', '公务员'], ['985毕业', '211毕业']]
-const toggleMemberTag = (tag: string) => {
-	const current = memberEntry.value.tags != null ? (memberEntry.value.tags as string[]) : []
-	const has = current.indexOf(tag) >= 0
-	if (has) {
-		memberEntry.value.tags = current.filter((t: string) => t != tag)
-		return
-	}
-	let next = current.concat([tag])
-	// 同类标签互斥：组内只保留最后选中的一个
-	for (let i = 0; i < memberExclusiveTagGroups.length; i++) {
-		const group = memberExclusiveTagGroups[i]
-		const picked = next.filter((t: string) => group.indexOf(t) >= 0)
-		if (picked.length > 1) {
-			next = next.filter((t: string) => group.indexOf(t) < 0 || t == picked[picked.length - 1])
-		}
-	}
-	memberEntry.value.tags = next
-}
-const clearMemberTags = () => { memberEntry.value.tags = [] as string[] }
-// 居住地省市区三级选择
-interface MemberRegionOption { code: string; name: string }
-const memberResidenceProvinces = ref<MemberRegionOption[]>([])
-const memberResidenceCities = ref<MemberRegionOption[]>([])
-const memberResidenceDistricts = ref<MemberRegionOption[]>([])
-const memberResidenceValue = ref<number[]>([0, 0, 0])
-const memberResidenceRange = computed((): string[][] => [
-	memberResidenceProvinces.value.map((r: MemberRegionOption) => r.name),
-	memberResidenceCities.value.map((r: MemberRegionOption) => r.name),
-	memberResidenceDistricts.value.map((r: MemberRegionOption) => r.name)
-])
-const normalizeMemberRegion = (source: any): MemberRegionOption[] => {
-	const items = source != null && source.items != null ? (source.items as any[]) : []
-	return items.map((item: any): MemberRegionOption => ({ code: item.code != null ? String(item.code) : '', name: item.name != null ? String(item.name) : '' })).filter((r: MemberRegionOption) => r.code.length > 0 && r.name.length > 0)
-}
-const loadMemberResidenceDistricts = async (cityIndex: number) => {
-	const city = memberResidenceCities.value[cityIndex]
-	if (city == null) { memberResidenceDistricts.value = []; memberResidenceValue.value = [memberResidenceValue.value[0], cityIndex, 0]; return }
-	try {
-		const resp = await getRegionDistricts(city.code)
-		memberResidenceDistricts.value = resp.success ? normalizeMemberRegion(resp.data) : []
-	} catch (e) {
-		memberResidenceDistricts.value = []
-	}
-	memberResidenceValue.value = [memberResidenceValue.value[0], cityIndex, 0]
-}
-const loadMemberResidenceCities = async (provinceIndex: number) => {
-	const province = memberResidenceProvinces.value[provinceIndex]
-	if (province == null) { memberResidenceCities.value = []; memberResidenceDistricts.value = []; return }
-	try {
-		const resp = await getRegionCities(province.code)
-		memberResidenceCities.value = resp.success ? normalizeMemberRegion(resp.data) : []
-	} catch (e) {
-		memberResidenceCities.value = []
-	}
-	memberResidenceDistricts.value = []
-	memberResidenceValue.value = [provinceIndex, 0, 0]
-	await loadMemberResidenceDistricts(0)
-}
-const ensureMemberResidenceProvinces = async () => {
-	if (memberResidenceProvinces.value.length > 0) return
-	try {
-		const resp = await getRegionProvinces()
-		memberResidenceProvinces.value = resp.success ? normalizeMemberRegion(resp.data) : []
-		if (memberResidenceProvinces.value.length > 0) await loadMemberResidenceCities(0)
-	} catch (e) {
-		memberResidenceProvinces.value = []
-	}
-}
-const onMemberResidenceColumnChange = async (event: any) => {
-	const column = Number(event.detail.column)
-	const value = Number(event.detail.value)
-	if (column == 0) {
-		if (value != memberResidenceValue.value[0]) await loadMemberResidenceCities(value)
-	} else if (column == 1) {
-		if (value != memberResidenceValue.value[1]) await loadMemberResidenceDistricts(value)
-	} else {
-		memberResidenceValue.value = [memberResidenceValue.value[0], memberResidenceValue.value[1], value]
-	}
-}
-const onMemberRegionChange = (target: string, event: any) => {
-	const val = event.detail.value as number[]
-	memberResidenceValue.value = val
-	const p = memberResidenceProvinces.value[val[0]]
-	const c = memberResidenceCities.value[val[1]]
-	const d = memberResidenceDistricts.value[val[2] != null ? val[2] : 0]
-	if (p == null) return
-	const parts = [p.name]
-	if (c != null && c.name != p.name) parts.push(c.name)
-	if (d != null) {
-		const cityName = c != null ? c.name : ''
-		if (d.name != cityName) parts.push(d.name)
-	}
-	memberEntry.value[target] = parts.join(' ')
-}
-const memberEthnicityIndex = computed((): number => {
-	const idx = memberEthnicityOptions.indexOf(memberEntry.value.ethnicity)
-	return idx >= 0 ? idx : 0
-})
-const onMemberEthnicityChange = (event: any) => {
-	const val = Number(event.detail.value)
-	memberEntry.value.ethnicity = memberEthnicityOptions[val] != null ? memberEthnicityOptions[val] : ''
-}
-// 择偶要求：职业 picker（不限 + 20 项）
-const memberPrefOccupationRange = computed((): string[] => ['不限'].concat(memberOccupationOptions))
-const memberPrefOccupationIndex = computed((): number => {
-	const idx = memberPrefOccupationRange.value.indexOf(memberEntry.value.pref.occupation)
-	return idx >= 0 ? idx : 0
-})
-const onMemberPrefOccupationChange = (event: any) => {
-	const val = Number(event.detail.value)
-	memberEntry.value.pref.occupation = memberPrefOccupationRange.value[val] != null ? memberPrefOccupationRange.value[val] : '不限'
-}
-// 年龄：同轴双向范围条，两个旋钮共用一条轨道。
-// 位置一律是 calc((100% - 一个旋钮宽) * 比例)：比例 0→1 时旋钮盒从左端贴边滑到右端贴边，永远不溢出定位盒（小程序会整块裁掉溢出的绝对子元素）。
-// 84rpx 要先按屏宽折算成 px 才能进 calc，落点反算也用同一套折算，读数和刻度才不会偏。
-const MEMBER_AGE_MIN = 18
-const MEMBER_AGE_MAX = 90
-const MEMBER_AGE_SPAN = MEMBER_AGE_MAX - MEMBER_AGE_MIN
-const MEMBER_AGE_KNOB_RPX = 84
-const memberAgeDragRect = ref(null as any)
-const memberAgeDragLo = ref(false)
-const memberAgeDragStartX = ref(0)
-const memberAgeDragPending = ref(false)
-const memberAgeLo = computed<number>(() => Number(memberEntry.value.pref.ageMin))
-const memberAgeHi = computed<number>(() => Number(memberEntry.value.pref.ageMax))
-const memberAgeRpxToPx = (rpx: number): number => Math.round(uni.getSystemInfoSync().windowWidth / 750 * rpx * 100) / 100
-const memberAgeKnobPx = (): number => memberAgeRpxToPx(MEMBER_AGE_KNOB_RPX)
-const memberAgeRatio = (age: number): number => Math.round((age - MEMBER_AGE_MIN) / MEMBER_AGE_SPAN * 10000) / 10000
-const memberAgeLeftStyle = (ratio: number): string => 'calc((100% - ' + memberAgeKnobPx() + 'px) * ' + ratio + ')'
-const memberAgeLoLeft = computed<string>(() => memberAgeLeftStyle(memberAgeRatio(memberAgeLo.value)))
-const memberAgeHiLeft = computed<string>(() => memberAgeLeftStyle(memberAgeRatio(memberAgeHi.value)))
-const memberAgeZoneLeft = computed<string>(() => 'calc((100% - ' + memberAgeKnobPx() + 'px) * ' + memberAgeRatio(memberAgeLo.value) + ' + ' + memberAgeKnobPx() / 2 + 'px)')
-const memberAgeZoneWidth = computed<string>(() => 'calc((100% - ' + memberAgeKnobPx() + 'px) * ' + (memberAgeRatio(memberAgeHi.value) - memberAgeRatio(memberAgeLo.value)) + ')')
-const memberAgeScaleLeft0 = memberAgeLeftStyle(0)
-const memberAgeScaleLeft1 = memberAgeLeftStyle(0.25)
-const memberAgeScaleLeft2 = memberAgeLeftStyle(0.5)
-const memberAgeScaleLeft3 = memberAgeLeftStyle(0.75)
-const memberAgeScaleLeft4 = memberAgeLeftStyle(1)
-// 气泡与旋钮盒同宽，基准位置一致，只在两旋钮贴近时横向让位；让位量要用实测轨道宽度才算得出像素差。
-const MEMBER_AGE_BUBBLE_RPX = 84
-const memberAgeRangeW = ref(0)
-const measureMemberAgeRange = () => {
-	uni.createSelectorQuery().select('#member-age-range').boundingClientRect((rect: any) => {
-		if (rect == null) return
-		memberAgeDragRect.value = rect
-		memberAgeRangeW.value = Number(rect.width)
-	}).exec()
-}
-onReady(() => { measureMemberAgeRange() })
-// 两气泡中心距小于一个气泡宽就压住了：各推 need/2 到刚好相切，端点上推不动的那一侧把余量让给另一侧。
-const memberAgeBubbleLeft = (which: number): string => {
-	const base = 'calc((100% - ' + memberAgeKnobPx() + 'px) * '
-	const rLo = memberAgeRatio(memberAgeLo.value)
-	const rHi = memberAgeRatio(memberAgeHi.value)
-	const travel = memberAgeRangeW.value - memberAgeKnobPx()
-	let shiftLo = 0
-	let shiftHi = 0
-	if (travel > 0) {
-		const bubble = memberAgeRpxToPx(MEMBER_AGE_BUBBLE_RPX)
-		const gap = travel * (rHi - rLo)
-		if (gap < bubble) {
-			const need = bubble - gap
-			const maxLo = travel * rLo
-			const maxHi = travel * (1 - rHi)
-			shiftLo = Math.min(need / 2, maxLo)
-			shiftHi = Math.min(need - shiftLo, maxHi)
-			shiftLo = Math.min(need - shiftHi, maxLo)
-		}
-	}
-	return which == 0
-		? base + rLo + ' - ' + (Math.round(shiftLo * 100) / 100) + 'px)'
-		: base + rHi + ' + ' + (Math.round(shiftHi * 100) / 100) + 'px)'
-}
-const memberAgeLoBubbleLeft = computed<string>(() => memberAgeBubbleLeft(0))
-const memberAgeHiBubbleLeft = computed<string>(() => memberAgeBubbleLeft(1))
-// 某个岁数对应旋钮中心在屏幕上的 x；行程宽度 = 定位盒宽 - 一个旋钮宽
-const memberAgeKnobCenterX = (rectLeft: number, rectWidth: number, age: number): number => {
-	const knob = memberAgeKnobPx()
-	const travel = rectWidth - knob
-	if (travel <= 0) return rectLeft
-	return rectLeft + travel * memberAgeRatio(age) + knob / 2
-}
-const applyMemberAgeDrag = (clientX: number) => {
-	const rect = memberAgeDragRect.value
-	if (rect == null) return
-	const knob = memberAgeKnobPx()
-	const travel = Number(rect.width) - knob
-	if (travel <= 0) return
-	let ratio = (clientX - Number(rect.left) - knob / 2) / travel
-	ratio = Math.min(1, Math.max(0, ratio))
-	let value = Math.round(MEMBER_AGE_MIN + ratio * MEMBER_AGE_SPAN)
-	value = Math.min(MEMBER_AGE_MAX, Math.max(MEMBER_AGE_MIN, value))
-	if (memberAgeDragLo.value) {
-		if (value > memberAgeHi.value) value = memberAgeHi.value
-		memberEntry.value.pref.ageMin = value
-	} else {
-		if (value < memberAgeLo.value) value = memberAgeLo.value
-		memberEntry.value.pref.ageMax = value
-	}
-}
-// 两旋钮重合（同为极端值）时无法按就近判定归属，改按首次拖动方向挑还有活动空间的旋钮
-const resolveMemberAgeDragLo = (dx: number): boolean => {
-	if (dx > 0) {
-		if (memberAgeHi.value < MEMBER_AGE_MAX) return false
-		return memberAgeLo.value < memberAgeHi.value
-	}
-	if (memberAgeLo.value > MEMBER_AGE_MIN) return true
-	return memberAgeHi.value > memberAgeLo.value
-}
-const onMemberAgeTouchStart = (e: any) => {
-	const touch = e.touches != null && e.touches.length > 0 ? e.touches[0] : null
-	if (touch == null) return
-	uni.createSelectorQuery().select('#member-age-range').boundingClientRect((rect: any) => {
-		if (rect == null) return
-		memberAgeDragRect.value = rect
-		memberAgeRangeW.value = Number(rect.width)
-		const x = Number(touch.clientX)
-		const loX = memberAgeKnobCenterX(Number(rect.left), Number(rect.width), memberAgeLo.value)
-		const hiX = memberAgeKnobCenterX(Number(rect.left), Number(rect.width), memberAgeHi.value)
-		memberAgeDragLo.value = Math.abs(x - loX) <= Math.abs(x - hiX)
-		memberAgeDragStartX.value = x
-		memberAgeDragPending.value = Math.abs(x - loX) == Math.abs(x - hiX)
-		if (memberAgeDragPending.value == false) applyMemberAgeDrag(x)
-	}).exec()
-}
-const onMemberAgeTouchMove = (e: any) => {
-	const touch = e.touches != null && e.touches.length > 0 ? e.touches[0] : null
-	if (touch == null) return
-	const x = Number(touch.clientX)
-	if (memberAgeDragPending.value) {
-		const dx = x - memberAgeDragStartX.value
-		if (Math.abs(dx) < 2) return
-		memberAgeDragPending.value = false
-		memberAgeDragLo.value = resolveMemberAgeDragLo(dx)
-	}
-	applyMemberAgeDrag(x)
-}
-const onMemberAgeTouchEnd = () => { memberAgeDragPending.value = false }
-// 身高：与年龄同轴双向范围条（150-200cm），几何算法与注释同上面的年龄块。
-const MEMBER_HEIGHT_MIN = 150
-const MEMBER_HEIGHT_MAX = 200
-const MEMBER_HEIGHT_SPAN = MEMBER_HEIGHT_MAX - MEMBER_HEIGHT_MIN
-const MEMBER_HEIGHT_KNOB_RPX = 84
-const memberHeightDragRect = ref(null as any)
-const memberHeightDragLo = ref(false)
-const memberHeightDragStartX = ref(0)
-const memberHeightDragPending = ref(false)
-const memberHeightRangeW = ref(0)
-const memberHeightLo = computed<number>(() => Number(memberEntry.value.pref.heightMin))
-const memberHeightHi = computed<number>(() => Number(memberEntry.value.pref.heightMax))
-const memberHeightKnobPx = (): number => Math.round(uni.getSystemInfoSync().windowWidth / 750 * MEMBER_HEIGHT_KNOB_RPX * 100) / 100
-const memberHeightRatio = (cm: number): number => Math.round((cm - MEMBER_HEIGHT_MIN) / MEMBER_HEIGHT_SPAN * 10000) / 10000
-const memberHeightLeftStyle = (ratio: number): string => 'calc((100% - ' + memberHeightKnobPx() + 'px) * ' + ratio + ')'
-const memberHeightLoLeft = computed<string>(() => memberHeightLeftStyle(memberHeightRatio(memberHeightLo.value)))
-const memberHeightHiLeft = computed<string>(() => memberHeightLeftStyle(memberHeightRatio(memberHeightHi.value)))
-const memberHeightBandLeft = computed<string>(() => 'calc((100% - ' + memberHeightKnobPx() + 'px) * ' + memberHeightRatio(memberHeightLo.value) + ' + ' + memberHeightKnobPx() / 2 + 'px)')
-const memberHeightBandWidth = computed<string>(() => 'calc((100% - ' + memberHeightKnobPx() + 'px) * ' + (memberHeightRatio(memberHeightHi.value) - memberHeightRatio(memberHeightLo.value)) + ')')
-const memberHeightScaleLeft0 = memberHeightLeftStyle(0)
-const memberHeightScaleLeft1 = memberHeightLeftStyle(0.25)
-const memberHeightScaleLeft2 = memberHeightLeftStyle(0.5)
-const memberHeightScaleLeft3 = memberHeightLeftStyle(0.75)
-const memberHeightScaleLeft4 = memberHeightLeftStyle(1)
-const measureMemberHeightRange = () => {
-	uni.createSelectorQuery().select('#member-height-range').boundingClientRect((rect: any) => {
-		if (rect == null) return
-		memberHeightDragRect.value = rect
-		memberHeightRangeW.value = Number(rect.width)
-	}).exec()
-}
-onReady(() => { measureMemberHeightRange() })
-const memberHeightBubbleLeft = (which: number): string => {
-	const base = 'calc((100% - ' + memberHeightKnobPx() + 'px) * '
-	const rLo = memberHeightRatio(memberHeightLo.value)
-	const rHi = memberHeightRatio(memberHeightHi.value)
-	const travel = memberHeightRangeW.value - memberHeightKnobPx()
-	let shiftLo = 0
-	let shiftHi = 0
-	if (travel > 0) {
-		const bubble = Math.round(uni.getSystemInfoSync().windowWidth / 750 * 84 * 100) / 100
-		const gap = travel * (rHi - rLo)
-		if (gap < bubble) {
-			const need = bubble - gap
-			const maxLo = travel * rLo
-			const maxHi = travel * (1 - rHi)
-			shiftLo = Math.min(need / 2, maxLo)
-			shiftHi = Math.min(need - shiftLo, maxHi)
-			shiftLo = Math.min(need - shiftHi, maxLo)
-		}
-	}
-	return which == 0
-		? base + rLo + ' - ' + (Math.round(shiftLo * 100) / 100) + 'px)'
-		: base + rHi + ' + ' + (Math.round(shiftHi * 100) / 100) + 'px)'
-}
-const memberHeightLoBubbleLeft = computed<string>(() => memberHeightBubbleLeft(0))
-const memberHeightHiBubbleLeft = computed<string>(() => memberHeightBubbleLeft(1))
-const memberHeightKnobCenterX = (rectLeft: number, rectWidth: number, cm: number): number => {
-	const knob = memberHeightKnobPx()
-	const travel = rectWidth - knob
-	if (travel <= 0) return rectLeft
-	return rectLeft + travel * memberHeightRatio(cm) + knob / 2
-}
-const applyMemberHeightDrag = (clientX: number) => {
-	const rect = memberHeightDragRect.value
-	if (rect == null) return
-	const knob = memberHeightKnobPx()
-	const travel = Number(rect.width) - knob
-	if (travel <= 0) return
-	let ratio = (clientX - Number(rect.left) - knob / 2) / travel
-	ratio = Math.min(1, Math.max(0, ratio))
-	let value = Math.round(MEMBER_HEIGHT_MIN + ratio * MEMBER_HEIGHT_SPAN)
-	value = Math.min(MEMBER_HEIGHT_MAX, Math.max(MEMBER_HEIGHT_MIN, value))
-	if (memberHeightDragLo.value) {
-		if (value > memberHeightHi.value) value = memberHeightHi.value
-		memberEntry.value.pref.heightMin = value
-	} else {
-		if (value < memberHeightLo.value) value = memberHeightLo.value
-		memberEntry.value.pref.heightMax = value
-	}
-}
-const resolveMemberHeightDragLo = (dx: number): boolean => {
-	if (dx > 0) {
-		if (memberHeightHi.value < MEMBER_HEIGHT_MAX) return false
-		return memberHeightLo.value < memberHeightHi.value
-	}
-	if (memberHeightLo.value > MEMBER_HEIGHT_MIN) return true
-	return memberHeightHi.value > memberHeightLo.value
-}
-const onMemberHeightTouchStart = (e: any) => {
-	const touch = e.touches != null && e.touches.length > 0 ? e.touches[0] : null
-	if (touch == null) return
-	uni.createSelectorQuery().select('#member-height-range').boundingClientRect((rect: any) => {
-		if (rect == null) return
-		memberHeightDragRect.value = rect
-		memberHeightRangeW.value = Number(rect.width)
-		const x = Number(touch.clientX)
-		const loX = memberHeightKnobCenterX(Number(rect.left), Number(rect.width), memberHeightLo.value)
-		const hiX = memberHeightKnobCenterX(Number(rect.left), Number(rect.width), memberHeightHi.value)
-		memberHeightDragLo.value = Math.abs(x - loX) <= Math.abs(x - hiX)
-		memberHeightDragStartX.value = x
-		memberHeightDragPending.value = Math.abs(x - loX) == Math.abs(x - hiX)
-		if (memberHeightDragPending.value == false) applyMemberHeightDrag(x)
-	}).exec()
-}
-const onMemberHeightTouchMove = (e: any) => {
-	const touch = e.touches != null && e.touches.length > 0 ? e.touches[0] : null
-	if (touch == null) return
-	const x = Number(touch.clientX)
-	if (memberHeightDragPending.value) {
-		const dx = x - memberHeightDragStartX.value
-		if (Math.abs(dx) < 2) return
-		memberHeightDragPending.value = false
-		memberHeightDragLo.value = resolveMemberHeightDragLo(dx)
-	}
-	applyMemberHeightDrag(x)
-}
-const onMemberHeightTouchEnd = () => { memberHeightDragPending.value = false }
 const memberEntryFilled = computed(() => {
 	const d = memberEntry.value
 	return String(d.nickname).trim() != '' || String(d.phone).trim() != '' || String(d.realName).trim() != ''
 })
+// ===== 建号「填充示例」：每次点换一个新人设，手机号每次都重生成，
+// 目的是让同一次联调里可以连续提交多条会员而不撞手机号。人设走洗牌发牌，
+// 一轮 6 个不重复，发完再洗一次。资料字段不在这里，交给下一步的「编辑资料」。
+const DEMO_PERSONA_COUNT = 6
+const demoPersonaGender: number[] = [2, 1, 2, 1, 2, 1]
+const DEMO_FEMALE_SURNAMES: string[] = ['钱', '林', '苏', '顾', '沈', '江', '温', '叶']
+const DEMO_FEMALE_GIVENS: string[] = ['清越', '知雨', '映竹', '南乔', '予安', '语澄', '晚晴']
+const DEMO_MALE_SURNAMES: string[] = ['陆', '周', '韩', '秦', '程', '许', '宋', '孟']
+const DEMO_MALE_GIVENS: string[] = ['砚舟', '叙白', '承宇', '牧之', '亦航', '望舒', '行舟']
+const DEMO_PHONE_PREFIXES: string[] = ['139', '138', '137', '136', '135', '159', '158', '188', '186', '177', '133', '199']
+const demoPick = (items: string[]): string => items[Math.floor(Math.random() * items.length)]
+const demoInt = (min: number, max: number): number => min + Math.floor(Math.random() * (max - min + 1))
+let demoPersonaDeck: number[] = []
+let demoPersonaDeal = 0
+const nextDemoPersona = (): number => {
+	if (demoPersonaDeal >= demoPersonaDeck.length) {
+		demoPersonaDeck = []
+		for (let i = 0; i < DEMO_PERSONA_COUNT; i++) { demoPersonaDeck.push(i) }
+		for (let i = demoPersonaDeck.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1))
+			const swap = demoPersonaDeck[i]
+			demoPersonaDeck[i] = demoPersonaDeck[j]
+			demoPersonaDeck[j] = swap
+		}
+		demoPersonaDeal = 0
+	}
+	const dealt = demoPersonaDeck[demoPersonaDeal]
+	demoPersonaDeal = demoPersonaDeal + 1
+	return dealt
+}
+// 建号示例只给这一页要收的四项；资料字段交给下一步的「编辑资料」，那里有自己的示例填充。
 const fillMemberDemo = () => {
 	if (memberEntryFilled.value) {
 		memberEntry.value = emptyMemberEntry()
 		memberEntryError.value = ''
 		return
 	}
+	const persona = nextDemoPersona()
+	const gender = demoPersonaGender[persona]
+	const realName = demoPick(gender == 2 ? DEMO_FEMALE_SURNAMES : DEMO_MALE_SURNAMES) + demoPick(gender == 2 ? DEMO_FEMALE_GIVENS : DEMO_MALE_GIVENS)
 	memberEntry.value = {
-		nickname: '钱多多（示例）', realName: '钱多多', gender: 2, phone: '13922224444', wechat: 'wx_demo_qdd',
-		birthday: '1996-08-12', height: '164', weight: '50', hometown: '江苏省 南京市', residence: '浙江省 杭州市 西湖区', household: '江苏省 南京市',
-		education: '本科', maritalStatus: '未婚', occupation: '互联网行业', occupationCustom: '', income: '1-2万元', ethnicity: '汉族', zodiac: '鼠',
-		housing: '已购婚房无贷款', vehicle: '已购车', smoking: '不吸烟', drinking: '偶尔小酌', religion: '无', marriagePlan: '计划两年内', tags: ['高颜值', '985毕业'], remark: '示例录入：性格温和，喜欢运动和摄影，希望找同城、有稳定工作的对象。',
-		pref: { ageMin: 25, ageMax: 35, heightMin: 170, heightMax: 185, income: '1-2万元', education: '本科', occupation: '互联网行业', marriageAccept: '不接受离异', housing: '要有独立婚房', smoking: '不接受吸烟', weddingPlan: '计划两年内' }
+		nickname: realName + '（示例）', realName: realName, gender: gender,
+		phone: demoPick(DEMO_PHONE_PREFIXES) + String(demoInt(10000000, 99999999))
 	}
 	memberEntryError.value = ''
 }
@@ -2588,31 +2052,23 @@ const submitMemberEntry = async () => {
 	if (nickname.length == 0) { memberEntryError.value = '请填写昵称'; return }
 	if (realName.length == 0) { memberEntryError.value = '请填写姓名'; return }
 	if (!/^1[3-9]\d{9}$/.test(phone)) { memberEntryError.value = '请填写正确的 11 位手机号'; return }
-	if (String(d.height).trim() != '' && (isNaN(Number(d.height)) || Number(d.height) < 100 || Number(d.height) > 250)) { memberEntryError.value = '身高需在 100-250cm 之间'; return }
-	if (String(d.weight).trim() != '' && (isNaN(Number(d.weight)) || Number(d.weight) < 40 || Number(d.weight) > 120)) { memberEntryError.value = '体重需在 40-120kg 之间'; return }
 	memberEntrySubmitting.value = true
 	memberEntryError.value = ''
 	try {
-		// 职业「其他」联动：选了其他就用自定义输入，否则用选项本身。
-		const occupation = String(d.occupation).trim()
-		const finalOccupation = occupation == '其他' ? String(d.occupationCustom != null ? d.occupationCustom : '').trim() : occupation
-		const result = await createMatchmakerWorkspaceMember({
-			nickname: nickname, realName: realName, gender: Number(d.gender), phone: phone,
-			wechat: String(d.wechat).trim(), birthday: d.birthday, height: String(d.height).trim(),
-			weight: String(d.weight).trim(), hometown: String(d.hometown).trim(), residence: String(d.residence).trim(),
-			household: String(d.household).trim(), education: String(d.education).trim(), maritalStatus: String(d.maritalStatus).trim(),
-			occupation: finalOccupation, income: String(d.income).trim(), ethnicity: String(d.ethnicity).trim(),
-			zodiac: String(d.zodiac).trim(), housing: String(d.housing).trim(), vehicle: String(d.vehicle).trim(),
-			smoking: String(d.smoking).trim(), drinking: String(d.drinking).trim(), religion: String(d.religion).trim(),
-			marriagePlan: String(d.marriagePlan).trim(), tags: d.tags, remark: String(d.remark).trim(),
-			pref: d.pref
-		})
+		const result = await createMatchmakerWorkspaceMember({ nickname: nickname, realName: realName, gender: Number(d.gender), phone: phone })
 		if (!result.success) {
-			memberEntryError.value = result.message != null && String(result.message).length > 0 ? String(result.message) : '录入失败，请稍后重试'
+			memberEntryError.value = result.message != null && String(result.message).length > 0 ? String(result.message) : '建号失败，请稍后重试'
 			return
 		}
-		showToast('会员已录入，等待审核')
+		const created = result.data != null ? result.data : null
+		const memberId = created != null && created.member_id != null ? String(created.member_id) : ''
 		memberEntry.value = emptyMemberEntry()
+		// 建号即落待审名单；当场打开该会员的「编辑资料」代填页，资料由同一张表单一次收齐。
+		workspaceVisible.value = false
+		openPendingReview('PENDING')
+		if (memberId.length == 0) { showToast('会员已建号，请重新打开会员资料补填'); return }
+		showToast('已建号 G' + memberId + '，请补全会员资料')
+		uni.navigateTo({ url: '/pagesSub/userExtra/user/edit?memberId=' + memberId + '&matchmakerView=1' })
 	} catch (e) {
 		memberEntryError.value = '网络异常，请稍后重试'
 	} finally {
@@ -2694,7 +2150,7 @@ const findLeadContactConflict = (phone: string, wechat: string, excludeLeadId: s
 	}
 	return ''
 }
-const submitLeadForm = async () => {
+const submitLeadForm = () => {
 	const name = leadFormName.value.trim()
 	if (name.length == 0) {
 		leadFormError.value = '请填写客户称呼'
@@ -2702,8 +2158,8 @@ const submitLeadForm = async () => {
 	}
 	const phone = leadFormPhone.value.trim()
 	const wechat = leadFormWechat.value.trim()
-	if (phone.length == 0 && wechat.length == 0) {
-		leadFormError.value = '电话与微信至少填写一项'
+	if (!/^1[3-9]\d{9}$/.test(phone)) {
+		leadFormError.value = '请填写正确的 11 位手机号'
 		return
 	}
 	const conflictLeadName = findLeadContactConflict(phone, wechat, leadFormIsEdit.value ? leadFormLeadId.value : '')
@@ -2711,6 +2167,18 @@ const submitLeadForm = async () => {
 		leadFormError.value = '该联系方式已存在于线索「' + conflictLeadName + '」，请勿重复录入'
 		return
 	}
+	// 打错一位就联系不上人，提交前把联系方式回显给红娘确认。
+	uni.showModal({
+		title: '确认联系方式',
+		content: '称呼：' + name + '\n手机：' + phone + '\n微信：' + (wechat.length > 0 ? wechat : '未填写'),
+		confirmText: '信息无误',
+		cancelText: '返回修改',
+		success: (modal: any) => {
+			if (modal.confirm) sendLeadForm(name, phone, wechat)
+		}
+	})
+}
+const sendLeadForm = async (name: string, phone: string, wechat: string) => {
 	leadFormSubmitting.value = true
 	leadFormError.value = ''
 	try {
@@ -2812,163 +2280,77 @@ const submitLeadConfirm = async () => {
 	}
 }
 
-// ===== 客源线索：复制资料弹窗（字段口径与后台 CopyProfileModal 一致）=====
-const copyProfileVisible = ref(false)
-const copyProfileLoading = ref(false)
-const copyProfileError = ref('')
-const copyProfileRows = ref<any[]>([])
-const copyProfileCopied = ref(false)
-const copyProfileCopyText = ref('')
-let copyProfileLoadSeq = 0
+// ===== 客源线索：复制资料弹窗（文本口径 = 编辑线索表单全量字段，未填写留空）=====
+const copyVisible = ref(false)
+const copyEditing = ref(false)
+const copyCopied = ref(false)
+const copyText = ref('')
+const copyLines = ref<string[]>([])
 
-const cpDash = (v: any): string => {
+// 线索列表里的空值统一是 '未提供' 占位，复制文本按编辑页口径留空。
+const cpVal = (v: any): string => {
 	const text = v == null ? '' : String(v).trim()
-	return text.length > 0 ? text : '-'
+	return text == '未提供' ? '' : text
 }
-const cpGender = (v: any): string => {
-	if (v == null || String(v).trim() == '') return ''
-	return Number(v) == 2 ? '女' : '男'
-}
-// 婚况编码与 16:13 扩展后的 7 值一致（2 为旧「离异」兼容值）。
-const cpMarriage = (v: any): string => {
-	const status = v == null ? -1 : Number(v)
-	if (status == 1) return '未婚'
-	if (status == 2) return '离异'
-	if (status == 3) return '丧偶'
-	if (status == 4) return '离婚未育'
-	if (status == 5) return '离异未带孩'
-	if (status == 6) return '离异带女孩'
-	if (status == 7) return '离异带男孩'
+const cpGenderLabel = (v: any): string => {
+	const gender = v == null ? 0 : Number(v)
+	if (gender == 1) return '男'
+	if (gender == 2) return '女'
 	return ''
 }
-const cpEducation = (v: any): string => {
-	const labels: any = { '1': '初中及以下', '2': '高中/中专', '3': '大专', '4': '本科', '5': '硕士', '6': '博士' }
-	if (v == null) return ''
-	const key = String(Number(v))
-	return labels[key] != null ? labels[key] as string : ''
-}
-const cpIncome = (v: any): string => {
-	const raw = v == null ? '' : String(v).trim()
-	if (raw.length == 0) return ''
-	const n = Number(raw)
-	if (isNaN(n)) return raw
-	if (n < 3000) return '3千元以下'
-	if (n < 5000) return '3-5千元'
-	if (n < 8000) return '5-8千元'
-	if (n < 10000) return '8千-1万元'
-	if (n < 20000) return '1-2万元'
-	if (n < 50000) return '2万以上'
-	return '5万以上'
-}
-// 择偶要求里的学历下限（user_partner_preference.education_min：1 最高 5 最低）。
-const cpPrefEducation = (code: number): string => {
-	if (code == 1) return '博士及以上'
-	if (code == 2) return '硕士及以上'
-	if (code == 3) return '本科及以上'
-	if (code == 4) return '大专及以上'
-	if (code == 5) return '高中及以上'
-	return '学历不限'
-}
-const cpPartnerText = (detail: any, pref: any): string => {
-	if (detail != null && detail.ideal_partner != null && String(detail.ideal_partner).trim().length > 0) {
-		return String(detail.ideal_partner).trim()
-	}
-	if (pref == null) return ''
-	const parts: string[] = []
-	if (pref.age_min != null && Number(pref.age_min) > 0 && pref.age_max != null && Number(pref.age_max) > 0) {
-		parts.push(Number(pref.age_min) + '-' + Number(pref.age_max) + '岁')
-	} else {
-		parts.push('年龄不限')
-	}
-	parts.push(pref.education_min != null ? cpPrefEducation(Number(pref.education_min)) : '学历不限')
-	if (pref.height_min != null && Number(pref.height_min) > 0 && pref.height_max != null && Number(pref.height_max) > 0) {
-		parts.push('身高' + Number(pref.height_min) + '-' + Number(pref.height_max) + 'cm')
-	} else {
-		parts.push('身高不限')
-	}
-	parts.push(pref.income_min != null && Number(pref.income_min) > 0 ? '收入' + Number(pref.income_min) + '以上' : '收入不限')
-	parts.push(pref.occupation_requirement != null && String(pref.occupation_requirement).trim().length > 0 ? '职业' + String(pref.occupation_requirement).trim() : '职业不限')
-	return parts.join('，')
-}
-const buildCopyProfileRows = (leadName: string, detail: any, pref: any): any[] => {
-	const d = detail != null ? detail : {}
-	const nickname = d.nickname != null && String(d.nickname).trim().length > 0 ? String(d.nickname).trim() : leadName
-	const birthdayRaw = d.birthday != null ? String(d.birthday) : ''
-	const partner = cpPartnerText(d, pref)
+// 行序与「编辑线索」表单一致（照片只预览不复制）：姓名、称呼、电话、微信、性别、出生年月日、来源渠道，意向与备注收尾。
+const buildLeadCopyLines = (row: any): string[] => {
+	const birthday = cpVal(row.birthday)
 	return [
-		{ label: '昵称', value: cpDash(nickname) },
-		{ label: '性别', value: cpDash(cpGender(d.gender)) },
-		{ label: '出生', value: cpDash(birthdayRaw.length >= 10 ? birthdayRaw.substring(0, 10) : birthdayRaw) },
-		{ label: '婚况', value: cpDash(cpMarriage(d.is_married)) },
-		{ label: '身高', value: d.height != null && Number(d.height) > 0 ? Number(d.height) + 'cm' : '-cm' },
-		{ label: '体重', value: d.weight != null && Number(d.weight) > 0 ? Number(d.weight) + 'kg' : '-kg' },
-		{ label: '学历', value: cpDash(cpEducation(d.education_level)) },
-		{ label: '工作', value: cpDash(d.occupation) },
-		{ label: '收入', value: cpDash(cpIncome(d.income)) },
-		{ label: '家乡', value: cpDash(d.hometown_display) },
-		{ label: '现居', value: cpDash(d.residence_display) },
-		{ label: '购房', value: cpDash(d.house) },
-		{ label: '购车', value: cpDash(d.car) },
-		{ label: '民族', value: cpDash(d.ethnicity) },
-		{ label: '择偶要求', value: cpDash(partner) }
+		'姓名：' + cpVal(row.realName),
+		'称呼：' + cpVal(row.name),
+		'电话：' + cpVal(row.phone),
+		'微信：' + cpVal(row.wechat),
+		'性别：' + cpGenderLabel(row.gender),
+		'出生年月日：' + (birthday.length >= 10 ? birthday.substring(0, 10) : birthday),
+		'来源渠道：' + cpVal(row.source),
+		'意向：' + cpVal(row.intentionLabel),
+		'备注：' + cpVal(row.remark)
 	]
 }
-const closeCopyProfile = () => {
-	copyProfileVisible.value = false
-	copyProfileCopied.value = false
+const copyLeadProfile = (row: any) => {
+	copyLines.value = buildLeadCopyLines(row)
+	copyText.value = ''
+	copyEditing.value = false
+	copyCopied.value = false
+	copyVisible.value = true
 }
+const closeCopyProfile = () => {
+	copyVisible.value = false
+	copyEditing.value = false
+	copyCopied.value = false
+}
+const toggleCopyEdit = () => {
+	if (copyEditing.value) {
+		copyLines.value = copyText.value.split('\n')
+		copyEditing.value = false
+		return
+	}
+	copyText.value = copyLines.value.join('\n')
+	copyEditing.value = true
+}
+const onCopyText = (event: any) => { copyText.value = event.detail.value }
 const confirmCopyProfile = () => {
-	if (copyProfileLoading.value) return
-	if (copyProfileCopied.value) return
+	if (copyCopied.value) return
+	const data = copyEditing.value ? copyText.value : copyLines.value.join('\n')
+	if (data.length == 0) {
+		showToast('资料还没有内容可复制')
+		return
+	}
 	uni.setClipboardData({
-		data: copyProfileCopyText.value,
+		data: data,
 		success: () => {
-			copyProfileCopied.value = true
-			setTimeout(() => { copyProfileCopied.value = false }, 2000)
+			copyCopied.value = true
+			showToast('资料已复制')
+			setTimeout(() => { copyCopied.value = false }, 2000)
 		},
 		fail: () => showToast('复制失败，请重试')
 	})
-}
-const openCopyProfile = async (row: any) => {
-	const leadName = row.name != null ? String(row.name) : ''
-	const memberId = row.convertedUserId != null && String(row.convertedUserId).length > 0 ? Number(row.convertedUserId) : 0
-	copyProfileVisible.value = true
-	copyProfileCopied.value = false
-	copyProfileError.value = ''
-	// 未入库客源没有关联会员，直接用线索昵称 + 全空占位（与后台口径一致）。
-	if (memberId <= 0) {
-		copyProfileRows.value = buildCopyProfileRows(leadName, null, null)
-		copyProfileCopyText.value = copyProfileRows.value.map((r: any): string => r.label + '：' + r.value).join('\n')
-		return
-	}
-	const seq = ++copyProfileLoadSeq
-	copyProfileLoading.value = true
-	copyProfileRows.value = buildCopyProfileRows(leadName, null, null)
-	try {
-		const profileResult = await getMatchmakerMemberProfile(String(memberId))
-		if (seq != copyProfileLoadSeq) return
-		if (!profileResult.success || profileResult.data == null) {
-			copyProfileError.value = profileResult.message != null ? String(profileResult.message) : '资料加载失败'
-			return
-		}
-		const detail: any = profileResult.data
-		let pref: any = null
-		try {
-			const prefResult = await getMatchmakerMemberPreferences(String(memberId))
-			if (seq == copyProfileLoadSeq && prefResult.success && prefResult.data != null) pref = prefResult.data
-		} catch (e) {
-			// 择偶要求拉取失败不阻塞整体展示。
-		}
-		copyProfileRows.value = buildCopyProfileRows(leadName, detail, pref)
-		copyProfileCopyText.value = copyProfileRows.value.map((r: any): string => r.label + '：' + r.value).join('\n')
-	} catch (e) {
-		if (seq == copyProfileLoadSeq) copyProfileError.value = '网络异常，请稍后重试'
-	} finally {
-		if (seq == copyProfileLoadSeq) copyProfileLoading.value = false
-	}
-}
-const copyLeadProfile = (row: any) => {
-	openCopyProfile(row)
 }
 
 let introductionFallbackUsed: string[] = []
@@ -3148,7 +2530,26 @@ const parseMemberId = (person: any): number => {
 	return Math.floor(value)
 }
 
-const openWorkspaceContact = async (person: any) => {
+// 看到联系方式即等于红娘已经介入撮合：待牵线自动转牵线中，不必再点一次状态。
+// 只改这一行的本地状态，不整表重载；牵线中/成功/失败保持不变。
+const markIntroductionContacted = async (row: any) => {
+	if (row == null) return
+	if (String(row.status) != 'PENDING') return
+	const rawId = row.id != null ? String(row.id).trim() : ''
+	const value = Number(rawId)
+	if (!(value > 0)) return
+	try {
+		const result = await updateMatchmakerIntroductionStatus(rawId, 'IN_PROGRESS', '')
+		if (!result.success) return
+		row.status = 'IN_PROGRESS'
+		row.statusLabel = '牵线中'
+		row.statusTone = 'progress'
+	} catch (e) {
+		// 状态推进失败不影响联系方式展示，红娘仍可手动改状态。
+	}
+}
+
+const openWorkspaceContact = async (person: any, row: any = null) => {
 	const id = parseMemberId(person)
 	if (id <= 0) {
 		showToast('该会员为本地演示数据，暂不支持查看联系方式')
@@ -3177,6 +2578,7 @@ const openWorkspaceContact = async (person: any) => {
 		workspaceContactPhone.value = data.phone != null ? String(data.phone) : ''
 		workspaceContactWechat.value = data.wechat != null ? String(data.wechat) : ''
 		workspaceContactScope.value = data.scope != null ? String(data.scope) : 'SERVED'
+		await markIntroductionContacted(row)
 	} catch (e) {
 		workspaceContactError.value = '网络异常，请稍后重试'
 	} finally {
@@ -3278,6 +2680,295 @@ const loadWorkspaceMeetings = async () => {
 	}
 }
 
+// ===== 红娘喜讯：读后台「运营工具-喜讯管理」内容域，只做浏览与详情 =====
+const loadWorkspaceNews = async () => {
+	newsLoading.value = true
+	newsError.value = ''
+	try {
+		const result = await getMatchmakerWorkspaceGoodNews(newsStage.value, 1, 100)
+		if (!result.success || result.data == null) {
+			workspaceNews.value = []
+			newsTotal.value = 0
+			newsError.value = result.message != null ? String(result.message) : '红娘喜讯加载失败'
+			return
+		}
+		const source = result.data
+		const items = Array.isArray(source.items) ? source.items : []
+		workspaceNews.value = items.map((item: any) => {
+			const images: string[] = Array.isArray(item.images) ? item.images as string[] : []
+			// 红娘端只登记对方称呼，没有的一侧服务端返回空串，卡片上就不渲染这一侧。
+			const fromName = item.fromName != null ? String(item.fromName) : ''
+			const toName = item.toName != null ? String(item.toName) : ''
+			const stage = item.stage != null ? String(item.stage) : ''
+			const content = item.content != null ? String(item.content) : ''
+			const createdAt = item.createdAt != null ? String(item.createdAt) : ''
+			const blessingCount = item.blessingCount != null ? Number(item.blessingCount) : 0
+			return {
+				id: item.id != null ? String(item.id) : '',
+				stage: stage,
+				stageTone: newsStageTone(stage),
+				fromUserId: item.fromUserId != null ? String(item.fromUserId) : '',
+				toUserId: item.toUserId != null ? String(item.toUserId) : '',
+				fromName: fromName,
+				toName: toName,
+				fromAvatar: item.fromAvatar != null && String(item.fromAvatar).length > 0 ? String(item.fromAvatar) : getIntroductionFallbackAvatar(item.fromUserId, '', fromName),
+				toAvatar: item.toAvatar != null && String(item.toAvatar).length > 0 ? String(item.toAvatar) : getIntroductionFallbackAvatar(item.toUserId, '', toName),
+				matchmakerName: item.matchmakerName != null ? String(item.matchmakerName) : '服务红娘',
+				meetDuration: item.meetDuration != null ? String(item.meetDuration) : '',
+				images: images,
+				content: content,
+				summary: content.length > 56 ? content.substring(0, 56) + '…' : content,
+				blessing: item.blessing != null ? String(item.blessing) : '',
+				blessingText: String(blessingCount) + '人已送祝福',
+				pendingReview: item.pendingReview === true,
+				createdAt: createdAt,
+				date: createdAt.length >= 10 ? createdAt.substring(0, 10) : createdAt
+			}
+		})
+		newsTotal.value = source.total != null ? Number(source.total) : items.length
+	} catch (e) {
+		workspaceNews.value = []
+		newsTotal.value = 0
+		newsError.value = '网络数据加载失败，请检查本地服务后重试'
+	} finally {
+		newsLoading.value = false
+	}
+}
+
+const loadWorkspacePennants = async () => {
+	pennantsLoading.value = true
+	pennantsError.value = ''
+	pennantsLoaded.value = false
+	try {
+		const result = await getMatchmakerWorkspaceGoodNewsPennants(1, 100)
+		if (!result.success || result.data == null) {
+			workspacePennants.value = []
+			pennantsError.value = result.message != null ? String(result.message) : '锦旗墙加载失败'
+			return
+		}
+		const items = Array.isArray(result.data.items) ? result.data.items : []
+		workspacePennants.value = items.map((item: any) => ({
+			id: item.id != null ? String(item.id) : '',
+			maker: item.maker != null ? String(item.maker) : '',
+			giver: item.giver != null ? String(item.giver) : '',
+			target: item.target != null ? String(item.target) : '',
+			words: item.words != null ? String(item.words) : '',
+			imageUrl: item.imageUrl != null ? String(item.imageUrl) : '',
+			date: item.createdAt != null && String(item.createdAt).length >= 10 ? String(item.createdAt).substring(0, 10) : ''
+		}))
+		pennantsLoaded.value = true
+	} catch (e) {
+		workspacePennants.value = []
+		pennantsError.value = '网络数据加载失败，请检查本地服务后重试'
+	} finally {
+		pennantsLoading.value = false
+	}
+}
+
+const selectNewsStage = (stage: string) => {
+	if (stage == '锦旗飘扬') {
+		workspaceActiveTab.value = '锦旗'
+		return
+	}
+	// 再点一次已选中的阶段即取消筛选，回到全部喜讯。
+	newsStage.value = newsStage.value == stage ? '' : stage
+	newsDetailId.value = ''
+	void loadWorkspaceNews()
+}
+
+const isNewsStageActive = (stage: string): boolean => {
+	if (stage == '锦旗飘扬') return workspaceActiveTab.value == '锦旗'
+	return workspaceActiveTab.value == '喜讯' && newsStage.value == stage
+}
+
+const toggleNewsDetail = (id: string) => {
+	newsDetailId.value = newsDetailId.value == id ? '' : id
+}
+
+const previewNewsImage = (images: string[], index: number) => {
+	if (images.length == 0) return
+	uni.previewImage({ urls: images, current: index })
+}
+
+const previewPennantImage = (url: string) => {
+	if (url.length == 0) return
+	uni.previewImage({ urls: [url], current: 0 })
+}
+
+const openNewsMemberProfile = (userId: string) => {
+	// 后台喜讯表单目前只登记姓名文本，没有关联会员时不跳主页。
+	if (userId.length == 0) {
+		showToast('这条喜讯只登记了姓名，未关联会员')
+		return
+	}
+	uni.navigateTo({
+		url: '/pagesSub/userExtra/user/detail?userId=' + userId + '&matchmakerView=1',
+		fail: () => showToast('打开会员主页失败')
+	})
+}
+
+const openNewsReportSheet = () => {
+	newsReportSheetVisible.value = true
+}
+
+// 报喜面板分流：反馈喜讯已有写入接口，赠送锦旗还没有服务端入口。
+const chooseNewsReportKind = (kind: string) => {
+	newsReportSheetVisible.value = false
+	if (kind == 'pennant') {
+		pennantGiver.value = ''
+		pennantReceiver.value = ''
+		pennantLeftWords.value = ''
+		pennantRightWords.value = ''
+		pennantDate.value = ''
+		pennantError.value = ''
+		pennantReady.value = false
+		pennantSheetVisible.value = true
+		redrawPennant()
+		return
+	}
+	newsFormStage.value = ''
+	newsFormStageIndex.value = 0
+	newsFormPartner.value = ''
+	newsFormMeetDuration.value = ''
+	newsFormContent.value = ''
+	newsFormImages.value = []
+	newsFormError.value = ''
+	newsFeedbackSheetVisible.value = true
+}
+
+const pennantPayload = (): PennantContent => {
+	return {
+		giver: pennantGiver.value.trim(),
+		receiver: pennantReceiver.value.trim(),
+		leftWords: pennantLeftWords.value.trim(),
+		rightWords: pennantRightWords.value.trim(),
+		dateText: pennantDate.value.trim()
+	} as PennantContent
+}
+
+const pennantHost = (): any => {
+	return pennantInstance != null && pennantInstance.proxy != null ? pennantInstance.proxy : null
+}
+
+// 打开面板时先画一面空白锦旗当模板；canvas 常驻在 XsaSheet 里，等一帧拿到节点即可。
+const redrawPennant = async () => {
+	await nextTick()
+	try {
+		await renderPennant('pennantCanvas', pennantHost(), pennantPayload())
+	} catch (e: any) {
+		console.error('[pennant] 预览绘制失败', e)
+	}
+}
+
+const generatePennant = async () => {
+	if (pennantWorking.value) return
+	const payload = pennantPayload()
+	if (payload.giver.length == 0) {
+		pennantError.value = '请填写赠送人'
+		return
+	}
+	if (payload.receiver.length == 0) {
+		pennantError.value = '请填写赠送给'
+		return
+	}
+	if (payload.leftWords.length == 0 || payload.rightWords.length == 0) {
+		pennantError.value = '左右两条感谢语都要填写'
+		return
+	}
+	pennantError.value = ''
+	pennantWorking.value = true
+	try {
+		const tempPath = await drawPennant('pennantCanvas', pennantHost(), payload)
+		// savePosterToPhotos 只在真正写进相册后返回 true，未授权时它自己会弹引导，这里不再谎报已保存。
+		pennantReady.value = await savePosterToPhotos(tempPath)
+	} catch (e: any) {
+		console.error('[pennant] 锦旗生成失败', e)
+		pennantError.value = '锦旗生成失败，请稍后重试'
+	} finally {
+		pennantWorking.value = false
+	}
+}
+
+const onNewsFormStageChange = (event: any) => {
+	const index = Number(event.detail.value)
+	newsFormStageIndex.value = index
+	newsFormStage.value = index >= 0 && index < newsStageOptions.length ? newsStageOptions[index] : ''
+}
+
+const chooseNewsFormImage = () => {
+	const remaining = 9 - newsFormImages.value.length
+	if (remaining <= 0) {
+		showToast('一条喜讯最多上传 9 张图片')
+		return
+	}
+	uni.chooseImage({
+		count: remaining,
+		sizeType: ['compressed'],
+		sourceType: ['album', 'camera'],
+		success: async (res: any) => {
+			const paths: any[] = res.tempFilePaths != null ? (res.tempFilePaths as any[]) : []
+			if (paths.length == 0) return
+			showToast('图片上传中…')
+			for (let i = 0; i < paths.length; i++) {
+				try {
+					const uploaded = await uploadWorkspaceGoodNewsPhoto(String(paths[i]))
+					if (uploaded.success && uploaded.data != null && uploaded.data.url != null) {
+						// url 存服务端相对路径（入库用），display 才是给 image 组件的完整地址。
+						const url = String(uploaded.data.url)
+						newsFormImages.value.push({ url: url, display: resolveMediaUrl(url) })
+					} else {
+						showToast(uploaded.message != null ? String(uploaded.message) : '图片上传失败')
+					}
+				} catch (e) {
+					showToast('图片上传失败，请重试')
+				}
+			}
+		}
+	})
+}
+
+const removeNewsFormImage = (index: number) => {
+	newsFormImages.value.splice(index, 1)
+}
+
+const previewNewsFormImage = (index: number) => {
+	const urls: string[] = newsFormImages.value.map((item: any) => String(item.display))
+	if (urls.length == 0) return
+	uni.previewImage({ urls: urls, current: index })
+}
+
+const submitNewsFeedback = async () => {
+	if (newsFormSubmitting.value) return
+	const partner = newsFormPartner.value.trim()
+	if (partner.length == 0) {
+		newsFormError.value = '请填写对方称呼'
+		return
+	}
+	if (newsFormStage.value.length == 0) {
+		newsFormError.value = '请选择当前状态'
+		return
+	}
+	newsFormError.value = ''
+	newsFormSubmitting.value = true
+	const result = await createMatchmakerWorkspaceGoodNews({
+		stage: newsFormStage.value,
+		partnerName: partner,
+		meetDuration: newsFormMeetDuration.value.trim(),
+		content: newsFormContent.value.trim(),
+		images: newsFormImages.value.map((item: any) => String(item.url))
+	})
+	newsFormSubmitting.value = false
+	if (!result.success) {
+		newsFormError.value = result.message != null && String(result.message).length > 0 ? String(result.message) : '提交失败，请稍后重试'
+		return
+	}
+	newsFeedbackSheetVisible.value = false
+	showToast('已提交，后台审核通过后公开')
+	await loadWorkspaceNews()
+}
+
+const blessGoodNews = () => showToast('送祝福将在服务端开放写入后启用')
+
 // ===== 牵线管理：添加牵线记录 =====
 const matchAddSheetVisible = ref(false)
 const matchAddPickerVisible = ref(false)
@@ -3308,6 +2999,10 @@ const matchAddFilteredCandidates = computed(() => {
 		return content.indexOf(keyword) >= 0
 	})
 })
+const matchAddResultsLabel = computed(() => {
+	const count = String(matchAddFilteredCandidates.value.length)
+	return matchAddSearch.value.trim().length > 0 ? '搜索结果（' + count + '）' : '可选会员（' + count + '）'
+})
 const openMatchAddSheet = () => {
 	matchAddFromId.value = ''
 	matchAddFromName.value = ''
@@ -3332,7 +3027,12 @@ const openMatchAddPicker = async (kind: string) => {
 			const options: any[] = []
 			for (let i = 0; i < rows.length; i++) {
 				const row = rows[i]
-				options.push({ id: String(row.id), name: String(row.name || '未命名会员'), gender: String(row.gender || '未填写') })
+				options.push({
+					id: String(row.id),
+					name: String(row.name || '未命名会员'),
+					gender: String(row.gender || '未填写'),
+					avatar: String(row.avatar || '')
+				})
 			}
 			matchAddCandidates.value = options
 		} catch (e) {
@@ -3584,12 +3284,10 @@ const scrollWorkspaceTop = () => {
 const openWorkspace = async (title: string, kind: string, initialTab: string = '') => {
 	workspaceTitle.value = title
 	workspaceKind.value = kind
-	workspaceActiveTab.value = initialTab.length > 0 ? initialTab : (kind == 'commission' ? '分成明细' : (kind == 'lead' ? '客源线索' : '全部'))
+	workspaceActiveTab.value = initialTab.length > 0 ? initialTab : (kind == 'commission' ? (title == '财务明细' ? '财务明细' : '分成明细') : (kind == 'lead' ? '客源线索' : (kind == 'news' ? '喜讯' : '全部')))
 	workspaceKeyword.value = ''
 	workspaceVisible.value = true
 	if (kind == 'entry') {
-		// 现居/户口点开就是原生滚轮，没有中间弹层可以挂"正在加载省市数据"，所以进表单时先把数据拉好。
-		if (title == '录入会员') ensureMemberResidenceProvinces()
 		// 录入客源线索 / 录入会员：重置线索表单，避免残留上一次填写。
 		leadFormRealName.value = ''
 		leadFormName.value = ''
@@ -3608,6 +3306,11 @@ const openWorkspace = async (title: string, kind: string, initialTab: string = '
 	if (kind == 'lead') await loadWorkspaceLeads()
 	if (kind == 'match') await loadWorkspaceMatches()
 	if (kind == 'meeting') await loadWorkspaceMeetings()
+	if (kind == 'news') {
+		newsStage.value = ''
+		newsDetailId.value = ''
+		await Promise.all([loadWorkspaceNews(), loadWorkspacePennants()])
+	}
 }
 
 const refreshManagementCenter = async () => {
@@ -3723,7 +3426,7 @@ const onServiceNavSelect = (key: string) => {
 	if (key == 'member_zone') { uni.reLaunch({ url: '/pages/index/index?tab=2', fail: () => showToast('会员分区打开失败，请稍后重试') }); return }
 	if (key == 'filter') { openPendingReview(''); return }
 	if (key == 'activity') { openPage('/pagesSub/community/activity-list'); return }
-	if (key == 'news') { showToast('红娘喜讯暂未开放'); return }
+	if (key == 'news') { openWorkspace('红娘喜讯', 'news'); return }
 	if (key == 'custom') { openPage('/pagesSub/matchmaker/custom'); return }
 	if (key == 'vip') { openPage('/pagesSub/profileExtra/vip'); return }
 	if (key == 'matchmaker_center') { showToast('当前已在红娘中心'); return }
@@ -4097,7 +3800,9 @@ const submitApplication = async () => {
 .workspace-commission-row { margin-top: 18rpx; color: var(--muted); font-size: 20rpx; }.workspace-commission-row > view { margin-top: 8rpx; padding: 20rpx; border-radius: 20rpx; background: var(--surface); display: flex; align-items: center; gap: 16rpx; box-shadow: var(--shadow-sm); }.workspace-commission-row image,.workspace-member-header image,.workspace-match-person image { width: 60rpx; height: 60rpx; border-radius: 50%; }.workspace-commission-row > view > view { flex: 1; display: flex; flex-direction: column; gap: 4rpx; color: var(--ink); font-size: 21rpx; }.workspace-commission-row > view > view text:last-child { color: var(--muted); font-size: 19rpx; }.workspace-commission-row > view > text:last-child { color: var(--accent2); font-size: 27rpx; font-weight: 800; }
 .workspace-info-card,.workspace-match-card { margin-top: 18rpx; padding: 22rpx; border-radius: 20rpx; background: var(--surface); display: flex; flex-direction: column; gap: 16rpx; color: var(--ink); font-size: 28rpx; font-weight: 800; box-shadow: var(--shadow-sm); }.workspace-info-card > view:not(.workspace-actions):not(.workspace-member-header) { padding-bottom: 13rpx; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; color: var(--ink2); font-size: 21rpx; font-weight: 400; }.workspace-info-card > view:not(.workspace-actions):not(.workspace-member-header) text:last-child { color: var(--ink); }.workspace-actions { display: flex; gap: 9rpx; }.workspace-actions text { flex: 1; padding: 12rpx 4rpx; border-radius: 14rpx; background: var(--warm); color: var(--accent2); text-align: center; font-size: 18rpx; font-weight: 700; }
 .workspace-state { margin-top: 18rpx; min-height: 180rpx; padding: 28rpx; border-radius: 20rpx; background: var(--surface); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 18rpx; color: var(--muted); font-size: 22rpx; box-shadow: var(--shadow-sm); }.workspace-state-action { padding: 12rpx 24rpx; border-radius: 999rpx; background: var(--sage-soft); color: var(--accent2); font-size: 21rpx; font-weight: 700; }
-.workspace-filter-note { padding: 12rpx; color: var(--accent2); font-size: 22rpx; line-height: 1.5; }.workspace-demo-notice { margin: 4rpx 12rpx 12rpx; padding: 12rpx 14rpx; border-radius: 14rpx; background: var(--accent-bg); color: var(--accent2); font-size: 19rpx; line-height: 1.45; }.workspace-match-card { font-size: 21rpx; font-weight: 400; }.workspace-match-card-top { display: flex; justify-content: space-between; align-items: center; color: var(--muted); }.workspace-match-status { padding: 7rpx 13rpx; border-radius: 999rpx; font-size: 18rpx; font-weight: 800; line-height: 1.2; }.workspace-match-status-pending { background: var(--accent-bg); color: var(--accent2); }.workspace-match-status-progress { background: var(--match-sky); color: var(--match-deep); }.workspace-match-status-succeeded { background: var(--sage-soft); color: var(--sage); }.workspace-match-status-failed { background: var(--match-blush); color: var(--match-coral); }.workspace-match-person { min-height: 64rpx; display: flex; align-items: center; gap: 14rpx; }.workspace-match-person > view { flex: 1; display: flex; flex-direction: column; gap: 4rpx; }.workspace-match-person > view text:first-child { color: var(--ink); font-size: 23rpx; font-weight: 700; }.workspace-match-person > view text:last-child { color: var(--muted); font-size: 19rpx; }.workspace-match-reason { padding: 14rpx; border-radius: 14rpx; background: var(--match-blush); color: var(--ink2); font-size: 20rpx; line-height: 1.5; }.workspace-match-owner { color: var(--muted); font-size: 19rpx; }
+.workspace-filter-note { padding: 12rpx; color: var(--accent2); font-size: 22rpx; line-height: 1.5; }.workspace-demo-notice { margin: 4rpx 12rpx 12rpx; padding: 12rpx 14rpx; border-radius: 14rpx; background: var(--accent-bg); color: var(--accent2); font-size: 19rpx; line-height: 1.45; }
+/* 分成标准 / 牵线卡片：比例数值与牵线状态 */
+.workspace-rate-value { color: var(--accent2); font-size: 30rpx; font-weight: 800; }.workspace-match-card { font-size: 21rpx; font-weight: 400; }.workspace-match-card-top { display: flex; justify-content: space-between; align-items: center; color: var(--muted); }.workspace-match-status { padding: 7rpx 13rpx; border-radius: 999rpx; font-size: 18rpx; font-weight: 800; line-height: 1.2; }.workspace-match-status-pending { background: var(--accent-bg); color: var(--accent2); }.workspace-match-status-progress { background: var(--match-sky); color: var(--match-deep); }.workspace-match-status-succeeded { background: var(--sage-soft); color: var(--sage); }.workspace-match-status-failed { background: var(--match-blush); color: var(--match-coral); }.workspace-match-person { min-height: 64rpx; display: flex; align-items: center; gap: 14rpx; }.workspace-match-person > view { flex: 1; display: flex; flex-direction: column; gap: 4rpx; }.workspace-match-person > view text:first-child { color: var(--ink); font-size: 23rpx; font-weight: 700; }.workspace-match-person > view text:last-child { color: var(--muted); font-size: 19rpx; }.workspace-match-reason { padding: 14rpx; border-radius: 14rpx; background: var(--match-blush); color: var(--ink2); font-size: 20rpx; line-height: 1.5; }.workspace-match-owner { color: var(--muted); font-size: 19rpx; }
 
 /* 牵线管理（按设计稿）：申请时间+黄色状态胶囊、双列头像带角色标、联系Ta、牵线状态弹窗。 */
 .workspace-match-card { gap: 20rpx; padding: 26rpx 26rpx; }
@@ -5421,6 +5126,249 @@ const submitApplication = async () => {
 	font-weight: 800;
 }
 
+/* ===== 会员选择弹层：命令面板模板（头部 / 搜索 / 键位提示 / 头像结果行）
+	 sheet-body 自带 16px 18px 内边距，这里用负外边距让分割线贴齐面板边缘。 ===== */
+.mp-pick {
+	margin: -16px -18px 0;
+	background: var(--surface);
+	display: flex;
+	flex-direction: column;
+	max-height: 72vh;
+}
+
+/* 名单自己滚动：头部 / 搜索 / 提示条固定不动，几十条也能滑到底 */
+.mp-pick-scroll {
+	flex: 1;
+	min-height: 0;
+}
+
+.mp-pick-head {
+	flex-shrink: 0;
+	height: 96rpx;
+	background: var(--paper);
+	padding: 0 28rpx;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 16rpx;
+	border-bottom: 1rpx solid var(--match-line);
+}
+
+.mp-pick-back {
+	width: 64rpx;
+	height: 64rpx;
+	border-radius: 18rpx;
+	background: var(--warm);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.mp-pick-back:active {
+	opacity: .7;
+}
+
+.mp-pick-back-glyph {
+	width: 16rpx;
+	height: 16rpx;
+	border-left: 3rpx solid var(--muted);
+	border-bottom: 3rpx solid var(--muted);
+	border-bottom-left-radius: 6rpx;
+	transform: rotate(45deg);
+	margin-left: 6rpx;
+}
+
+.mp-pick-title {
+	flex: 1;
+	min-width: 0;
+	color: var(--ink);
+	font-size: 32rpx;
+	font-weight: 600;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.mp-pick-total {
+	min-width: 56rpx;
+	padding: 6rpx 16rpx;
+	border-radius: 999rpx;
+	background: var(--match-mist);
+	color: var(--match-deep);
+	font-size: 21rpx;
+	font-weight: 700;
+	text-align: center;
+	flex-shrink: 0;
+}
+
+.mp-pick-search {
+	flex-shrink: 0;
+	height: 120rpx;
+	padding: 0 28rpx;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 16rpx;
+	border-bottom: 1rpx solid var(--match-line);
+}
+
+.mp-pick-search-glyph {
+	color: var(--muted);
+	font-size: 34rpx;
+	line-height: 1;
+	flex-shrink: 0;
+}
+
+.mp-pick-search-input {
+	flex: 1;
+	min-width: 0;
+	color: var(--ink);
+	font-size: 28rpx;
+}
+
+.mp-pick-search-ph {
+	color: var(--muted);
+	font-size: 26rpx;
+}
+
+/* 清空按钮只在有关键词时出现，槽位常驻以免搜索框左右抖动 */
+.mp-pick-clear-slot {
+	width: 56rpx;
+	height: 56rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.mp-pick-clear {
+	width: 48rpx;
+	height: 48rpx;
+	border-radius: 14rpx;
+	background: var(--warm);
+	color: var(--muted);
+	font-size: 22rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.mp-pick-clear:active {
+	opacity: .7;
+}
+
+.mp-pick-hints {
+	flex-shrink: 0;
+	padding: 14rpx 28rpx;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 22rpx;
+	border-bottom: 1rpx solid var(--match-line);
+}
+
+.mp-pick-hint {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8rpx;
+}
+
+.mp-pick-hint-key {
+	padding: 2rpx 12rpx;
+	border-radius: 10rpx;
+	background: var(--surface);
+	border: 1rpx solid var(--match-line);
+	color: var(--ink2);
+	font-size: 20rpx;
+	line-height: 1.6;
+}
+
+.mp-pick-hint-label {
+	color: var(--muted);
+	font-size: 20rpx;
+}
+
+.mp-pick-state {
+	min-height: 220rpx;
+	padding: 40rpx 28rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--muted);
+	font-size: 24rpx;
+}
+
+.mp-pick-results-label {
+	display: block;
+	padding: 22rpx 28rpx 8rpx;
+	color: var(--muted);
+	font-size: 21rpx;
+}
+
+.mp-pick-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	padding: 21rpx 28rpx;
+}
+
+.mp-pick-row.picked {
+	background: var(--match-mist);
+}
+
+.mp-pick-avatar {
+	width: 68rpx;
+	height: 68rpx;
+	border-radius: 18rpx;
+	background: var(--warm);
+	flex-shrink: 0;
+}
+
+.mp-pick-name {
+	margin-left: 18rpx;
+	max-width: 300rpx;
+	color: var(--ink);
+	font-size: 28rpx;
+	font-weight: 600;
+	flex-shrink: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.mp-pick-row.picked .mp-pick-name {
+	color: var(--match-deep);
+}
+
+.mp-pick-meta {
+	flex: 1;
+	min-width: 0;
+	margin-left: 14rpx;
+	color: var(--muted);
+	font-size: 23rpx;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.mp-pick-tail {
+	width: 44rpx;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: flex-end;
+	flex-shrink: 0;
+}
+
+.mp-pick-tail-check {
+	color: var(--match-deep);
+	font-size: 28rpx;
+	font-weight: 800;
+}
+
 .workspace-filter-group {
 	margin-bottom: 20rpx;
 }
@@ -5678,7 +5626,7 @@ const submitApplication = async () => {
 	font-size: 21rpx;
 }
 
-/* ===== 复制资料弹窗（内联实现，常驻挂载 + open 类；配色取自设计稿/后台 CopyProfileModal） ===== */
+/* ===== 复制资料弹窗（内联实现，常驻挂载 + open 类；卡片结构与配色照搬资料待审的复制弹窗） ===== */
 .cp-overlay {
 	position: fixed;
 	z-index: 9700;
@@ -5706,13 +5654,13 @@ const submitApplication = async () => {
 .cp-card {
 	width: 100%;
 	max-width: 640rpx;
-	background: #ffffff;
-	border-radius: 36rpx;
-	padding: 40rpx 36rpx 36rpx;
+	background: var(--surface);
+	border-radius: 32rpx;
+	padding: 40rpx 32rpx 0;
 	display: flex;
 	flex-direction: column;
 	box-sizing: border-box;
-	box-shadow: 0 24rpx 70rpx rgba(20, 24, 40, .22);
+	box-shadow: var(--shadow-lg);
 	transform: translateY(24rpx) scale(.97);
 	transition: transform .2s ease-out;
 }
@@ -5721,98 +5669,121 @@ const submitApplication = async () => {
 	transform: translateY(0) scale(1);
 }
 
-.cp-head {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: space-between;
-	margin-bottom: 28rpx;
-}
-
-.cp-title {
-	color: #1f2430;
-	font-size: 36rpx;
-	font-weight: 700;
-}
-
-.cp-close {
-	width: 52rpx;
-	height: 52rpx;
+.cpd-icon {
+	align-self: center;
+	width: 112rpx;
+	height: 112rpx;
+	border-radius: 28rpx;
+	border: 1px solid var(--line);
+	background: linear-gradient(160deg, var(--paper), var(--warm));
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	box-shadow: 0 10rpx 24rpx rgba(12, 19, 19, .10);
 }
 
-.cp-close > text {
-	color: #9aa0ad;
-	font-size: 36rpx;
+.cpd-icon-glyph {
+	color: var(--accent2);
+	font-size: 48rpx;
 	line-height: 1;
 }
 
-.cp-body {
-	max-height: 62vh;
-	border-radius: 24rpx;
-	background: #f2f3f8;
-	padding: 28rpx 30rpx;
+.cpd-title {
+	margin-top: 24rpx;
+	color: var(--ink);
+	font-size: 33rpx;
+	font-weight: 800;
+	text-align: center;
+}
+
+.cpd-subtitle {
+	margin-top: 10rpx;
+	color: var(--muted);
+	font-size: 22rpx;
+	line-height: 1.55;
+	text-align: center;
+}
+
+.cpd-body {
+	margin-top: 24rpx;
+	min-height: 116rpx;
+	max-height: 50vh;
+	padding: 22rpx 24rpx;
+	border-radius: 20rpx;
+	background: var(--canvas);
 	box-sizing: border-box;
 }
 
-.cp-rows {
+.cpd-lines {
 	display: flex;
 	flex-direction: column;
 }
 
-.cp-row {
-	margin-bottom: 4rpx;
+.cpd-line {
+	color: var(--ink2);
+	font-size: 25rpx;
+	line-height: 46rpx;
 }
 
-.cp-row-text {
-	color: #2b2f3a;
-	font-size: 28rpx;
-	line-height: 52rpx;
+.cpd-editor {
+	display: flex;
+	flex-direction: column;
 }
 
-.cp-state {
-	padding: 30rpx 0;
+.cpd-textarea {
+	width: 100%;
+	height: 380rpx;
+	color: var(--ink);
+	font-size: 25rpx;
+	line-height: 46rpx;
 }
 
-.cp-state > text {
-	color: #8a90a0;
-	font-size: 26rpx;
+.cpd-note {
+	margin-top: 10rpx;
+	color: var(--muted);
+	font-size: 20rpx;
+	line-height: 1.5;
 }
 
-.cp-error {
-	margin-bottom: 8rpx;
+.cpd-footer {
+	margin-top: 28rpx;
+	padding: 24rpx 0 32rpx;
+	border-top: 1px solid var(--line);
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
 }
 
-.cp-error > text {
-	color: #e5484d;
-	font-size: 22rpx;
-}
-
-.cp-copy-btn {
-	margin-top: 40rpx;
-	height: 92rpx;
-	border-radius: 46rpx;
-	background: linear-gradient(90deg, #e6ccfb, #d3aafa, #c18cf6);
+.cpd-btn {
+	min-width: 184rpx;
+	height: 76rpx;
+	padding: 0 28rpx;
+	border-radius: 999rpx;
+	background: var(--warm);
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	box-shadow: 0 12rpx 32rpx rgba(193, 140, 246, .35);
+	box-shadow: 0 6rpx 16rpx rgba(12, 19, 19, .08);
 }
 
-.cp-copy-btn:active {
-	opacity: .9;
-}
-
-.cp-copy-btn.disabled {
-	opacity: .6;
-}
-
-.cp-copy-btn > text {
-	color: #241634;
-	font-size: 30rpx;
+.cpd-btn text {
+	color: var(--ink);
+	font-size: 25rpx;
 	font-weight: 700;
+}
+
+.cpd-btn.primary {
+	background: linear-gradient(90deg, var(--accent), var(--accent2));
+	box-shadow: 0 10rpx 24rpx rgba(0, 96, 82, .24);
+}
+
+.cpd-btn.primary text {
+	color: var(--paper);
+}
+
+.cpd-btn:active {
+	opacity: .8;
 }
 
 /* ===== 查看联系方式弹窗（内联实现，常驻挂载 + open 类） ===== */
@@ -6157,4 +6128,131 @@ const submitApplication = async () => {
 .ls-submit:active { opacity: .85; transform: scale(.99); }
 .ls-foot { margin-top: 20rpx; display: flex; justify-content: center; }
 .ls-foot text { color: #9AA8A2; font-size: 20rpx; text-align: center; }
+
+/* ===== 红娘喜讯中心：色带 + 压边阶段卡 + 反馈条 + 喜讯卡列表 + 锦旗墙 ===== */
+.news-band { margin-top: 4rpx; padding: 26rpx 26rpx 60rpx; border-radius: 20rpx; background: linear-gradient(180deg, var(--security-hero) 0%, var(--paper) 100%); display: flex; flex-direction: row; align-items: flex-start; justify-content: space-between; }
+.news-band-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6rpx; }
+.news-band-title { color: var(--ink); font-size: 34rpx; font-weight: 800; }
+.news-band-sub { color: var(--muted); font-size: 20rpx; line-height: 1.5; }
+.news-band-count { flex: none; min-width: 104rpx; padding: 10rpx 16rpx; border-radius: 16rpx; background: var(--surface); display: flex; flex-direction: column; align-items: center; box-shadow: var(--shadow-sm); }
+.news-band-count-value { color: var(--accent2); font-size: 34rpx; font-weight: 800; line-height: 1.2; }
+.news-band-count-label { color: var(--muted); font-size: 18rpx; }
+.news-stage-card { margin-top: -40rpx; padding: 22rpx 12rpx; border-radius: 20rpx; background: var(--surface); display: flex; flex-direction: column; box-shadow: var(--shadow-sm); }
+.news-stage-grid { display: flex; flex-direction: row; flex-wrap: wrap; }
+.news-stage { width: 25%; padding: 10rpx 4rpx 12rpx; display: flex; flex-direction: column; align-items: center; gap: 8rpx; border-radius: 16rpx; }
+.news-stage-glyph { width: 62rpx; height: 62rpx; border-radius: 50%; display: flex; flex-direction: row; align-items: center; justify-content: center; font-size: 30rpx; background: var(--warm); }
+.news-stage-label { color: var(--ink2); font-size: 19rpx; text-align: center; }
+.news-stage.active { background: var(--accent-bg); }
+.news-stage.active .news-stage-label { color: var(--accent2); font-weight: 800; }
+.news-feedback { margin-top: 18rpx; padding: 16rpx 18rpx; border-radius: 18rpx; background: var(--review-soft); display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
+.news-feedback-glyph { flex: none; font-size: 26rpx; }
+.news-feedback-text { flex: 1; min-width: 0; color: var(--review-deep); font-size: 20rpx; line-height: 1.45; }
+.news-feedback-btn { flex: none; padding: 10rpx 16rpx; border-radius: 999rpx; background: var(--surface); color: var(--accent2); font-size: 20rpx; font-weight: 800; display: flex; flex-direction: row; align-items: center; gap: 4rpx; }
+.news-feedback-arrow { font-size: 22rpx; line-height: 1; }
+.news-section { margin-top: 24rpx; padding: 0 6rpx; display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+.news-section-title { color: var(--ink); font-size: 26rpx; font-weight: 800; }
+.news-section-filter { padding: 8rpx 16rpx; border-radius: 999rpx; background: var(--warm); color: var(--accent2); font-size: 19rpx; }
+.news-card { margin-top: 18rpx; padding: 22rpx; border-radius: 20rpx; background: var(--surface); display: flex; flex-direction: column; gap: 16rpx; box-shadow: var(--shadow-sm); }
+.news-card-head { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12rpx; }
+.news-card-stage { flex: none; padding: 9rpx 18rpx; border-radius: 999rpx; font-size: 20rpx; font-weight: 800; line-height: 1.2; }
+.news-card-couple { flex: 1; min-width: 0; display: flex; flex-direction: row; justify-content: flex-end; }
+.news-card-person { max-width: 176rpx; min-width: 0; margin-left: 14rpx; display: flex; flex-direction: row; align-items: center; }
+.news-card-avatar { flex: none; width: 46rpx; height: 46rpx; border-radius: 50%; }
+.news-card-name { min-width: 0; margin-left: 8rpx; color: var(--ink); font-size: 20rpx; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.news-card-meta { display: flex; flex-direction: row; align-items: center; gap: 10rpx; color: var(--ink2); font-size: 20rpx; }
+.news-card-meta-glyph { font-size: 22rpx; color: var(--muted); }
+.news-card-meta-item { color: var(--ink2); }
+.news-card-meta-divider { color: var(--line); }
+.news-card-images { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12rpx; }
+.news-card-image { width: 168rpx; height: 168rpx; border-radius: 16rpx; background: var(--warm); }
+.news-card-detail { padding: 18rpx; border-radius: 16rpx; background: var(--paper); border: 1rpx solid var(--line); display: flex; flex-direction: column; gap: 10rpx; }
+.news-card-content { color: var(--ink2); font-size: 21rpx; line-height: 1.6; }
+.news-card-content-empty { color: var(--muted); }
+.news-card-blessing { color: var(--accent2); font-size: 20rpx; line-height: 1.6; }
+.news-card-date { color: var(--muted); font-size: 19rpx; }
+.news-card-bless-btn { margin-top: 4rpx; align-self: flex-start; padding: 12rpx 26rpx; border-radius: 999rpx; background: var(--sage-soft); color: var(--accent2); font-size: 20rpx; font-weight: 800; }
+.news-card-foot { padding-top: 14rpx; border-top: 1rpx solid var(--line); display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+.news-card-blessing-count { color: var(--muted); font-size: 19rpx; }
+.news-card-toggle { padding: 10rpx 20rpx; border-radius: 999rpx; background: var(--warm); color: var(--accent2); font-size: 20rpx; font-weight: 800; display: flex; flex-direction: row; align-items: center; gap: 4rpx; }
+.news-card-toggle-arrow { font-size: 24rpx; line-height: 1; transform: rotate(90deg); }
+.news-card-toggle-arrow.open { transform: rotate(-90deg); }
+/* 阶段配色：沿用现有语义 Token，按喜讯阶段分档（徽标用底+字，筛选图标只用底色） */
+.news-card-stage.t-coral { background: var(--match-blush); color: var(--match-coral); }
+.news-card-stage.t-sky { background: var(--match-sky); color: var(--match-deep); }
+.news-card-stage.t-sage { background: var(--sage-soft); color: var(--sage); }
+.news-card-stage.t-plum { background: var(--plane-lilac); color: var(--plane-purple-deep); }
+.news-card-stage.t-apricot { background: var(--shortcut-apricot); color: var(--review-orange); }
+.news-card-stage.t-mint { background: var(--shortcut-mint); color: var(--accent2); }
+.news-card-stage.t-lilac { background: var(--shortcut-lilac); color: var(--review-deep); }
+.news-card-stage.t-blush { background: var(--review-lilac); color: var(--review-purple); }
+.news-stage-glyph.t-coral { background: var(--match-blush); }
+.news-stage-glyph.t-sky { background: var(--match-sky); }
+.news-stage-glyph.t-sage { background: var(--sage-soft); }
+.news-stage-glyph.t-plum { background: var(--plane-lilac); }
+.news-stage-glyph.t-apricot { background: var(--shortcut-apricot); }
+.news-stage-glyph.t-mint { background: var(--shortcut-mint); }
+.news-stage-glyph.t-lilac { background: var(--shortcut-lilac); }
+.news-stage-glyph.t-blush { background: var(--review-lilac); }
+.news-pennant-card { margin-top: 18rpx; padding: 22rpx; border-radius: 20rpx; background: var(--surface); display: flex; flex-direction: column; gap: 16rpx; box-shadow: var(--shadow-sm); }
+.news-pennant-image { width: 100%; height: 300rpx; border-radius: 16rpx; background: var(--warm); }
+.news-pennant-plate { padding: 30rpx 24rpx; border-radius: 16rpx; background: var(--match-blush); display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 16rpx; }
+.news-pennant-words { flex: 1; min-width: 0; color: var(--match-coral); font-size: 26rpx; font-weight: 800; line-height: 1.5; }
+.news-pennant-plate-mark { flex: none; padding: 6rpx 14rpx; border-radius: 999rpx; background: var(--surface); color: var(--match-coral); font-size: 18rpx; }
+.news-pennant-meta { display: flex; flex-direction: column; gap: 6rpx; }
+.news-pennant-giver { color: var(--ink); font-size: 22rpx; font-weight: 700; }
+.news-pennant-target, .news-pennant-maker, .news-pennant-date { color: var(--muted); font-size: 19rpx; }
+
+/* 报喜：右下角悬浮键沿用资料待审「筛选」键的圆形样式，面板按模板稿做双入口卡片 */
+.workspace-add.news-report { width: 104rpx; height: 104rpx; flex-direction: column; gap: 2rpx; background: var(--surface); box-shadow: var(--match-shadow); }
+.workspace-add.news-report:active { opacity: 0.8; transform: scale(0.96); }
+.workspace-add.news-report .news-report-glyph { font-size: 36rpx; line-height: 34rpx; }
+.workspace-add.news-report .news-report-label { color: var(--ink); font-size: 19rpx; font-weight: 800; line-height: 1.2; }
+.news-report-grid { display: flex; flex-direction: row; gap: 18rpx; }
+.news-report-tile { flex: 1; min-width: 0; padding: 34rpx 18rpx 30rpx; border-radius: 24rpx; display: flex; flex-direction: column; align-items: center; gap: 20rpx; }
+.news-report-tile.lavender { background: var(--shortcut-lilac); }
+.news-report-tile.blush { background: var(--match-blush); }
+.news-report-tile:active { opacity: 0.86; }
+.news-report-icon { width: 104rpx; height: 104rpx; border-radius: 50%; display: flex; flex-direction: row; align-items: center; justify-content: center; font-size: 44rpx; color: var(--text-invert); }
+.news-report-icon.lavender { background: linear-gradient(135deg, var(--review-purple), var(--plane-purple)); }
+.news-report-icon.blush { background: linear-gradient(135deg, var(--badge-coral), var(--match-coral)); }
+.news-report-tile-label { font-size: 25rpx; font-weight: 800; }
+.news-report-tile.lavender .news-report-tile-label { color: var(--review-deep); }
+.news-report-tile.blush .news-report-tile-label { color: var(--match-coral); }
+.news-report-note { margin-top: 22rpx; color: var(--muted); font-size: 20rpx; line-height: 1.5; }
+
+/* 喜讯卡片：待审标记与「只有一侧有姓名」的排版 */
+.news-card-head-left { flex: none; display: flex; flex-direction: row; align-items: center; gap: 10rpx; }
+.news-card-pending { padding: 9rpx 14rpx; border-radius: 999rpx; background: var(--warm); color: var(--muted); font-size: 18rpx; font-weight: 700; line-height: 1.2; }
+
+/* 反馈喜讯表单 */
+.news-form-privacy { padding: 18rpx 20rpx; border-radius: 18rpx; background: var(--warm); display: flex; flex-direction: column; gap: 8rpx; }
+.news-form-privacy-title { color: var(--ink); font-size: 22rpx; font-weight: 800; }
+.news-form-privacy-text { color: var(--ink2); font-size: 21rpx; line-height: 1.6; }
+.news-form-row { display: flex; flex-direction: row; align-items: center; gap: 14rpx; padding: 22rpx 0; border-bottom: 1px solid var(--line); }
+.news-form-label { flex: none; width: 130rpx; color: var(--ink2); font-size: 23rpx; font-weight: 700; }
+.news-form-input { flex: 1; min-width: 0; color: var(--ink); font-size: 24rpx; text-align: right; }
+.news-form-unit { flex: none; color: var(--ink2); font-size: 23rpx; }
+.news-form-picker-value { flex: 1; min-width: 0; display: flex; flex-direction: row; align-items: center; justify-content: flex-end; gap: 8rpx; }
+.news-form-picker-value text { color: var(--ink); font-size: 24rpx; }
+.news-form-picker-value text.placeholder { color: var(--muted); }
+.news-form-chevron { color: var(--muted); font-size: 28rpx; line-height: 1; }
+.news-form-textarea { width: 100%; min-height: 160rpx; margin-top: 22rpx; padding: 20rpx; box-sizing: border-box; border-radius: 18rpx; background: var(--warm); color: var(--ink); font-size: 23rpx; line-height: 1.6; }
+.news-form-subtitle { margin-top: 26rpx; color: var(--ink); font-size: 24rpx; font-weight: 800; }
+.news-form-images { margin-top: 16rpx; display: flex; flex-direction: row; flex-wrap: wrap; gap: 16rpx; }
+.news-form-image-cell { position: relative; width: 160rpx; height: 160rpx; }
+.news-form-image { width: 160rpx; height: 160rpx; border-radius: 16rpx; background: var(--warm); }
+.news-form-image-remove { position: absolute; top: 0; right: 0; width: 40rpx; height: 40rpx; border-radius: 0 16rpx 0 16rpx; background: rgba(12, 19, 19, .46); color: var(--text-invert); font-size: 20rpx; text-align: center; line-height: 40rpx; }
+.news-form-image-add { width: 160rpx; height: 160rpx; border-radius: 16rpx; background: var(--warm); border: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6rpx; }
+.news-form-image-add-glyph { color: var(--muted); font-size: 40rpx; line-height: 40rpx; }
+.news-form-image-add-label { color: var(--muted); font-size: 19rpx; }
+.news-form-error { display: block; margin-top: 16rpx; }
+.news-form-submit { margin-top: 30rpx; height: 88rpx; border-radius: 18rpx; background: linear-gradient(135deg, var(--review-purple), var(--plane-purple)); display: flex; flex-direction: row; align-items: center; justify-content: center; }
+.news-form-submit text { color: var(--text-invert); font-size: 27rpx; font-weight: 800; }
+.news-form-submit:active { opacity: .88; }
+.news-form-submit.disabled { opacity: .56; }
+
+/* 赠送锦旗：预览就是绘制用的 canvas，尺寸与 utils/pennant-drawer.uts 的入参一致 */
+.pennant-preview { margin-top: 22rpx; display: flex; flex-direction: row; justify-content: center; }
+.pennant-canvas { border-radius: 12rpx; }
+.pennant-hint { display: block; margin-top: 16rpx; color: var(--muted); font-size: 20rpx; line-height: 1.5; }
 </style>

@@ -35,7 +35,8 @@ export {
   mockBlockedUserIds,
   mockApplyStates,
   mockLikedUserIds,
-  mockCurrentCity
+  mockCurrentCity,
+  demoFallbackActivities
 } from './community.uts'
 
 // 客服与帮助相关
@@ -63,6 +64,9 @@ export {
   mockMatchmakerManagementCenterSnapshot,
   mockMatchmakerWorkspaceIntroductions,
   mockMatchmakerWorkspaceMeetingRequests,
+  mockMatchmakerCommissionEntries,
+  mockMatchmakerCommissionRates,
+  mockMatchmakerFinanceEntries,
   mockPartnerCenterSnapshot,
   mockPromoterCenterSnapshot,
   mockMatchmakerReviewMembers,

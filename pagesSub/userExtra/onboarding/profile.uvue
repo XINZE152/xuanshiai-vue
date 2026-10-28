@@ -370,7 +370,9 @@
 		const birthday = selections.value[1]
 		const heightText = selections.value[4].replace('cm', '')
 		const weightText = selections.value[5].replace('kg', '')
-		const educationMap: any = { '大专': 4, '本科': 3, '硕士': 2, '博士': 1, '高中': 5, '技校': 6, '初中': 7, '小学': 8 }
+		// education_level 存储刻度：1=高中及以下 … 5=博士（后端筛选、档案编辑页同一套），
+		// 小学/初中/技校/高中都归最低档「高中及以下」。
+		const educationMap: any = { '小学': 1, '初中': 1, '技校': 1, '高中': 1, '大专': 2, '本科': 3, '硕士': 4, '博士': 5 }
 		const marriageMap: any = { '未婚': 1, '离异': 2, '丧偶': 3 }
 		const incomeMap: any = { '小于10w': 50000, '10-20w': 150000, '30-50w': 400000, '50-100w': 750000, '100w以上': 1000000 }
 		const rawPayload: any = {

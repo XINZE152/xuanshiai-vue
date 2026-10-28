@@ -27,6 +27,136 @@
 				</view>
 			</view>
 
+			<!-- 红娘主页：会员在个人主页看到的资料，就地展开编辑 -->
+			<view class="homepage-card">
+				<view class="homepage-head">
+					<view class="homepage-head-text">
+						<text class="homepage-title">红娘主页</text>
+						<text class="homepage-desc">{{ homepageEditing ? '保存后公开主页立即更新' : '昵称、签名、擅长领域、介绍与成功案例' }}</text>
+					</view>
+					<view v-if="!homepageEditing && homepageLoaded" class="homepage-open-btn" @tap="startHomepageEdit">
+						<text class="homepage-open-text">编辑主页</text>
+						<text class="homepage-open-arrow">›</text>
+					</view>
+				</view>
+
+				<!-- 只读预览 -->
+				<view v-if="!homepageEditing" class="homepage-preview">
+					<view class="homepage-row">
+						<text class="homepage-label">头像</text>
+						<view class="homepage-avatar-wrap">
+							<image v-if="homepage.avatar != ''" class="homepage-avatar" :src="mediaSrc(homepage.avatar)" mode="aspectFill"></image>
+							<text v-else class="ic ic-social ic-touxiang homepage-avatar-icon"></text>
+						</view>
+					</view>
+					<view class="homepage-row">
+						<text class="homepage-label">昵称</text>
+						<text class="homepage-value">{{ homepage.nickname != '' ? homepage.nickname : '未填写' }}</text>
+					</view>
+					<view class="homepage-row">
+						<text class="homepage-label">一句话签名</text>
+						<text class="homepage-value">{{ homepage.slogan != '' ? homepage.slogan : '未填写' }}</text>
+					</view>
+					<view class="homepage-row">
+						<text class="homepage-label">擅长领域</text>
+						<view v-if="homepage.specialties.length > 0" class="homepage-tags">
+							<view v-for="item in homepage.specialties" :key="'view-' + item" class="homepage-tag"><text>{{ item }}</text></view>
+						</view>
+						<text v-else class="homepage-value">未选择</text>
+					</view>
+					<view class="homepage-row">
+						<text class="homepage-label">个人介绍</text>
+						<text class="homepage-value">{{ introductionBrief }}</text>
+					</view>
+					<view class="homepage-row">
+						<text class="homepage-label">成功案例</text>
+						<text class="homepage-value">{{ homepage.cases.length > 0 ? '已展示 ' + homepage.cases.length + ' 条' : '暂未展示' }}</text>
+					</view>
+					<text v-if="!homepageLoaded && homepageHint != ''" class="homepage-hint">{{ homepageHint }}</text>
+				</view>
+
+				<!-- 展开编辑 -->
+				<view v-else class="homepage-form">
+					<view class="homepage-field">
+						<text class="homepage-field-label">头像</text>
+						<view class="homepage-avatar-row">
+							<view class="homepage-avatar-wrap" @tap="chooseAvatar">
+								<image v-if="formAvatar != ''" class="homepage-avatar" :src="mediaSrc(formAvatar)" mode="aspectFill"></image>
+								<text v-else class="ic ic-social ic-touxiang homepage-avatar-icon"></text>
+							</view>
+							<text class="homepage-note">点头像更换；上传成功后公开主页同步生效</text>
+						</view>
+					</view>
+
+					<view class="homepage-field">
+						<text class="homepage-field-label">昵称</text>
+						<input class="homepage-input" :value="formNickname" maxlength="64" placeholder="展示在主页顶部" @input="onNicknameInput" />
+					</view>
+
+					<view class="homepage-field">
+						<text class="homepage-field-label">一句话签名</text>
+						<input class="homepage-input" :value="formSlogan" maxlength="64" placeholder="例如：认真牵线，对每一次遇见负责" @input="onSloganInput" />
+						<text class="homepage-counter">{{ formSlogan.length }}/64</text>
+					</view>
+
+					<view class="homepage-field">
+						<text class="homepage-field-label">擅长领域</text>
+						<view class="homepage-chip-grid">
+							<view
+								v-for="item in specialtyChoices"
+								:key="'edit-' + item"
+								class="homepage-chip"
+								:class="{ selected: formSpecialties.indexOf(item) >= 0 }"
+								@tap="toggleSpecialty(item)"
+							>
+								<text>{{ item }}</text>
+							</view>
+						</view>
+						<text class="homepage-counter">已选 {{ formSpecialties.length }}/5</text>
+					</view>
+
+					<view class="homepage-field">
+						<text class="homepage-field-label">个人介绍</text>
+						<textarea class="homepage-textarea" :value="formIntroduction" maxlength="2000" placeholder="介绍你的服务经历与风格，10-2000 字" @input="onIntroductionInput" />
+						<text class="homepage-counter">{{ formIntroduction.length }}/2000</text>
+					</view>
+
+					<view class="homepage-field">
+						<text class="homepage-field-label">成功案例</text>
+						<view v-for="(caseItem, caseIndex) in formCases" :key="'case-' + caseIndex" class="homepage-case">
+							<view class="homepage-case-head">
+								<text class="homepage-case-title">案例 {{ caseIndex + 1 }}</text>
+								<text class="homepage-case-remove" @tap="removeCase(caseIndex)">删除</text>
+							</view>
+							<textarea
+								class="homepage-textarea"
+								:value="caseItem.description"
+								maxlength="1000"
+								placeholder="这条案例怎么帮到双方，1000 字以内，注意脱敏"
+								@input="(e: any) => onCaseDescription(caseIndex, e)"
+							/>
+							<view class="homepage-case-images">
+								<view v-for="(image, imageIndex) in caseItem.images" :key="'img-' + imageIndex" class="homepage-image-item">
+									<image class="homepage-image-preview" :src="mediaSrc(image)" mode="aspectFill"></image>
+									<view class="homepage-image-remove" @tap="removeCaseImage(caseIndex, imageIndex)"><text>×</text></view>
+								</view>
+								<view v-if="caseItem.images.length < 3" class="homepage-image-add" @tap="chooseCaseImage(caseIndex)">
+									<text class="homepage-image-plus">+</text>
+								</view>
+							</view>
+						</view>
+						<view v-if="formCases.length < 3" class="homepage-case-add" @tap="addCase"><text>+ 添加案例（最多 3 条）</text></view>
+					</view>
+
+					<text v-if="homepageError != ''" class="homepage-error">{{ homepageError }}</text>
+
+					<view class="homepage-actions">
+						<view class="homepage-action homepage-action-cancel" @tap="cancelHomepageEdit"><text>取消</text></view>
+						<view class="homepage-action homepage-action-save" @tap="saveHomepage"><text>{{ homepageSaving ? '保存中' : '保存主页' }}</text></view>
+					</view>
+				</view>
+			</view>
+
 			<!-- 菜单卡片：主菜单与底部菜单同卡连续排列，中间以分隔线断组（避免两卡分离的割裂感） -->
 			<view class="menu-card">
 				<view class="menu-row" v-for="item in mainMenuItems" :key="item.label" @tap="handleMenuItem(item)">
@@ -81,8 +211,14 @@
 </template>
 
 <script setup lang="uts">
-import { ref } from 'vue'
-import { getProfileOverview } from '@/api'
+import { computed, ref } from 'vue'
+import {
+	getProfileOverview,
+	getMatchmakerWorkspaceHomepage,
+	updateMatchmakerWorkspaceHomepage,
+	uploadUserProfileMedia,
+	uploadWorkspaceLeadPhoto,
+} from '@/api'
 import { resolveMediaUrl } from '@/api/config.uts'
 
 // 红娘管理中心「我的账号」子页面：与会员端「我的」页共用同一账号数据，
@@ -107,6 +243,358 @@ const loadOverview = async () => {
 		user.value.avatar = resolveMediaUrl(avatar)
 	} catch (error) {
 		console.error('[MyAccount] overview load failed', error)
+	}
+}
+
+// ===== 红娘主页编辑 =====
+// 资料落在入驻申请表（user_matchmaker_apply），公开主页与后台红娘编辑读同一份；
+// 头像走会员侧头像接口，上传即生效，不参与主页保存。
+interface HomepageCaseItem {
+	description: string
+	images: string[]
+}
+
+interface HomepageData {
+	nickname: string
+	avatar: string
+	slogan: string
+	specialties: string[]
+	introduction: string
+	cases: HomepageCaseItem[]
+}
+
+const SPECIALTY_OPTIONS = [
+	'高知青年',
+	'同城牵线',
+	'离异再婚',
+	'大龄脱单',
+	'海归交友',
+	'理工专属',
+	'情感修复',
+	'婚前辅导',
+	'沟通指导',
+	'形象建议',
+	'约会策划',
+	'家庭关系',
+]
+
+const homepage = ref<HomepageData>({
+	nickname: '',
+	avatar: '',
+	slogan: '',
+	specialties: [] as string[],
+	introduction: '',
+	cases: [] as HomepageCaseItem[],
+})
+const homepageLoaded = ref(false)
+const homepageEditing = ref(false)
+const homepageSaving = ref(false)
+const homepageError = ref('')
+const homepageHint = ref('')
+
+const formAvatar = ref('')
+const formNickname = ref('')
+const formSlogan = ref('')
+const formSpecialties = ref<string[]>([])
+const formIntroduction = ref('')
+const formCases = ref<HomepageCaseItem[]>([])
+
+const mediaSrc = (value: any): string => resolveMediaUrl(value)
+
+const normalizeText = (value: any): string => value != null ? ('' + value).trim() : ''
+
+const toCaseList = (raw: any): HomepageCaseItem[] => {
+	const source = Array.isArray(raw) ? (raw as any[]) : []
+	const list: HomepageCaseItem[] = []
+	for (let i = 0; i < source.length; i++) {
+		const item = source[i]
+		if (item == null) continue
+		const images: string[] = []
+		const rawImages = item.images != null && Array.isArray(item.images) ? (item.images as any[]) : []
+		for (let j = 0; j < rawImages.length; j++) {
+			const url = normalizeText(rawImages[j])
+			if (url.length > 0) images.push(url)
+		}
+		list.push({ description: normalizeText(item.description), images: images })
+	}
+	return list
+}
+
+const toTagList = (raw: any): string[] => {
+	const source = Array.isArray(raw) ? (raw as any[]) : []
+	const list: string[] = []
+	for (let i = 0; i < source.length; i++) {
+		const tag = normalizeText(source[i])
+		if (tag.length > 0) list.push(tag)
+	}
+	return list
+}
+
+const fillForm = () => {
+	formAvatar.value = homepage.value.avatar
+	formNickname.value = homepage.value.nickname
+	formSlogan.value = homepage.value.slogan
+	formSpecialties.value = homepage.value.specialties.map((item: string): string => item)
+	formIntroduction.value = homepage.value.introduction
+	formCases.value = toCaseList(homepage.value.cases)
+	homepageError.value = ''
+}
+
+const loadHomepage = async () => {
+	try {
+		const res = await getMatchmakerWorkspaceHomepage()
+		if (res.success && res.data != null) {
+			const data = res.data as any
+			homepage.value = {
+				nickname: normalizeText(data.nickname),
+				avatar: normalizeText(data.avatar),
+				slogan: normalizeText(data.slogan),
+				specialties: toTagList(data.specialties),
+				introduction: data.introduction != null ? '' + data.introduction : '',
+				cases: toCaseList(data.cases),
+			}
+			homepageLoaded.value = true
+			homepageHint.value = ''
+			if (!homepageEditing.value) fillForm()
+			return
+		}
+		homepageHint.value = normalizeText(res.message).length > 0 ? normalizeText(res.message) : '红娘主页资料读取失败，请重试'
+	} catch (error) {
+		console.error('[MyAccount] homepage load failed', error)
+		homepageHint.value = '红娘主页资料读取失败，请重试'
+	}
+}
+
+const introductionBrief = computed((): string => {
+	if (homepage.value.introduction.length == 0) return '未填写'
+	if (homepage.value.introduction.length <= 60) return homepage.value.introduction
+	return homepage.value.introduction.substring(0, 60) + '…'
+})
+
+// 已选项可能来自后台自定义，需要一并渲染，否则保存时会丢掉原值
+const specialtyChoices = computed((): string[] => {
+	const list: string[] = SPECIALTY_OPTIONS.map((item: string): string => item)
+	const selected = formSpecialties.value
+	for (let i = 0; i < selected.length; i++) {
+		if (list.indexOf(selected[i]) < 0) list.push(selected[i])
+	}
+	return list
+})
+
+const sameTags = (left: string[], right: string[]): boolean => {
+	if (left.length != right.length) return false
+	for (let i = 0; i < left.length; i++) {
+		if (left[i] != right[i]) return false
+	}
+	return true
+}
+
+const casesSignature = (items: HomepageCaseItem[]): string => {
+	const parts: string[] = []
+	for (let i = 0; i < items.length; i++) {
+		parts.push(items[i].description.trim() + ' @ ' + items[i].images.join(','))
+	}
+	return parts.join(' | ')
+}
+
+const startHomepageEdit = async () => {
+	if (!homepageLoaded.value) {
+		await loadHomepage()
+		if (!homepageLoaded.value) {
+			uni.showToast({ title: homepageHint.value, icon: 'none' })
+			return
+		}
+	}
+	fillForm()
+	homepageEditing.value = true
+}
+
+const cancelHomepageEdit = () => {
+	fillForm()
+	homepageEditing.value = false
+}
+
+const chooseAvatar = () => {
+	uni.chooseImage({
+		count: 1,
+		sizeType: ['compressed'],
+		sourceType: ['album', 'camera'],
+		success: async (res: any) => {
+			const paths = res.tempFilePaths != null ? (res.tempFilePaths as string[]) : []
+			if (paths.length == 0) return
+			uni.showLoading({ title: '上传中' })
+			try {
+				const up = await uploadUserProfileMedia(paths[0], 'avatar')
+				uni.hideLoading()
+				if (up.success && up.data != null) {
+					const url = normalizeText((up.data as any).file_url)
+					if (url.length > 0) {
+						formAvatar.value = url
+						homepage.value.avatar = url
+						loadOverview()
+						uni.showToast({ title: '头像已更新', icon: 'success' })
+						return
+					}
+				}
+				uni.showToast({ title: up.message != null && '' + up.message != '' ? '' + up.message : '头像上传失败', icon: 'none' })
+			} catch (error) {
+				uni.hideLoading()
+				console.error('[MyAccount] avatar upload failed', error)
+				uni.showToast({ title: '头像上传失败，请重试', icon: 'none' })
+			}
+		}
+	})
+}
+
+const chooseCaseImage = (caseIndex: number) => {
+	if (caseIndex < 0 || caseIndex >= formCases.value.length) return
+	const remain = 3 - formCases.value[caseIndex].images.length
+	if (remain <= 0) {
+		uni.showToast({ title: '每条案例最多 3 张图', icon: 'none' })
+		return
+	}
+	uni.chooseImage({
+		count: remain,
+		sizeType: ['compressed'],
+		sourceType: ['album', 'camera'],
+		success: async (res: any) => {
+			const paths = res.tempFilePaths != null ? (res.tempFilePaths as string[]) : []
+			if (paths.length == 0) return
+			uni.showLoading({ title: '上传中' })
+			try {
+				for (let i = 0; i < paths.length; i++) {
+					const up = await uploadWorkspaceLeadPhoto(paths[i])
+					const url = up.success && up.data != null ? normalizeText((up.data as any).url) : ''
+					if (url.length == 0) {
+						uni.showToast({ title: up.message != null && '' + up.message != '' ? '' + up.message : '案例图片上传失败', icon: 'none' })
+						continue
+					}
+					formCases.value[caseIndex].images.push(url)
+				}
+			} catch (error) {
+				console.error('[MyAccount] case image upload failed', error)
+				uni.showToast({ title: '案例图片上传失败，请重试', icon: 'none' })
+			} finally {
+				uni.hideLoading()
+			}
+		}
+	})
+}
+
+const removeCaseImage = (caseIndex: number, imageIndex: number) => {
+	if (caseIndex < 0 || caseIndex >= formCases.value.length) return
+	formCases.value[caseIndex].images.splice(imageIndex, 1)
+}
+
+const onNicknameInput = (e: any) => { formNickname.value = e.detail.value }
+const onSloganInput = (e: any) => { formSlogan.value = e.detail.value }
+const onIntroductionInput = (e: any) => { formIntroduction.value = e.detail.value }
+
+const onCaseDescription = (caseIndex: number, e: any) => {
+	if (caseIndex >= 0 && caseIndex < formCases.value.length) {
+		formCases.value[caseIndex].description = e.detail.value
+	}
+}
+
+const toggleSpecialty = (item: string) => {
+	const idx = formSpecialties.value.indexOf(item)
+	if (idx >= 0) {
+		formSpecialties.value.splice(idx, 1)
+		return
+	}
+	if (formSpecialties.value.length >= 5) {
+		uni.showToast({ title: '擅长领域最多选 5 项', icon: 'none' })
+		return
+	}
+	formSpecialties.value.push(item)
+}
+
+const addCase = () => {
+	if (formCases.value.length >= 3) {
+		uni.showToast({ title: '成功案例最多 3 条', icon: 'none' })
+		return
+	}
+	formCases.value.push({ description: '', images: [] as string[] })
+}
+
+const removeCase = (caseIndex: number) => {
+	if (caseIndex < 0 || caseIndex >= formCases.value.length) return
+	formCases.value.splice(caseIndex, 1)
+}
+
+const saveHomepage = async () => {
+	if (homepageSaving.value) return
+	homepageError.value = ''
+
+	const nickname = formNickname.value.trim()
+	const slogan = formSlogan.value.trim()
+	const introduction = formIntroduction.value.trim()
+	const tags = toTagList(formSpecialties.value)
+	const cases = toCaseList(formCases.value)
+
+	if (nickname.length == 0 || nickname.length > 64) {
+		homepageError.value = '昵称需为 1-64 个字'
+		return
+	}
+	if (slogan.length > 64) {
+		homepageError.value = '一句话签名不能超过 64 个字'
+		return
+	}
+	if (introduction.length > 0 && introduction.length < 10) {
+		homepageError.value = '个人介绍至少 10 个字'
+		return
+	}
+	for (let i = 0; i < cases.length; i++) {
+		if (cases[i].description.length == 0) {
+			homepageError.value = '第 ' + (i + 1) + ' 条案例还没有描述，请补全或删除'
+			return
+		}
+	}
+
+	const changes: any = {}
+	let dirty = false
+	if (nickname != homepage.value.nickname) {
+		changes.nickname = nickname
+		dirty = true
+	}
+	if (slogan != homepage.value.slogan) {
+		changes.slogan = slogan
+		dirty = true
+	}
+	if (!sameTags(tags, homepage.value.specialties)) {
+		changes.specialties = tags
+		dirty = true
+	}
+	if (introduction != homepage.value.introduction) {
+		changes.introduction = introduction
+		dirty = true
+	}
+	if (casesSignature(cases) != casesSignature(homepage.value.cases)) {
+		changes.cases = cases
+		dirty = true
+	}
+	if (!dirty) {
+		uni.showToast({ title: '没有需要保存的修改', icon: 'none' })
+		homepageEditing.value = false
+		return
+	}
+
+	homepageSaving.value = true
+	try {
+		const res = await updateMatchmakerWorkspaceHomepage(changes)
+		homepageSaving.value = false
+		if (res.success) {
+			homepageEditing.value = false
+			await loadHomepage()
+			loadOverview()
+			uni.showToast({ title: '主页已更新', icon: 'success' })
+			return
+		}
+		homepageError.value = normalizeText(res.message).length > 0 ? normalizeText(res.message) : '保存失败，请重试'
+	} catch (error) {
+		homepageSaving.value = false
+		console.error('[MyAccount] homepage save failed', error)
+		homepageError.value = '保存失败，请重试'
 	}
 }
 
@@ -198,7 +686,10 @@ const bottomMenuItems = [
 	{ iconClass: 'ic ic-sys ic-shiming', iconBg: '#FEF3E4', label: '安全中心', url: '/pagesSub/profileExtra/security', action: onSecurity },
 ]
 
-onLoad(() => { loadOverview() })
+onLoad(() => {
+	loadOverview()
+	loadHomepage()
+})
 </script>
 
 <style>
@@ -339,6 +830,387 @@ page {
 	font-size: 13px;
 	color: var(--profile-accent);
 	line-height: 1.4;
+}
+
+/* ==================== 红娘主页卡片 ==================== */
+.homepage-card {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	width: 100%;
+	padding: 16px;
+	box-sizing: border-box;
+	background-color: var(--profile-card);
+	border-radius: 16px;
+}
+
+.homepage-head {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 12px;
+}
+
+.homepage-head-text {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.homepage-title {
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--profile-text);
+}
+
+.homepage-desc {
+	font-size: 12px;
+	color: var(--profile-text-secondary);
+	line-height: 1.4;
+}
+
+/* 与「编辑资料」同款描边胶囊，两处入口视觉一致 */
+.homepage-open-btn {
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 3px;
+	padding: 6px 12px;
+	border: 1px solid var(--profile-accent);
+	border-radius: 999px;
+	background-color: var(--profile-card);
+}
+
+.homepage-open-text {
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--profile-accent);
+	line-height: 1.4;
+}
+
+.homepage-open-arrow {
+	font-size: 13px;
+	color: var(--profile-accent);
+	line-height: 1.4;
+}
+
+/* ---------- 只读预览 ---------- */
+.homepage-preview {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.homepage-row {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 10px;
+	width: 100%;
+}
+
+.homepage-label {
+	width: 76px;
+	flex-shrink: 0;
+	font-size: 13px;
+	color: var(--profile-text-secondary);
+	line-height: 1.6;
+}
+
+.homepage-value {
+	flex: 1;
+	font-size: 13px;
+	color: var(--profile-text);
+	line-height: 1.6;
+}
+
+.homepage-tags {
+	flex: 1;
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.homepage-tag {
+	padding: 3px 8px;
+	border-radius: 8px;
+	background-color: #F1F5EF;
+}
+
+.homepage-tag text {
+	font-size: 12px;
+	color: #5E7659;
+}
+
+.homepage-avatar-wrap {
+	width: 44px;
+	height: 44px;
+	border-radius: 22px;
+	background-color: var(--profile-rose);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	overflow: hidden;
+}
+
+.homepage-avatar {
+	width: 100%;
+	height: 100%;
+	border-radius: 50%;
+}
+
+.homepage-avatar-icon {
+	font-size: 20px;
+	color: var(--profile-text-inverse);
+}
+
+.homepage-hint {
+	font-size: 12px;
+	color: #B4763A;
+	line-height: 1.5;
+}
+
+/* ---------- 展开编辑 ---------- */
+.homepage-form {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.homepage-field {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.homepage-field-label {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--profile-text);
+}
+
+.homepage-avatar-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 10px;
+}
+
+.homepage-note {
+	flex: 1;
+	font-size: 11px;
+	color: var(--profile-text-muted);
+	line-height: 1.5;
+}
+
+.homepage-input {
+	width: 100%;
+	height: 40px;
+	padding: 0 12px;
+	box-sizing: border-box;
+	border: 1px solid #EDE8E2;
+	border-radius: 10px;
+	background-color: #FCFBF9;
+	font-size: 14px;
+	color: var(--profile-text);
+}
+
+.homepage-textarea {
+	width: 100%;
+	min-height: 90px;
+	padding: 10px 12px;
+	box-sizing: border-box;
+	border: 1px solid #EDE8E2;
+	border-radius: 10px;
+	background-color: #FCFBF9;
+	font-size: 13px;
+	line-height: 1.6;
+	color: var(--profile-text);
+}
+
+.homepage-counter {
+	font-size: 11px;
+	color: var(--profile-text-muted);
+	text-align: right;
+}
+
+/* 选中态只改颜色与描边色，边框常驻，避免胶囊变宽导致整行重排 */
+.homepage-chip-grid {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.homepage-chip {
+	padding: 7px 12px;
+	border: 1px solid #EDE8E2;
+	border-radius: 999px;
+	background-color: #FCFBF9;
+}
+
+.homepage-chip text {
+	font-size: 12px;
+	color: var(--profile-text-secondary);
+}
+
+.homepage-chip.selected {
+	border-color: var(--profile-accent);
+	background-color: #EDF3EA;
+}
+
+.homepage-chip.selected text {
+	color: #526B4D;
+}
+
+.homepage-case {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 12px;
+	border: 1px solid #F0EDE8;
+	border-radius: 12px;
+	background-color: #FBFAF8;
+}
+
+.homepage-case-head {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+}
+
+.homepage-case-title {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--profile-text-secondary);
+}
+
+.homepage-case-remove {
+	margin-left: auto;
+	padding: 2px 10px;
+	border-radius: 999px;
+	background-color: #F3EEF0;
+	font-size: 12px;
+	color: #B4763A;
+}
+
+.homepage-case-images {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.homepage-image-item {
+	position: relative;
+	width: 64px;
+	height: 64px;
+	border-radius: 8px;
+	overflow: hidden;
+}
+
+.homepage-image-preview {
+	width: 100%;
+	height: 100%;
+}
+
+.homepage-image-remove {
+	position: absolute;
+	top: 0;
+	right: 0;
+	width: 20px;
+	height: 20px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: rgba(0, 0, 0, 0.45);
+	border-bottom-left-radius: 8px;
+}
+
+.homepage-image-remove text {
+	font-size: 13px;
+	color: #FFFFFF;
+	line-height: 1;
+}
+
+.homepage-image-add {
+	width: 64px;
+	height: 64px;
+	border: 1px dashed #D8D2CA;
+	border-radius: 8px;
+	background-color: #FFFFFF;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.homepage-image-plus {
+	font-size: 20px;
+	color: var(--profile-text-muted);
+	line-height: 1;
+}
+
+.homepage-case-add {
+	height: 38px;
+	border: 1px dashed var(--profile-accent);
+	border-radius: 10px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.homepage-case-add text {
+	font-size: 12px;
+	color: var(--profile-accent);
+}
+
+.homepage-error {
+	font-size: 12px;
+	color: #C4574E;
+	line-height: 1.5;
+}
+
+.homepage-actions {
+	display: flex;
+	flex-direction: row;
+	gap: 10px;
+}
+
+.homepage-action {
+	flex: 1;
+	height: 42px;
+	border-radius: 999px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.homepage-action text {
+	font-size: 14px;
+}
+
+.homepage-action-cancel {
+	border: 1px solid #E2DCD4;
+	background-color: var(--profile-card);
+}
+
+.homepage-action-cancel text {
+	color: var(--profile-text-secondary);
+}
+
+.homepage-action-save {
+	background-color: var(--profile-accent);
+}
+
+.homepage-action-save text {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--profile-text-inverse);
 }
 
 /* ==================== 菜单卡片 ==================== */

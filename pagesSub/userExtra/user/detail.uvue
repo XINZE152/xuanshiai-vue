@@ -471,7 +471,9 @@ const mapDetailUser = (raw: any, id: number) => {
 	const missing = '未填写'
 	const age = value(card.age, profile.age, missing)
 	const educationLabel = (level: any): string => {
-		const labels = ['', '博士', '硕士', '本科', '大专', '高中', '中专', '初中', '小学']
+		// education_level 的存储刻度（与后端 EDUCATION_LEVEL_LABELS、档案编辑页
+		// educationOptions 下标、发现页筛选一致）：1=高中及以下 … 5=博士。
+		const labels = ['', '高中及以下', '大专', '本科', '硕士', '博士']
 		if (level == null || level === '') return ''
 		const text = '' + level
 		const index = Number(text)
@@ -492,7 +494,21 @@ const mapDetailUser = (raw: any, id: number) => {
 	const incomeValue = firstField(profile, ['income_display', 'income', 'salary']) || firstField(card, ['income_display', 'income', 'salary']) || firstField(envelope, ['income_display', 'income', 'salary'])
 	const income = formatIncome(incomeValue)
 	const marriageStatus = card.is_married != null ? card.is_married : profile.is_married
-	const marriage = value(card.marriage, marriageStatus == 1 ? '未婚' : marriageStatus == 2 ? '离异' : marriageStatus == 3 ? '丧偶' : null, '未填写')
+	// users.is_married 编码：1 未婚 2 离异 3 丧偶，4-7 是离异的细分档（与资料待审卡片同口径）。
+	const marriageText = (status: any): string | null => {
+		if (status == null || status === '') return null
+		const code = Number(status)
+		if (isNaN(code)) return null
+		if (code == 1) return '未婚'
+		if (code == 2) return '离异'
+		if (code == 3) return '丧偶'
+		if (code == 4) return '离婚未育'
+		if (code == 5) return '离异未带孩'
+		if (code == 6) return '离异带女孩'
+		if (code == 7) return '离异带男孩'
+		return null
+	}
+	const marriage = value(card.marriage, marriageText(marriageStatus), '未填写')
 	const mbti = value(card.mbti, profile.mbti, '未填写')
 	const activeStatus = value(card.activeStatus, card.active_status, '未填写')
 	const avatar = resolveMediaUrl(value(card.avatar, profile.avatar, value(envelope.avatar, account.avatar, '')))

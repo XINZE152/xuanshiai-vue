@@ -23,8 +23,8 @@
 
 							<!-- 服务价格 -->
 							<view v-if="matchmaker.price != null" class="price-row">
-								<text class="price-value">¥{{ matchmaker.price || 199 }}</text>
-								<text class="price-unit">/{{ matchmaker.priceUnit || '次' }}</text>
+								<text class="price-value">¥{{ matchmaker.price }}</text>
+								<text class="price-unit">/{{ matchmaker.priceUnit }}</text>
 							</view>
 							<text v-else class="price-pending">服务套餐定价以支付页为准</text>
 						</view>
@@ -76,7 +76,7 @@
 				<scroll-view v-if="displayCases.length > 0" scroll-x enhanced :enable-flex="true" class="case-scroll" :show-scrollbar="false" @scroll="handleCaseScroll" @scrollend="handleCaseScrollEnd">
 					<view class="case-list" :style="'width: ' + caseListWidth + 'rpx;'">
 						<view v-for="(item, caseIdx) in displayCases" :key="item._id || item.title" class="case-card" @click="viewCaseDetail(item)">
-							<image class="case-image" :src="item.image || item.images[0]" mode="aspectFill"></image>
+							<image class="case-image" :src="item.image" mode="aspectFill"></image>
 							<view class="case-body">
 								<text class="case-copy">{{ caseSummary(item.summary || item.story || item.copy || item.matchmakerComment) }}</text>
 							</view>
@@ -110,7 +110,7 @@
 						<scroll-view scroll-y class="cases-modal-scroll" :show-scrollbar="false">
 							<view class="cases-modal-list">
 								<view v-for="item in displayCases" :key="'all-' + (item._id || item.title)" class="cases-modal-card" @click="viewCaseDetail(item)">
-									<image class="cases-modal-image" :src="item.image || item.images[0]" mode="aspectFit"></image>
+									<image class="cases-modal-image" :src="item.image" mode="aspectFit"></image>
 									<view class="cases-modal-body">
 										<text class="cases-modal-copy">{{ caseSummary(item.summary || item.story || item.copy || item.matchmakerComment) }}</text>
 									</view>
@@ -150,138 +150,72 @@ import XsaToast from '@/components/XsaToast.uvue'
 import MatchmakerAvatar from '@/components/MatchmakerAvatar.uvue'
 import { getServiceMatchmakers, getCustomMatchmakers, getMatchmakerDetail } from '@/api'
 
-const matchmakerCaseImageA = '/pagesSub/matchmaker/static/cases/wuhan-zhou-zheng.webp'
-const matchmakerCaseImageB = '/pagesSub/matchmaker/static/cases/shenzhen-zhang-liu.webp'
-
-const fallbackMatchmaker = {
-	id: 1,
-	name: '沈知意',
-	avatar: '/static/portraits/profile-woman-main.webp',
-	gender: 'female',
-	age: 35,
-	city: '杭州',
-	title: '金牌红娘',
-	certification: true,
-	slogan: '认真牵线，对每一次遇见负责',
-	specialties: ['高知青年', '关系澄清', '首次见面', '长期关系'],
-	price: 199,
-	priceUnit: '次',
-	introduction: '国家三级婚姻家庭咨询师，6 年婚恋服务经验。擅长帮助第一次认真使用婚恋产品的用户梳理边界、安排见面节奏。重视资料真实性与沟通质量，不追求快速匹配，更关注双方在关系目标和生活节奏上的契合度。',
-	serviceCount: 320,
-	successCount: 89,
-	isOnline: true,
-	status: 'online',
-	caseRecord: '近 3 个月帮助 96 位用户进入稳定了解阶段，其中 32 对已进入深入交往。'
-}
-
-const matchmaker = ref<any>(fallbackMatchmaker)
+// 红娘主页资料全部来自服务端（入驻申请表），这里只保留空壳等待填充
+const matchmaker = ref<any>({
+	id: 0,
+	name: '加载中…',
+	avatar: '',
+	city: '',
+	title: '',
+	slogan: '',
+	specialties: [] as string[],
+	introduction: '',
+	price: null,
+	priceUnit: '',
+	serviceCount: 0,
+	successCount: 0,
+	isOnline: false,
+	certification: false,
+	caseRecord: '',
+	cases: [] as any[]
+})
 const introExpanded = ref(false)
 const allCasesModalVisible = ref(false)
 const toastVisible = ref(false)
 const toastMessage = ref('')
 
-const displayCases = ref<any[]>([
-	{
-		_id: 'case_001',
-		title: '稳步了解后的确定',
-		matchTime: '2025-12',
-		image: matchmakerCaseImageA,
-		images: [matchmakerCaseImageA],
-		story: '先明确双方的生活节奏与关系边界，再安排循序渐进的见面，让彼此在稳定沟通中确认长期方向。',
-		feedback: '节奏安排得很舒服，我们都能做自己',
-		matchmakerComment: '匹配不是催促，而是让合适的节奏自然发生',
-		tags: ['节奏匹配', '同城']
-	},
-	{
-		_id: 'case_002',
-		title: '异地关系的共同选择',
-		matchTime: '2025-10',
-		image: matchmakerCaseImageB,
-		images: [matchmakerCaseImageB],
-		story: '红娘帮助双方把工作安排、城市规划和沟通频率逐项说清，减少猜测后共同做出了下一步选择。',
-		feedback: '关键问题说开之后，关系一下清晰了',
-		matchmakerComment: '异地不怕距离，怕的是没有共同的行动计划',
-		tags: ['异地', '行动计划']
-	},
-	{
-		_id: 'case_003',
-		title: '慢热关系的安心感',
-		matchTime: '2025-08',
-		image: matchmakerCaseImageA,
-		images: [matchmakerCaseImageA],
-		story: '两位用户都偏慢热，红娘在每次见面后协助复盘，让他们更清楚地感受到彼此的可靠与默契。',
-		feedback: '不着急反而更能看见彼此的好',
-		matchmakerComment: '好的关系经得起时间，也值得被耐心对待',
-		tags: ['慢热', '复盘沟通']
-	}
-])
-
-const fallbackCasesForMatchmaker = (matchmakerId: number): any[] => {
-	if (matchmakerId == 1) return displayCases.value
-	if (matchmakerId == 2) {
-		return [
-			{
-				_id: 'service-2-case-1', title: '忙碌生活里的高效匹配', matchTime: '2025-09',
-				image: matchmakerCaseImageB, images: [matchmakerCaseImageB],
-				story: '双方工作节奏紧凑，红娘先帮助他们确定高质量沟通频率，再安排线下见面。',
-				matchmakerComment: '把有限的时间留给真正重要的了解。', tags: ['高效沟通', '同城']
-			},
-			{
-				_id: 'service-2-case-2', title: '从条件清单到真实默契', matchTime: '2025-07',
-				image: matchmakerCaseImageA, images: [matchmakerCaseImageA],
-				story: '红娘协助双方从条件筛选转向真实相处，慢慢建立起稳定的信任。',
-				matchmakerComment: '合适不只在纸面条件，更在相处的舒适感。', tags: ['资料优化', '深度沟通']
-			}
-		]
-	}
-	if (matchmakerId == 3) {
-		return [
-			{
-				_id: 'service-3-case-1', title: '第一次见面的安心感', matchTime: '2025-06',
-				image: matchmakerCaseImageB, images: [matchmakerCaseImageB],
-				story: '从资料准备到见面后的反馈，红娘陪着双方把每一步都讲得清楚、走得踏实。',
-				matchmakerComment: '安全感来自清晰沟通和被认真对待。', tags: ['初次见面', '关系边界']
-			},
-			{
-				_id: 'service-3-case-2', title: '共同目标下的双向靠近', matchTime: '2025-04',
-				image: matchmakerCaseImageB, images: [matchmakerCaseImageB],
-				story: '双方在相处中不断校准期待，最终确认了共同的长期目标。',
-				matchmakerComment: '关系的推进，需要两个人都愿意向前一步。', tags: ['长期规划', '双向沟通']
-			}
-		]
-	}
-	return []
-}
+const displayCases = ref<any[]>([])
 
 // ===== 计算属性 =====
-const specialtyTags = computed(() => {
-	const tags = matchmaker.value.specialties || matchmaker.value.tags
-	if (tags != null && tags.length > 0) {
-		return (tags as string[]).slice(0, 5)
+const specialtyTags = computed((): string[] => {
+	const raw = matchmaker.value.specialties
+	if (raw == null || !Array.isArray(raw)) return [] as string[]
+	const list: string[] = []
+	const source = raw as any[]
+	for (let i = 0; i < source.length && list.length < 5; i++) {
+		const tag = source[i] != null ? String(source[i]).trim() : ''
+		if (tag.length > 0) list.push(tag)
 	}
-	return ['高知青年', '关系澄清', '首次见面']
+	return list
 })
 
-const sloganText = computed(() => {
-	return matchmaker.value.slogan || matchmaker.value.description || ''
+const sloganText = computed((): string => {
+	return matchmaker.value.slogan != null ? String(matchmaker.value.slogan).trim() : ''
 })
 
-const fullIntroduction = computed(() => {
-	const intro = matchmaker.value.introduction || fallbackMatchmaker.introduction
-	const extra = matchmaker.value.caseRecord || ''
+const fullIntroduction = computed((): string => {
+	const intro = matchmaker.value.introduction != null ? String(matchmaker.value.introduction) : ''
+	const extra = matchmaker.value.caseRecord != null ? String(matchmaker.value.caseRecord) : ''
 	if (extra.length > 0 && intro.indexOf(extra) < 0) {
-		return intro + '\n\n' + extra
+		return intro.length > 0 ? intro + '\n\n' + extra : extra
 	}
 	return intro
 })
 
-const visibleIntroduction = computed(() => {
+const visibleIntroduction = computed((): string => {
 	const text = fullIntroduction.value
+	if (text.length == 0) return '该红娘暂未填写个人介绍'
 	if (introExpanded.value || text.length <= 72) return text
 	return text.slice(0, 72) + '…'
 })
 
-const showIntroToggle = computed(() => fullIntroduction.value.length > 72)
+const showIntroToggle = computed((): boolean => fullIntroduction.value.length > 72)
+
+const applyMatchmaker = (data: any) => {
+	if (data == null) return
+	matchmaker.value = data
+	displayCases.value = data.cases != null && Array.isArray(data.cases) ? (data.cases as any[]) : [] as any[]
+}
 
 // ===== 初始化 =====
 onMounted(async () => {
@@ -290,34 +224,39 @@ onMounted(async () => {
 	const pages = getCurrentPages()
 	const currentPage = pages[pages.length - 1]
 	const options = currentPage.options
-	const targetId = options != null && options.id != null ? parseInt(options.id) : 1
-	displayCases.value = fallbackCasesForMatchmaker(targetId)
+	const targetId = options != null && options.id != null ? parseInt(options.id) : 0
+	// 非数字的 id 解析成 NaN，用 > 0 判断同时挡住 0 和 NaN
+	if (!(targetId > 0)) {
+		uni.showToast({ title: '未指定红娘，请从列表进入', icon: 'none' })
+		return
+	}
 
 	try {
-		// 尝试加载详情
 		const detailRes = await getMatchmakerDetail(targetId)
 		if (detailRes.success && detailRes.data != null) {
-			matchmaker.value = Object.assign({}, fallbackMatchmaker, detailRes.data)
-			displayCases.value = detailRes.data.cases != null ? detailRes.data.cases as any[] : fallbackCasesForMatchmaker(targetId)
+			applyMatchmaker(detailRes.data)
 			return
 		}
 	} catch (e) {
-		// 降级到列表查找
+		console.error('[MatchmakerDetail] detail load failed', e)
 	}
 
-	// 降级：从列表匹配
+	// 详情接口不可用时退回列表查找，展示的仍然是服务端资料而不是本地样例
 	try {
 		const serviceRes = await getServiceMatchmakers()
 		const customRes = await getCustomMatchmakers()
-		const list = (serviceRes.success ? serviceRes.data as any[] : []).concat(
-			customRes.success ? customRes.data as any[] : []
-		)
+		const serviceList = serviceRes.success && serviceRes.data != null ? (serviceRes.data as any[]) : [] as any[]
+		const customList = customRes.success && customRes.data != null ? (customRes.data as any[]) : [] as any[]
+		const list = serviceList.concat(customList)
 		const item = list.find((entry: any) => entry.id == targetId)
 		if (item != null) {
-			matchmaker.value = Object.assign({}, fallbackMatchmaker, item)
+			applyMatchmaker(item)
+			return
 		}
+		uni.showToast({ title: '未找到该红娘', icon: 'none' })
 	} catch (e) {
-		uni.showToast({ title: '已展示默认红娘资料', icon: 'none' })
+		console.error('[MatchmakerDetail] list fallback failed', e)
+		uni.showToast({ title: '红娘资料加载失败，请重试', icon: 'none' })
 	}
 })
 

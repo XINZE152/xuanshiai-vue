@@ -504,6 +504,86 @@ export const mockActivities = [
   }
 ]
 
+/**
+ * 相亲活动（服务导航 → 活动列表）演示数据。
+ * 仅本机联调启用：接口无数据时回退展示，字段与 mapActivity 输出一致；
+ * id 使用 9001+ 与真实活动区分，详情页按同 id 回退。
+ */
+export const demoFallbackActivities: any[] = [
+  {
+    id: 9001,
+    title: '金秋相亲大会',
+    description: '80 后 90 后单身专场，八分钟轮换桌访加自由交流环节，红娘现场牵线。',
+    cover: PORTRAIT.community,
+    date: '2026-10-25',
+    time: '14:00',
+    location: '杭州 · 下沙全民活动中心（审核通过后告知集合点）',
+    participantCount: 86,
+    maxParticipants: 120,
+    tags: ['相亲大会', '轮换桌访'],
+    organizer: { name: '宣誓爱活动组', avatar: PORTRAIT.man, description: '负责活动审核、现场引导与安全提醒' },
+    price: 49,
+    status: 'recruiting',
+    kicker: 'OFFLINE · 10/25',
+    safetyNotes: ['仅面向已实名用户报名', '集合点审核通过后告知', '现场不交换私人联系方式'],
+    myStatus: 'none'
+  },
+  {
+    id: 9002,
+    title: '8090 脱单派对',
+    description: '破冰游戏 + 才艺开放麦，轻松氛围里认识同频的人，免费报名需实名。',
+    cover: PORTRAIT.main,
+    date: '2026-11-01',
+    time: '18:30',
+    location: '杭州 · 钱塘区 LIVE 剧场',
+    participantCount: 54,
+    maxParticipants: 80,
+    tags: ['脱单派对', '免费'],
+    organizer: { name: '宣誓爱活动组', avatar: PORTRAIT.alt, description: '负责活动审核与现场秩序' },
+    price: 0,
+    status: 'recruiting',
+    kicker: 'OFFLINE · 11/01',
+    safetyNotes: ['仅面向已实名用户报名', '公共场所内活动'],
+    myStatus: 'none'
+  },
+  {
+    id: 9003,
+    title: '家长相亲见面会',
+    description: '家长代子女相亲，资料墙自主浏览，红娘协助双方家庭沟通。',
+    cover: PORTRAIT.alt,
+    date: '2026-11-08',
+    time: '09:30',
+    location: '杭州 · 滨江区社区文化馆',
+    participantCount: 42,
+    maxParticipants: 60,
+    tags: ['家长专场', '资料墙'],
+    organizer: { name: '宣誓爱活动组', avatar: PORTRAIT.man, description: '负责资料核验与现场引导' },
+    price: 0,
+    status: 'recruiting',
+    kicker: 'OFFLINE · 11/08',
+    safetyNotes: ['仅面向已实名用户报名', '子女资料需授权后展示'],
+    myStatus: 'none'
+  },
+  {
+    id: 9004,
+    title: '城市散步交友局',
+    description: '沿运河慢走一圈，终点茶歇自由交流，小规模认真社交。',
+    cover: PORTRAIT.pose4,
+    date: '2026-10-19',
+    time: '15:00',
+    location: '杭州 · 拱宸桥运河步道',
+    participantCount: 12,
+    maxParticipants: 16,
+    tags: ['同城', '散步'],
+    organizer: { name: '宣誓爱活动组', avatar: PORTRAIT.sea, description: '负责路线引导与安全提醒' },
+    price: 39,
+    status: 'ended',
+    kicker: 'ENDED · 10/19',
+    safetyNotes: ['已结束活动仅供回看'],
+    myStatus: 'none'
+  }
+]
+
 /** 发现页入口轮播：话题 / 线下活动 / 纸飞机 */
 export const mockCommunityBanners = [
   {
