@@ -3,6 +3,9 @@
  * import { getRecommendUser, getMessageList } from '@/api'
  */
 
+// 配置开关（页面只允许从 '@/api' 取，禁止直接引 api/config.uts）
+export { EMOTION_LAB_USE_MOCK } from './config.uts'
+
 // 认证相关
 export {
   getProfileCompletion,
@@ -93,7 +96,9 @@ export {
   markConversationRead,
   setChatSessionPinned,
   hideChatSession,
-  restoreChatSession
+  restoreChatSession,
+  getMyAvatarUrl,
+  resetMyAvatarCache
 } from './message.uts'
 export {
   ADVISOR_SCENARIOS,

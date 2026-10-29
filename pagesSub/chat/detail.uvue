@@ -283,6 +283,7 @@
 	import {
 		getChatMessages,
 		getChatPermission,
+		getMyAvatarUrl,
 		getParentAccessGate,
 		getParentContext,
 		sendMessage as sendMessageApi,
@@ -333,6 +334,8 @@
 	const contactType = ref('phone')
 	const contactValue = ref('')
 	const contactExchanges = ref([] as any[])
+	// 己方头像：取真实资料头像，取不到才回退默认图（旧版写死男头像，女性账号会显示错）。
+	const myAvatar = ref('/static/portraits/profile-man-light.webp')
 	let clientMessageSequence = 0
 	let permissionRequestSequence = 0
 	let historyRequestSequence = 0
@@ -354,8 +357,14 @@
 	let aiAvatarRequestCounter = 0
 	let aiAvatarSendSequence = 0
 
+	const refreshMyAvatar = async () => {
+		const url = await getMyAvatarUrl()
+		if (url != null && url != '') myAvatar.value = url
+	}
+
 	onMounted(() => {
 		setupVoiceRecorder()
+		refreshMyAvatar()
 		const pages = getCurrentPages()
 		const currentPage = pages[pages.length - 1]
 		const options = currentPage.options
@@ -426,7 +435,7 @@
 			showTime: message.showTime == true || index == 0,
 			avatar: message.avatar != null && String(message.avatar).length > 0
 				? String(message.avatar)
-				: (message.isMine == true ? '/static/portraits/profile-man-light.webp' : '/static/portraits/profile-woman-main.webp'),
+				: (message.isMine == true ? myAvatar.value : '/static/portraits/profile-woman-main.webp'),
 			status: 'sent'
 		}))
 	}
@@ -1082,7 +1091,7 @@
 			time: getCurrentTime(),
 			showTime: false,
 			isMine: true,
-			avatar: isParentMode.value ? '' : '/static/portraits/profile-man-light.webp',
+			avatar: isParentMode.value ? '' : myAvatar.value,
 			status: 'queued',
 			errorMessage: '',
 			subjectKey: subjectKey(subject)
@@ -1119,7 +1128,7 @@
 				time: getCurrentTime(),
 				showTime: false,
 				isMine: true,
-				avatar: '/static/portraits/profile-man-light.webp',
+				avatar: myAvatar.value,
 				status: 'sending',
 				errorMessage: '',
 				subjectKey: subjectKey(subject)

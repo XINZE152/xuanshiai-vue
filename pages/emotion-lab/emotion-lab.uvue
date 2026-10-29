@@ -267,15 +267,16 @@
 			</view>
 
 			<view v-if="completedResult != null" class="sync-block">
-				<checkbox-group class="confirm-group" @change="handleAssessmentConfirmChange">
+				<checkbox-group v-if="!emotionLabLocalOnly" class="confirm-group" @change="handleAssessmentConfirmChange">
 					<label class="confirm-row">
 						<checkbox value="confirmed" :checked="assessmentConfirmed" />
 						<text class="confirm-text">我确认将本次结果同步到资料</text>
 					</label>
 				</checkbox-group>
+				<text v-else class="confirm-text">本地体验版：结果仅保存在本机，不会同步到个人资料</text>
 
-				<button class="result-sync-btn" :disabled="!assessmentConfirmed || savingProfile" @click="saveAssessmentType">
-					{{ savingProfile ? '正在同步...' : '同步本次结果' }}
+				<button class="result-sync-btn" :disabled="emotionLabLocalOnly || !assessmentConfirmed || savingProfile" @click="saveAssessmentType">
+					{{ savingProfile ? '正在同步...' : (emotionLabLocalOnly ? '同步暂未开放' : '同步本次结果') }}
 				</button>
 			</view>
 
@@ -374,8 +375,13 @@
 		saveMbtiAnswer,
 		submitMbtiAssessment,
 		discardMbtiDraft,
-		setMyMbtiType
+		setMyMbtiType,
+		EMOTION_LAB_USE_MOCK
 	} from '@/api'
+
+	// 后端 app/api/router.py 目前没有任何 /emotion-lab/* 路由（E1：本期不开放）。
+	// mock 打开时结果只存在端侧，绝不能提示"已同步"——那会让测试同学以为 MBTI 已落库。
+	const emotionLabLocalOnly = EMOTION_LAB_USE_MOCK
 
 	const loading = ref(true)
 	const starting = ref(false)
@@ -1049,6 +1055,8 @@
 				noticeMessage.value = ''
 			}
 		}
+		// E1：mock 打开时整页都是端侧题库，顶部要如实说明不同步，避免被当成已落库。
+		if (emotionLabLocalOnly && noticeMessage.value == '' && fatalError.value == '') noticeMessage.value = '情感实验室为本地体验版，测试结果不会同步到个人资料'
 		await loadMatches()
 	}
 
@@ -1315,6 +1323,15 @@
 			return
 		}
 
+		// 同 saveAssessmentType：mock 下的"已保存"也是端侧假成功。
+		if (emotionLabLocalOnly) {
+			manualResultType.value = selectedType.value
+			typeSheetVisible.value = false
+			noticeMessage.value = '情感实验室为本地体验版，所选类型只保存在本机'
+			uni.showToast({ title: '本地体验版，未同步到资料', icon: 'none' })
+			return
+		}
+
 		savingProfile.value = true
 		try {
 			const res = await setMyMbtiType({
@@ -1340,6 +1357,13 @@
 
 	const saveAssessmentType = async () => {
 		if (!assessmentConfirmed.value || completedResult.value == null) return
+		// E1：mock 模式下 setMyMbtiType 会本地返回成功，落库为零。
+		// 不拦就会再出现"提示已同步、查 /users/me/profile 却没有 MBTI"的假成功。
+		if (emotionLabLocalOnly) {
+			noticeMessage.value = '情感实验室为本地体验版，测试结果不会同步到个人资料'
+			uni.showToast({ title: '本地体验版结果，未同步到资料', icon: 'none' })
+			return
+		}
 		savingProfile.value = true
 		try {
 			const res = await setMyMbtiType({

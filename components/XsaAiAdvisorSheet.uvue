@@ -114,7 +114,8 @@ const ensureAdvisorSession = async (sequence: number, targetUserId: number, reso
   if (advisorSessionId.value > 0) return true
   const sessionRes = await createAdvisorSession('聊天回复建议', resolvedChatSessionId)
   if (!isCurrent(sequence, targetUserId, resolvedChatSessionId)) return false
-  if (!sessionRes.success || sessionRes.data == null || Number(sessionRes.data.id) <= 0) { errorMessage.value = advisorErrorMessage(Number(sessionRes.code), String(sessionRes.message)); return false }
+  // 建会话的 422 是请求参数问题（缺/短 Idempotency-Key），不能复用「内容不适合」的文案。
+  if (!sessionRes.success || sessionRes.data == null || Number(sessionRes.data.id) <= 0) { errorMessage.value = Number(sessionRes.code) == 422 ? '军师会话创建失败：请求参数异常，请重新打开军师' : advisorErrorMessage(Number(sessionRes.code), String(sessionRes.message)); return false }
   advisorSessionId.value = Number(sessionRes.data.id)
   return true
 }

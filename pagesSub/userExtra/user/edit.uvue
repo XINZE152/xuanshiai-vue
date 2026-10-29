@@ -352,6 +352,7 @@
 	import XsaProfileAiFirstAnalysis from '@/components/XsaProfileAiFirstAnalysis.uvue'
 	import { resolveMediaUrl, CURRENT_USER_ID_KEY } from '@/api/config.uts'
 	import { sleep } from '@/utils/sleep.uts'
+	import { USER_EDUCATION_OPTIONS } from '@/utils/profile-field-display.uts'
 	import { aiFailureNotice } from '@/utils/ai-error.uts'
 	import locationJson from '@/data/location.json'
 
@@ -387,7 +388,9 @@
 	}
 	const heightOptions = numericOptions(140, 220)
 	const weightOptions = numericOptions(40, 120)
-	const educationOptions = ['未选择', '高中及以下', '大专', '本科', '硕士', '博士']
+	// 学历选项与展示文案共用 utils/profile-field-display.uts 的用户资料口径（1 高中及以下 … 5 博士），
+	// 不要在此写字面量数组：历史上首页一度用了反序表，就是字典散落的直接后果。
+	const educationOptions = USER_EDUCATION_OPTIONS
 	// 与登录引导页「您从事何种工作」保持同一套枚举，最后一项「其他」允许自由填写。
 	const occupationOptions = ['请选择', '私企员工', '央企/国企', '事业单位/公务员', '外企员工', '自由职业', '创业者/个体', '教师', '医生', '律师', '金融从业', '互联网/IT', '制造业', '服务业', '在校学生', '其他']
 	const maritalOptions = ['未选择', '未婚', '离异', '丧偶']

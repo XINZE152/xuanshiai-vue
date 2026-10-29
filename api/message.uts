@@ -957,6 +957,38 @@ export async function getMessageList(
   )
 }
 
+/** 头像裸路径 → 可访问 URL；只有空串/空值才回退默认图（`??` 兜不住空串）。 */
+function resolveAvatarUrl(raw: any, fallback: string): string {
+  if (raw == null) return fallback
+  const text = ('' + raw).trim()
+  if (text == '') return fallback
+  const resolved = resolveMediaUrl(text)
+  return resolved != '' ? resolved : fallback
+}
+
+let cachedMyAvatarUrl = ''
+
+/**
+ * 己方头像：取一次 `/auth/me` 的 avatar 并缓存，历史消息与新发消息共用。
+ * 曾经己方头像写死 `profile-man-light.webp`，导致女性账号也显示男头像。
+ */
+export async function getMyAvatarUrl(): Promise<string> {
+  if (cachedMyAvatarUrl != '') return cachedMyAvatarUrl
+  if (CHAT_USE_MOCK) {
+    cachedMyAvatarUrl = DEFAULT_ME_AVATAR
+    return cachedMyAvatarUrl
+  }
+  const res = await messageRequest({ url: '/auth/me', method: 'GET' })
+  const raw = res != null && res.success == true && res.data != null ? res.data.avatar : null
+  cachedMyAvatarUrl = resolveAvatarUrl(raw, DEFAULT_ME_AVATAR)
+  return cachedMyAvatarUrl
+}
+
+/** 清空己方头像缓存（切换账号/退出登录时调用）。 */
+export function resetMyAvatarCache(): void {
+  cachedMyAvatarUrl = ''
+}
+
 /** Fetch a real chat history through the authenticated session-scoped FastAPI route. */
 export async function getChatMessages(
   userId: number,
@@ -988,7 +1020,8 @@ export async function getChatMessages(
   if (!Array.isArray(rows)) return protectSubjectResponse(failResponse('聊天记录响应无效', 'INVALID_CHAT_RESPONSE', rows), subjectContext)
   const currentUserId = currentChatUserId()
   if (!isPositiveInteger(currentUserId)) return protectSubjectResponse(failResponse('登录用户信息已失效，请重新登录', 'AUTH_REQUIRED'), subjectContext)
-  const peerAvatar = sessionRes.data.target?.avatar ?? DEFAULT_PEER_AVATAR
+  const myAvatar = await getMyAvatarUrl()
+  const peerAvatar = resolveAvatarUrl(sessionRes.data.target?.avatar, DEFAULT_PEER_AVATAR)
   const messages = rows.map((row: any) => {
     const isMine = Number(row?.from_user_id ?? 0) == currentUserId
     const type = chatMessageTypeFromBackend(row?.type)
@@ -1001,8 +1034,8 @@ export async function getChatMessages(
       time: row?.created_at ?? '',
       showTime: false,
       isMine: isMine,
-      avatar: isMine ? DEFAULT_ME_AVATAR : peerAvatar,
-      senderAvatar: isMine ? DEFAULT_ME_AVATAR : peerAvatar,
+      avatar: isMine ? myAvatar : peerAvatar,
+      senderAvatar: isMine ? myAvatar : peerAvatar,
       revoked: row?.revoked === true || row?.is_recalled === true,
       status: isMine ? 'sent' : ''
     }
