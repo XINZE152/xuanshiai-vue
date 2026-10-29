@@ -44,6 +44,9 @@ const core = [
   'test-education-label-consistency.js',
   'test-l1-contract-fixes.js',
   'test-l2-contract-fixes.js',
+  // 消息模块 A 批：长按菜单/头像兜底/置顶视觉只服务用户端主消息页，父母端组件覆盖不到。
+  'test-message-module-ui.js',
+  'test-my-tasks-real-api.js',
   // 本轮遗漏的源码级契约：首页状态诚实性、匹配固定话术、文档一致性、兴趣标签。
   'test-home-profile-state-honesty.js',
   'test-home-no-profile-completion-banner.js',

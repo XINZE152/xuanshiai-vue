@@ -9,7 +9,8 @@
 
 import { request } from './request.uts'
 import { getMyLikedProfiles as getMyLikedProfilesFromUser, getMeProfile } from './user.uts'
-import { USE_MOCK, PAPER_PLANE_CHANCE_USE_MOCK, API_BASE_URL, API_PREFIX, getAccessToken, clearAuthTokens, buildApiUrl, resolveMediaUrl } from './config.uts'
+import { USE_MOCK, API_BASE_URL, API_PREFIX, getAccessToken, clearAuthTokens, buildApiUrl, resolveMediaUrl } from './config.uts'
+import { redeemPointProduct } from './points.uts'
 import {
   mockDynamicList,
   mockTopics,
@@ -31,7 +32,6 @@ import {
 const PAPER_PLANE_STORAGE_KEY = 'xsa_paper_plane_state_v1'
 const PAPER_PLANE_PROFILE_UNLOCK_STORAGE_KEY = 'xsa_paper_plane_profile_unlocks_v1'
 export const PAPER_PLANE_PROFILE_UNLOCK_COST = 80
-export const PAPER_PLANE_CHANCE_COST = 50
 const PAPER_PLANE_FREE_TIMES = 3
 let paperPlaneStateLoaded = false
 let paperPlaneStateDateKey = ''
@@ -1984,47 +1984,13 @@ export async function getCommunityQuotas() {
   return okRes(mapQuotas(res.data))
 }
 
-/** 购买纸飞机次数。扔飞机次数会直接补充今日可投额度，捡飞机次数单独累计。 */
+/** 购买纸飞机次数（加次）。后端没有 /community/paper-planes/chances 路由，
+ *  加次统一走积分兑换：POST /users/me/points/redeem，product_code = paper_plane_unlock。 */
 export async function purchasePaperPlaneChance(type: string) {
-  if (PAPER_PLANE_CHANCE_USE_MOCK != true) {
-    return request({
-      url: '/community/paper-planes/chances',
-      method: 'POST',
-      data: { type }
-    })
-  }
-
-  restorePaperPlaneState()
   if (type != 'throw' && type != 'catch') {
     return failRes('无效的纸飞机次数类型', 'INVALID_TYPE')
   }
-
-  if (mockMeProfile.points < PAPER_PLANE_CHANCE_COST) {
-    return failRes('积分不足，无法获取纸飞机次数', 'INSUFFICIENT_POINTS', {
-      points: mockMeProfile.points,
-      cost: PAPER_PLANE_CHANCE_COST
-    })
-  }
-
-  const daily = (mockCommunityQuotas as any).paperPlaneDaily
-  mockMeProfile.points -= PAPER_PLANE_CHANCE_COST
-  if (type == 'throw') {
-    daily.purchasedThrow = daily.purchasedThrow != null ? Number(daily.purchasedThrow) + 1 : 1
-    daily.total = Number(daily.total) + 1
-    daily.remain = Number(daily.remain) + 1
-  } else {
-    daily.purchasedCatch = daily.purchasedCatch != null ? Number(daily.purchasedCatch) + 1 : 1
-  }
-  syncPaperPlanePoints()
-  savePaperPlaneState()
-
-  return okRes({
-    success: true,
-    type: type,
-    points: mockMeProfile.points,
-    cost: PAPER_PLANE_CHANCE_COST,
-    quotas: daily
-  })
+  return redeemPointProduct('paper_plane_unlock')
 }
 
 // ─── 发布 / 点赞 / 收藏 / 关注 / 评论 ───────────────────────
