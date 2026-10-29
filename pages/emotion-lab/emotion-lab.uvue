@@ -1393,12 +1393,7 @@
 	}
 
 	const openHistory = () => {
-		uni.navigateTo({
-			url: '/pagesSub/profileExtra/unlock-history',
-			fail: () => {
-				uni.showToast({ title: '历史记录暂未开放', icon: 'none' })
-			}
-		})
+		uni.showToast({ title: '历史记录暂未开放', icon: 'none' })
 	}
 
 	const openMatchProfile = (item: any) => {

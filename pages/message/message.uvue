@@ -513,7 +513,7 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 <style scoped>
 	.message-page {
 		min-height: 100vh;
-		background: #FDFDFD;
+		background: var(--canvas);
 	}
 
 	.scroller {
@@ -851,7 +851,7 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 		gap: 0;
 		margin: 0 -16px;
 		padding: 0;
-		background: #FDFDFD;
+		background: var(--surface);
 	}
 
 	/* 会话列表项字体微调（覆盖 XsaMessageItem 默认，仅作用于消息页） */

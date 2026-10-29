@@ -208,7 +208,7 @@
 				</view>
 				<view class="plane-quota-panel">
 					<text class="plane-quota-copy">{{ planeQuotaTab == 'throw' ? '补充一次今日可扔纸飞机次数' : '补充一次捡纸飞机次数' }}</text>
-					<button class="plane-quota-buy" :disabled="planeQuotaPurchasing" @click="purchasePaperPlaneTimes">{{ planeQuotaPurchasing ? '获取中...' : '50积分/次' }}</button>
+					<button class="plane-quota-buy" :disabled="planeQuotaPurchasing" @click="purchasePaperPlaneTimes">{{ planeQuotaPurchasing ? '获取中...' : (paperPlaneChancePrice > 0 ? paperPlaneChancePrice + '积分/次' : '积分兑换') }}</button>
 					<text v-if="planeQuotaTab == 'catch'" class="plane-quota-hint">每日免费刷新3次捡飞机次数</text>
 				</view>
 			</view>
@@ -306,7 +306,7 @@
 
 <script setup lang="uts">
 	import XsaSheet from '@/components/XsaSheet.uvue'
-	import { sendPaperPlane, getCommunityQuotas, purchasePaperPlaneChance, replyPaperPlane, getPaperPlaneUnreadCount, createCommunityCreateKey, discardCommunityCreateKey, uploadCommunityMedia, deleteCommunityMedia } from '@/api'
+	import { sendPaperPlane, getCommunityQuotas, purchasePaperPlaneChance, replyPaperPlane, getPaperPlaneUnreadCount, createCommunityCreateKey, discardCommunityCreateKey, uploadCommunityMedia, deleteCommunityMedia, getPointProducts } from '@/api'
 	import { guardRealName } from '@/utils/realNameGate.uts'
 
 	// 纸飞机身份必须按账号分键：旧版用全局 key，切换账号后会串出上一个账号的
@@ -347,6 +347,7 @@
 	const purchasedThrowCount = ref(0)
 	const planeQuotaVisible = ref(false)
 	const planeQuotaTab = ref('throw')
+	const paperPlaneChancePrice = ref(0)
 	const planeQuotaPurchasing = ref(false)
 	const paperPlaneUnreadCount = ref(0)
 	const menuVisible = ref(false)
@@ -524,6 +525,7 @@
 		loadPaperPlaneProfile()
 		setupRecorder()
 		loadQuota()
+		loadPaperPlaneChancePrice()
 		loadPaperPlaneUnreadCount()
 	})
 
@@ -572,6 +574,22 @@
 					? Math.max(0, Number(res.data.paperPlaneDaily.purchasedCatch))
 					: 0
 				catchCount.value = Math.max(catchCount.value, purchasedCatch)
+			}
+		} catch (e) {
+			console.error(e)
+		}
+	}
+
+	const loadPaperPlaneChancePrice = async () => {
+		try {
+			const res = await getPointProducts()
+			const rows = res != null && res.success == true && res.data != null && Array.isArray(res.data) ? res.data as any[] : []
+			for (let i = 0; i < rows.length; i++) {
+				const product = rows[i]
+				if (product != null && product.code === 'paper_plane_unlock') {
+					paperPlaneChancePrice.value = Number(product.points_cost != null ? product.points_cost : 0)
+					break
+				}
 			}
 		} catch (e) {
 			console.error(e)
@@ -634,31 +652,19 @@
 		planeQuotaPurchasing.value = true
 		try {
 			const res = await purchasePaperPlaneChance(planeQuotaTab.value)
-			const data = res != null ? res.data as any : null
-			if (res != null && res.success && data != null && data.success) {
-				if (data.quotas != null) {
-					total.value = data.quotas.total
-					remain.value = data.quotas.remain
-					purchasedThrowCount.value = data.quotas.purchasedThrow != null
-						? Math.max(0, Number(data.quotas.purchasedThrow))
-						: purchasedThrowCount.value
-					if (planeQuotaTab.value == 'catch') {
-						const purchasedCatch = data.quotas.purchasedCatch != null
-							? Math.max(0, Number(data.quotas.purchasedCatch))
-							: catchCount.value + 1
-						catchCount.value = Math.max(catchCount.value, purchasedCatch)
-					}
-				}
-				const points = data.points != null ? Number(data.points) : 0
+			if (res != null && res.success == true) {
+				const balance = res.data != null && res.data.balance != null ? Number(res.data.balance) : 0
 				uni.showModal({
 					title: '已获取纸飞机次数',
-					content: '积分 -50，剩余 ' + points + ' 积分',
+					content: '兑换成功，当前剩余 ' + balance + ' 积分',
 					showCancel: false,
 					confirmText: '知道了'
 				})
+				await loadQuota()
 				return
 			}
-			uni.showToast({ title: data != null && data.message != null ? data.message : '获取失败，请稍后重试', icon: 'none' })
+			const msg = res != null && res.message != null && '' + res.message != '' ? '' + res.message : '获取失败，请稍后重试'
+			uni.showToast({ title: msg, icon: 'none' })
 		} catch (e) {
 			console.error(e)
 			uni.showToast({ title: '获取失败，请稍后重试', icon: 'none' })

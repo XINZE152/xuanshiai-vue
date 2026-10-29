@@ -511,7 +511,7 @@ function mapConversationItem(item: any): any {
     sessionId: sessionId,
     userId: Number(target.user_id != null ? target.user_id : 0),
     name: target.nickname != null && target.nickname != '' ? '' + target.nickname : '用户',
-    avatar: target.avatar != null ? resolveMediaUrl(target.avatar) : '',
+    avatar: resolveMediaUrl(target.avatar),
     lastMessage: item != null && item.last_message != null ? '' + item.last_message : '',
     time: item != null && item.last_message_time != null ? '' + item.last_message_time : '',
     unreadCount: Number(item != null && item.unread_count != null ? item.unread_count : 0),

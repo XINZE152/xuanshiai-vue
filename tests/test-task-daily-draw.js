@@ -6,8 +6,9 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'pagesSub/profileExtra
 const checks = [
   ['uses the daily draw heading', source.includes('每日抽签')],
   ['renders the selected blessing card', source.includes('daily-draw-card') && source.includes('DAILY BLESSING')],
-  ['shows the completed blessing state', source.includes('今日祝福已收下 · 积分 +10')],
-  ['draw updates the daily reward', source.includes('const drawCheckIn') && source.includes("title: '抽签成功，积分 +10'")],
+  ['marks the draw card as unavailable', source.includes('daily-draw-card-disabled') && source.includes('每日抽签暂未开放')],
+  ['draw no longer fakes check-in rewards', source.includes('const drawCheckIn') && source.includes('每日抽签暂未开放') && !source.includes('抽签成功，积分 +10')],
+  ['keeps the streak badge out of the disabled draw section', !source.includes('已连续签到')],
   ['removes prototype switching and calendar UI', !source.includes('drawPrototype') && !source.includes('calendar-row')],
   ['uses native mini-program top-right chrome', !source.includes('top-actions') && !source.includes('top-dot')],
   ['gives the blessing card more height', source.includes('min-height: 260rpx')]

@@ -111,7 +111,7 @@
 									<view class="ai-source-dot"></view>
 									<text class="ai-source-text">{{ getAiMessageLabel(message) }}</text>
 								</view>
-								<view class="message-bubble" :class="[message.type, getAiMessageTone(message)]">
+								<view class="message-bubble" :class="[message.type, getAiMessageTone(message)]" @longpress="openMessageMenu(message)">
 									<text class="revoked-content" v-if="message.revoked == true">消息已撤回</text>
 									<view class="protected-content" v-else-if="isParentMode && message.protectedContent">
 										<text class="protected-content-text">内容已保护</text>
@@ -136,11 +136,6 @@
 									<view class="ai-handoff-dot"></view>
 									<text>已将问题转交给本人 · 不会通知对方</text>
 								</view>
-								<text
-									v-if="!isParentMode && message.isMine && message.id > 0 && message.status == 'sent' && message.revoked != true"
-									class="revoke-action"
-									@click="requestRevokeMessage(message)"
-								>撤回</text>
 							<text class="message-status text-muted" v-if="message.isMine && message.status === 'sending'">发送中...</text>
 								<text
 									class="message-status failed"
@@ -283,6 +278,8 @@
 	import {
 		getChatMessages,
 		getChatPermission,
+		getChatSessionId,
+		getMembershipStatus,
 		getMyAvatarUrl,
 		getParentAccessGate,
 		getParentContext,
@@ -300,6 +297,7 @@
 		clearAiAvatarConversation,
 		submitAdvisorFeedback
 	} from '@/api'
+	import { getCurrentUserVipStatus, setCurrentUserVipStatus } from '@/utils/quota.uts'
 	const messages = ref([] as any[])
 	const inputText = ref('')
 	const showMore = ref(false)
@@ -356,6 +354,8 @@
 	let aiAvatarRequestContent = ''
 	let aiAvatarRequestCounter = 0
 	let aiAvatarSendSequence = 0
+	let peerTitleApplied = false
+	let messageMenuOpenedAt = 0
 
 	const refreshMyAvatar = async () => {
 		const url = await getMyAvatarUrl()
@@ -790,6 +790,7 @@
 			if (res != null && res.success == true && permission != null && permission.canChat == true) {
 				chatAllowed.value = true
 				permissionError.value = ''
+				applyPeerTitle()
 				await loadChatMessages(true)
 				return
 			}
@@ -860,6 +861,20 @@
 		return requestId == historyRequestSequence &&
 			requestVersion == chatMutationVersion.value &&
 			requestSubjectKey == subjectKey(activeMessageSubject.value)
+	}
+
+	const applyPeerTitle = async () => {
+		if (peerTitleApplied || isParentMode.value || isAiAvatarMode.value) return
+		peerTitleApplied = true
+		try {
+			const subject = activeMessageSubject.value
+			const sessionRes = await getChatSessionId(userId.value, subject)
+			const target = sessionRes != null && sessionRes.data != null ? sessionRes.data.target : null
+			const nickname = target != null && target.nickname != null && String(target.nickname) != '' ? String(target.nickname) : ''
+			if (nickname != '') uni.setNavigationBarTitle({ title: nickname })
+		} catch (error) {
+			// 标题设置失败不阻塞聊天主流程
+		}
 	}
 
 	const loadChatMessages = async (force: boolean = false): Promise<boolean> => {
@@ -1307,6 +1322,38 @@
 			uni.setClipboardData({ data: value, success: () => uni.showToast({ title: '已复制', icon: 'success' }) })
 		}
 
+		const copyMessageContent = (message: any) => {
+			const text = message != null && message.content != null ? String(message.content) : ''
+			if (text == '') return
+			uni.setClipboardData({ data: text, success: () => uni.showToast({ title: '已复制', icon: 'none' }) })
+		}
+
+		const reEditMessage = (message: any) => {
+			if (isParentMode.value || message == null || message.type !== 'text') return
+			inputText.value = message.content != null ? String(message.content) : ''
+		}
+
+		const openMessageMenu = (message: any) => {
+			if (isParentMode.value || message == null || message.type === 'system' || message.revoked === true) return
+			const items: string[] = []
+			if (message.type === 'text' && message.content != null && String(message.content).length > 0) items.push('复制')
+			if (message.isMine === true && message.type === 'text' && message.status === 'sent') items.push('重新编辑')
+			if (message.isMine === true && message.id > 0 && message.status === 'sent' && message.revoked !== true) items.push('撤回')
+			if (items.length === 0) return
+			messageMenuOpenedAt = Date.now()
+			uni.showActionSheet({
+				itemList: items,
+				success: (res: any) => {
+					const tapIndex = res != null ? Number(res.tapIndex) : -1
+					if (tapIndex < 0 || tapIndex >= items.length) return
+					const action = items[tapIndex]
+					if (action === '复制') copyMessageContent(message)
+					else if (action === '重新编辑') reEditMessage(message)
+					else if (action === '撤回') requestRevokeMessage(message)
+				}
+			})
+		}
+
 		const requestRevokeMessage = (message: any) => {
 			if (isParentMode.value || message == null || message.id <= 0 || message.revoked == true) return
 			uni.showModal({
@@ -1330,7 +1377,9 @@
 		}
 
 		const previewImage = (url: string) => {
-		const images = messages.value
+			// 长按菜单弹出后，部分端会补发一次 tap；这里吞掉紧随其后的图片预览。
+			if (Date.now() - messageMenuOpenedAt < 600) return
+			const images = messages.value
 			.filter((message: any) => message.type === 'image')
 			.map((message: any) => message.content)
 		uni.previewImage({ current: url, urls: images })
@@ -1364,9 +1413,35 @@
 		reportVisible.value = true
 	}
 
-	const openAiAdvisor = () => {
+	const openAiAdvisor = async () => {
 		if (isParentMode.value || isAiAvatarMode.value) return
 		closeMoreMenu()
+		let advisorVip = false
+		try {
+			const membership = await getMembershipStatus()
+			if (membership != null && membership.success == true && membership.data != null) {
+				advisorVip = membership.data.is_vip === true || membership.data.isVip === true
+				// 会员态以服务端为准回写本地缓存，与首页/会员页同源。
+				setCurrentUserVipStatus(advisorVip)
+			} else {
+				// 会员状态读取失败时退回本地缓存，不把有效会员误判成非会员。
+				advisorVip = getCurrentUserVipStatus()
+			}
+		} catch (error) {
+			advisorVip = getCurrentUserVipStatus()
+		}
+		if (!advisorVip) {
+			uni.showModal({
+				title: '知遇 · AI 军师',
+				content: 'AI 军师仅对有效会员开放。',
+				confirmText: '了解会员',
+				cancelText: '暂不',
+				success: (result: any) => {
+					if (result != null && result.confirm === true) uni.navigateTo({ url: '/pagesSub/profileExtra/vip' })
+				}
+			})
+			return
+		}
 		let latestPeerMessage = ''
 		const rows = messages.value as any[]
 		for (let index = rows.length - 1; index >= 0; index--) {
@@ -1532,14 +1607,6 @@
 		display: block;
 		font-size: 13px;
 		line-height: 1.5;
-		color: var(--muted);
-	}
-
-	.revoke-action {
-		min-height: 32px;
-		margin-top: 2px;
-		font-size: 11px;
-		line-height: 32px;
 		color: var(--muted);
 	}
 
