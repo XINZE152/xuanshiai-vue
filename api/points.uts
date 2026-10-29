@@ -10,6 +10,35 @@ export async function getPointsSummary() {
   return request({ url: '/users/me/points', method: 'GET' })
 }
 
+/**
+ * 额度总览（GET /users/me/quotas）——**额度唯一权威口径**。
+ * 返回 `items[{quota_code, daily_limit, daily_used, daily_remaining, extra_remaining, total_remaining}]`，
+ * `quota_code ∈ apply | browse | superlike | paper_plane`；`total_remaining` 已含积分兑换的加次。
+ * 后端 A-4（38da5a1）起 summary 与真实扣次同源，页面余额一律读这里，不要再用本地常量估算。
+ */
+export async function getMyQuotas() {
+  const res = await request({ url: '/users/me/quotas', method: 'GET' })
+  if (!res.success || res.data == null) return res
+  const body = res.data as any
+  const rows = body.items != null && Array.isArray(body.items) ? body.items as any[] : []
+  const map: any = {}
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]
+    if (row == null) continue
+    const code = row.quota_code != null ? '' + row.quota_code : ''
+    if (code == '') continue
+    map[code] = {
+      code: code,
+      dailyLimit: Number(row.daily_limit != null ? row.daily_limit : 0),
+      dailyUsed: Number(row.daily_used != null ? row.daily_used : 0),
+      dailyRemaining: Number(row.daily_remaining != null ? row.daily_remaining : 0),
+      extraRemaining: Number(row.extra_remaining != null ? row.extra_remaining : 0),
+      totalRemaining: Number(row.total_remaining != null ? row.total_remaining : 0)
+    }
+  }
+  return { success: true, code: res.code, message: res.message, data: map }
+}
+
 /** 兑换积分商品/权益（POST /users/me/points/redeem）。后端强制要求 Idempotency-Key。 */
 export async function redeemPointProduct(productCode: string, idempotencyKey: string = '') {
   let key = idempotencyKey

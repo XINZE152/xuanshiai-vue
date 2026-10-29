@@ -144,10 +144,7 @@
 			uni.showToast({ title: '请完成自我介绍和理想的 TA', icon: 'none' })
 			return
 		}
-		if (remain.value <= 0) {
-			uni.showToast({ title: '今日免费次数已用完，可用积分加次', icon: 'none' })
-			return
-		}
+		// 次数由服务端裁决（积分加次不在本地 remain 里），这里不再提前拦截。
 		const passed = await guardRealName('paperPlane')
 		if (!passed || sending.value) return
 
