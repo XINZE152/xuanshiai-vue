@@ -119,11 +119,12 @@
 							<text class="recommendation-note-copy">{{ recommendationReasonText(currentRecommendUser) }}</text>
 						</view>
 
-						<view class="divider"></view>
+						<!-- 无自我介绍（或资料未解锁）时整块隐藏，不显示空标题（问题评估 F-16） -->
+						<view class="divider" v-if="currentBioText != ''"></view>
 
-						<view class="about-section">
+						<view class="about-section" v-if="currentBioText != ''">
 							<text class="section-title">关于我</text>
-							<text class="about-content">{{ currentRecommendUser.bio }}</text>
+							<text class="about-content">{{ currentBioText }}</text>
 						</view>
 
 						<view class="divider"></view>
@@ -171,23 +172,24 @@
 							</view>
 						</view>
 
-						<view class="divider"></view>
+						<!-- 无照片时不渲染「Ta的瞬间」标题与查看全部（问题评估 F-08） -->
+						<view class="divider" v-if="firstMomentPhoto != ''"></view>
 
-						<view class="photos-section">
+						<view class="photos-section" v-if="firstMomentPhoto != ''">
 							<view class="feed-section-header">
 								<text class="section-title">Ta的瞬间</text>
-								<text v-if="firstMomentPhoto != ''" class="feed-more" @click="viewAllMoments">查看全部 ›</text>
+								<text class="feed-more" @click="viewAllMoments">查看全部 ›</text>
 							</view>
-							<image v-if="firstMomentPhoto != ''" class="photo-large" :src="firstMomentPhoto" mode="aspectFill"></image>
+							<image class="photo-large" :src="firstMomentPhoto" mode="aspectFill"></image>
 						</view>
 
-						<view class="divider"></view>
+						<view class="divider" v-if="feedDynamics.length > 0"></view>
 
-<view class="divider"></view>
+<view class="divider" v-if="feedDynamics.length > 0"></view>
 
 <!-- Ta的动态 -->
 
-<view class="feed-section">
+<view class="feed-section" v-if="feedDynamics.length > 0">
 
 <view class="feed-section-header">
 
@@ -767,7 +769,7 @@
 	import { getMembershipPackages } from '@/api/discovery.uts'
 	import { getMembershipStatus } from '@/api/membership.uts'
 	import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
-	import { locationDisplayByCodes, incomeDisplayText } from '@/utils/profile-field-display.uts'
+	import { locationDisplayByCodes, incomeDisplayText, educationLabel } from '@/utils/profile-field-display.uts'
 	import {
 		recordProfileView,
 		resetDailyIfNeeded,
@@ -831,14 +833,9 @@
 
 	// ========== 推荐页数据 ==========
 	const formatIncomeDisplay = (raw: any): string => incomeDisplayText(raw)
-	const educationText = (raw: any): string => {
-		const labels = ['', '博士', '硕士', '本科', '大专', '高中', '中专', '初中', '小学']
-		if (raw == null || raw === '') return '未填写'
-		const text = '' + raw
-		const level = Number(text)
-		if (!isNaN(level) && text.trim() != '') return level > 0 && level < labels.length ? labels[level] : '未填写'
-		return text
-	}
+	// 学历字典统一收口在 utils/profile-field-display.uts（1 高中及以下 … 5 博士）。
+	// 本页曾自带一张反序表（1→博士），导致非本科用户首页学历错档，禁止再写本地映射。
+	const educationText = (raw: any): string => educationLabel(raw)
 	const dimensionText = (raw: any, unit: string): string => {
 		if (raw == null || raw === '' || Number(raw) <= 0) return '未填写'
 		const text = '' + raw
@@ -1472,6 +1469,12 @@
 		const suffix = anchor != '' ? '&anchor=' + anchor : ''
 		uni.navigateTo({ url: '/pagesSub/userExtra/user/detail?userId=' + id + '&guest=1' + suffix })
 	}
+	// 关于我：无 bio 或资料未解锁时整块不渲染（问题评估 F-16）。
+	const currentBioText = computed((): string => {
+		const user = currentRecommendUser.value as any
+		if (user == null || user.detailLocked === true) return ''
+		return user.bio != null ? ('' + user.bio).trim() : ''
+	})
 	const firstMomentPhoto = computed((): string => {
 		const photos = currentRecommendUser.value.photos as any[]
 		return photos != null && photos.length > 0 ? '' + photos[0] : ''

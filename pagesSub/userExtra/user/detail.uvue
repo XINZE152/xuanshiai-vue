@@ -349,7 +349,7 @@ import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
 import locationJson from '@/data/location.json'
 import { sendSuperlike } from '@/api/spotlight.uts'
 import { guardRealName } from '@/utils/realNameGate.uts'
-import { incomeDisplayText, locationDisplayByCodes } from '@/utils/profile-field-display.uts'
+import { incomeDisplayText, locationDisplayByCodes, educationLabel as educationLabelOf } from '@/utils/profile-field-display.uts'
 import { recordProfileView, rollbackProfileView } from '@/utils/quota.uts'
 import { attachmentStyleLabel, narrativeBadgeVisible } from '@/utils/moxiang-badge.uts'
 
@@ -596,16 +596,10 @@ const mapDetailUser = (raw: any, id: number) => {
 	const missing = '未填写'
 	const age = value(card.age, profile.age, missing)
 	const educationLabel = (level: any): string => {
-		// 与 edit.uvue 的 educationOptions 及后端 discovery.py 的 filter-options CASE 同口径：
-		// 1=高中及以下、2=大专、3=本科、4=硕士、5=博士。
-		// 后端 schemas/auth.py 的 education_level 放行到 8，6-8 属未启用档位，
-		// 按「博士」兜底 —— 宁可重复，也不能像旧版那样反序（旧版 1 被显示成「博士」）。
-		const labels = ['', '高中及以下', '大专', '本科', '硕士', '博士', '博士', '博士', '博士']
-		if (level == null || level === '') return ''
-		const text = '' + level
-		const index = Number(text)
-		if (!isNaN(index) && text.trim() != '') return index > 0 && index < labels.length ? labels[index] : ''
-		return text
+		// 学历字典已收口到 utils/profile-field-display.uts（1 高中及以下 … 5 博士，6-8 兜底博士）。
+		// 与后端 app/services/discovery.py 的 _EDUCATION_LABELS 同口径，禁止在本页再维护映射表。
+		const text = educationLabelOf(level)
+		return text == '未填写' ? '' : text
 	}
 	const educationValue = firstField(card, ['education', 'education_level', 'edu']) || firstField(profile, ['education', 'education_level', 'edu'])
 	const edu = educationLabel(educationValue) == '' ? missing : educationLabel(educationValue)

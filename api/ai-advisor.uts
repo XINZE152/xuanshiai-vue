@@ -25,10 +25,27 @@ export const ADVISOR_TONES = [
   { value: 'mature', label: '成熟' }
 ]
 
+/**
+ * 创建军师会话的幂等键。
+ * 后端 app/api/routes/ai_advisor.py 把 `Idempotency-Key` 声明为 Header(min_length=8) 必填，
+ * 缺头会稳定 422；同一聊天会话内的重试必须复用同一个键，否则会建出两个会话。
+ */
+let advisorSessionKeySeed = ''
+let advisorSessionKeyChatId = -1
+
+function advisorIdempotencyKey(chatSessionId: number): string {
+  if (advisorSessionKeySeed == '' || advisorSessionKeyChatId != chatSessionId) {
+    advisorSessionKeyChatId = chatSessionId
+    advisorSessionKeySeed = 'adv-' + chatSessionId + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10)
+  }
+  return advisorSessionKeySeed
+}
+
 export async function createAdvisorSession(title: string = '聊天回复建议', chatSessionId: number = 0): Promise<any> {
   return request({
     url: '/ai/advisor/sessions',
     method: 'POST',
+    headers: { 'Idempotency-Key': advisorIdempotencyKey(chatSessionId) },
     data: { title: title, advisor_type: 'relationship', chat_session_id: chatSessionId > 0 ? chatSessionId : null },
     mockData: USE_MOCK ? mockAdvisorSession : null
   })

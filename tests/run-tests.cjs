@@ -40,6 +40,9 @@ const core = [
   'test-search-retry-idempotency.js',
   'test-home-recommend-display.js',
   'test-public-candidate-card.js',
+  // 2026-10-29 首页/消息/情感实验室评估（L1 批）：学历字典收口 + 头像/军师/空区块/情感降级契约。
+  'test-education-label-consistency.js',
+  'test-l1-contract-fixes.js',
   // 本轮遗漏的源码级契约：首页状态诚实性、匹配固定话术、文档一致性、兴趣标签。
   'test-home-profile-state-honesty.js',
   'test-home-no-profile-completion-banner.js',
