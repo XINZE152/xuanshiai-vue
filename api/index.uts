@@ -46,6 +46,7 @@ export {
 export {
   getDiscoveryRecommendations,
   getDiscoveryPlaza,
+  getUserCardPreview,
   getProfileOverview,
   getBrowseHistory,
   getVisitors,
@@ -63,7 +64,7 @@ export {
 } from './discovery.uts'
 // 择偶偏好（详情页「Ta 的理想型」）
 export { getUserPartnerPreference } from './preference.uts'
-export { getPointProducts, getPointsSummary, redeemPointProduct } from './points.uts'
+export { getPointProducts, getPointsSummary, getMyQuotas, redeemPointProduct } from './points.uts'
 // AI 资料卡成稿出口
 export { summarizeProfileCard, getProfileCardDraft, applyProfileCardDraft, waitForProfileCardTask } from './ai-profile-card.uts'
 

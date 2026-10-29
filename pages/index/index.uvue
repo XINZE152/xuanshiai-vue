@@ -765,7 +765,7 @@
 	import { getEmotionLabSummary } from '@/api/emotionLab.uts'
 	import { guardRealName } from '@/utils/realNameGate.uts'
 	import { likeUser, blockUser, unblockUser, saveAiAvatarProfileSnapshot } from '@/api'
-	import { getDiscoveryRecommendations, getDiscoveryPlaza, getDynamicList, getDynamicDetail, getUserDetail, getOwnProfile } from '@/api'
+	import { getDiscoveryRecommendations, getDiscoveryPlaza, getDynamicList, getDynamicDetail, getUserCardPreview, getOwnProfile } from '@/api'
 	import { getMembershipPackages } from '@/api/discovery.uts'
 	import { getMembershipStatus } from '@/api/membership.uts'
 	import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
@@ -841,16 +841,8 @@
 		const text = '' + raw
 		return text.endsWith(unit) ? text : text + unit
 	}
-	const zodiacFromBirthday = (birthday: any): string => {
-		const value = birthday != null ? '' + birthday : ''
-		if (value.length < 10) return ''
-		const month = Number(value.substring(5, 7))
-		const day = Number(value.substring(8, 10))
-		const signs = ['摩羯座', '水瓶座', '双鱼座', '白羊座', '金牛座', '双子座', '巨蟹座', '狮子座', '处女座', '天秤座', '天蝎座', '射手座']
-		const cutoffs = [20, 19, 21, 21, 21, 22, 23, 23, 23, 23, 22, 22]
-		if (month < 1 || month > 12 || day < 1 || day > 31) return ''
-		return signs[(day < cutoffs[month - 1] ? month - 1 : month) % 12]
-	}
+	// 星座/属相一律读卡片字段（A-2 起后端直接下发 zodiac），不再由生日在端侧推算——
+	// 卡片本来也不带 birthday，端侧推算只会得到空串。
 	const locationTextByCityCode = (rawCode: any): string => {
 		const cityCode = rawCode != null ? '' + rawCode : ''
 		if (cityCode == '') return '未填写'
@@ -871,7 +863,7 @@
 			{ label: '职业', value: currentRecommendUser.value.job || '' }
 		],
 		[
-			{ label: '现居', value: locationTextByCityCode(currentRecommendUser.value.city) },
+			{ label: '现居', value: currentRecommendUser.value.residenceDisplay || locationTextByCityCode(currentRecommendUser.value.city) },
 			{ label: '家乡', value: currentRecommendUser.value.hometown || '未填写' },
 			{ label: '收入', value: formatIncomeDisplay(currentRecommendUser.value.income) }
 		]
@@ -1025,37 +1017,24 @@
 		const userId = Number(currentRecommendUser.value.id || 0)
 		recommendBackground.value = ''
 		if (userId <= 0) return
-		const res = await getUserDetail(userId)
-		if (!res.success || res.data == null) {
-			if (Number(res.code) == 429) showQuotaExhausted(res.message != null ? '' + res.message : '')
-			return
-		}
+		// A-3：走卡片预览接口——不扣浏览额度、不写 user_browse_history、不返回 profile。
+		// 基础资料已在推荐卡里（A-2 起卡片直接下发 weight/ hometown_display / residence_display / zodiac），
+		// 这里只为背景墙与首图补一次轻量请求；失败就静默降级，不弹任何额度或错误提示。
+		const res = await getUserCardPreview(userId)
+		if (!res.success || res.data == null) return
 		if (Number(currentRecommendUser.value.id || 0) != userId) return
-		const detail = res.data as any
-		const profile = detail.profile != null ? detail.profile : detail
-		const current = currentRecommendUser.value as any
-		const rawPhotos = profile.photos != null && Array.isArray(profile.photos) ? profile.photos as any[] : []
-		const photos = rawPhotos.map((photo: any) => {
-			if (photo != null && typeof photo === 'object') return resolveMediaUrl(photo.file_url != null ? photo.file_url : photo.url)
-			return resolveMediaUrl(photo)
-		}).filter((photo: string) => photo != '')
-		const enriched = {
-			...current,
-			avatar: profile.avatar != null && profile.avatar != '' ? resolveMediaUrl(profile.avatar) : current.avatar,
-			photos,
-			height: profile.height != null ? Number(profile.height) : current.height,
-			weight: profile.weight != null ? Number(profile.weight) : current.weight,
-			education: educationText(profile.education_level != null ? profile.education_level : current.education),
-			job: profile.occupation != null && profile.occupation != '' ? '' + profile.occupation : current.job,
-			city: profile.residence_display != null && profile.residence_display != '' ? '' + profile.residence_display : locationTextByCityCode(current.city),
-			hometown: profile.hometown_display != null && profile.hometown_display != '' ? '' + profile.hometown_display : (current.hometown != null && current.hometown != '' ? current.hometown : '未填写'),
-			income: formatIncomeDisplay(profile.income_display != null && profile.income_display != '' ? profile.income_display : (profile.income != null ? profile.income : current.income)),
-			zodiac: zodiacFromBirthday(profile.birthday) != '' ? zodiacFromBirthday(profile.birthday) : current.zodiac,
-			bio: profile.self_intro != null && profile.self_intro != '' ? '' + profile.self_intro : current.bio
-		}
+		const preview = res.data as any
 		const currentIndex = currentRecommendIndex.value % recommendUsers.value.length
-		if (currentIndex >= 0) recommendUsers.value.splice(currentIndex, 1, enriched)
-		recommendBackground.value = resolveMediaUrl(profile.background_wall)
+		if (currentIndex >= 0) {
+			const current = currentRecommendUser.value as any
+			const enriched = {
+				...current,
+				photos: preview.photos.length > 0 ? preview.photos : current.photos,
+				income: preview.incomeDisplay != '' ? formatIncomeDisplay(preview.incomeDisplay) : current.income
+			}
+			recommendUsers.value.splice(currentIndex, 1, enriched)
+		}
+		recommendBackground.value = preview.background != '' ? preview.background : ''
 	}
 	// H6：401 的统一落地。清掉推荐/广场缓存并切到登录引导，
 	// 不把「无效或已过期的访问令牌」这类后端措辞直接抛给用户。
@@ -1534,7 +1513,7 @@
 		const ok = await guardRealName('like')
 		if (!ok) return
 		try {
-			const res = await likeUser(id)
+			const res = await likeUser(id, !isLiked(id))
 			if (res.success && res.data != null) {
 				const liked = res.data.liked == true
 				setCardLiked(id, liked)

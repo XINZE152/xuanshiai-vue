@@ -660,39 +660,26 @@ export async function applyToMeet(userId: number, message: string, internalMockS
 }
 
 /**
- * 喜欢用户（用户级，非帖子点赞）
- * Mock：toggle mockLikedUserIds
- * 真路径：PUT 喜欢 / DELETE 取消；先查 relations/likes 判断当前状态
+ * 喜欢用户（用户级，非帖子点赞）。
+ *
+ * 语义：`liked` 是**目标态**，不是"切换"。调用方从 `card.is_liked` 或已加载列表得出当前态，
+ * 传 `!当前态` 即可。后端 A-1（38da5a1）起 `DiscoveryCard` / 详情都下发 `is_liked`，
+ * 所以这里不再分页扫 `/relations/likes` 猜当前状态——旧实现最多会发出 50×N 次请求，
+ * 且首次点击已喜欢的人会先返回"已取消收藏"这种反直觉结果。
  */
-export async function likeUser(userId: number, internalMockScope: string = '') {
+export async function likeUser(userId: number, liked: boolean, internalMockScope: string = '') {
   if (isParentMockScope(internalMockScope)) {
     const ids = getParentMockLikedIds(internalMockScope)
-    const liked = !isMockLiked(userId, ids)
-    if (liked) {
-      ids.push(userId)
-    } else {
-      const index = ids.indexOf(userId)
-      if (index >= 0) ids.splice(index, 1)
-    }
+    const index = ids.indexOf(userId)
+    if (liked && index < 0) ids.push(userId)
+    if (!liked && index >= 0) ids.splice(index, 1)
     return okRes({ success: true, liked: liked, userId: userId, internalDemo: true })
   }
   if (USE_MOCK) {
     const ids = mockLikedUserIds as number[]
-    let liked = false
-    let found = -1
-    for (let i = 0; i < ids.length; i++) {
-      if (ids[i] == userId) {
-        found = i
-        break
-      }
-    }
-    if (found >= 0) {
-      ids.splice(found, 1)
-      liked = false
-    } else {
-      ids.push(userId)
-      liked = true
-    }
+    const found = ids.indexOf(userId)
+    if (liked && found < 0) ids.push(userId)
+    if (!liked && found >= 0) ids.splice(found, 1)
     return request({
       url: '/user/like',
       cloudFunctionName: 'user',
@@ -703,61 +690,9 @@ export async function likeUser(userId: number, internalMockScope: string = '') {
     })
   }
 
-  // 查当前是否已喜欢：BE page_size le=50，分页扫描；预检失败不默认未喜欢
-  let currentlyLiked = false
-  let page = 1
-  const pageSize = 50
-  let scanned = 0
-  let total = -1
-  let listPreflightOk = false
-  while (true) {
-    const listRes = await request({
-      url: '/relations/likes',
-      method: 'GET',
-      data: { page: page, page_size: pageSize }
-    })
-    if (!listRes.success || listRes.data == null) {
-      return failRes(extractHttpMessage(listRes, '喜欢列表加载失败'), listRes.code)
-    }
-    listPreflightOk = true
-    const items =
-      listRes.data.items != null
-        ? (listRes.data.items as any[])
-        : listRes.data.list != null
-          ? (listRes.data.list as any[])
-          : []
-    if (listRes.data.total != null) {
-      total = listRes.data.total as number
-    }
-    for (let i = 0; i < items.length; i++) {
-      const row = items[i]
-      const tid =
-        row != null && row.user_id != null
-          ? (row.user_id as number)
-          : row != null && row.target_user_id != null
-            ? (row.target_user_id as number)
-            : row != null && row.id != null
-              ? (row.id as number)
-              : 0
-      if (tid == userId) {
-        currentlyLiked = true
-        break
-      }
-    }
-    if (currentlyLiked) break
-    scanned += items.length
-    if (items.length < pageSize) break
-    if (total >= 0 && scanned >= total) break
-    page += 1
-  }
-  if (!listPreflightOk) {
-    return failRes('喜欢列表加载失败', -1)
-  }
-
-  const method = currentlyLiked ? 'DELETE' : 'PUT'
   const res = await request({
     url: '/users/' + userId + '/like',
-    method: method,
+    method: liked ? 'PUT' : 'DELETE',
     data: {}
   })
   if (!res.success) {
@@ -766,7 +701,7 @@ export async function likeUser(userId: number, internalMockScope: string = '') {
   const enabled =
     res.data != null && res.data.enabled != null
       ? res.data.enabled == true
-      : !currentlyLiked
+      : liked
   return okRes({
     success: true,
     liked: enabled,

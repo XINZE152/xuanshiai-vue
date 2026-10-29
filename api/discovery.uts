@@ -42,7 +42,13 @@ export function mapCard(row: any, fallbackName: string = '用户'): any {
     weight: card.weight_kg != null ? Number(card.weight_kg) : (card.weight != null ? Number(card.weight) : 0),
     gender: card.gender != null ? '' + card.gender : '',
     zodiac: card.zodiac != null ? '' + card.zodiac : (card.constellation != null ? '' + card.constellation : ''),
-    hometown: card.hometown != null ? '' + card.hometown : '',
+    // 后端 A-2 起卡片直接下发 *_display（服务端按省市区码合成），首页 9 格不再靠二次详情补；
+    // 锁定态后端不给值，此处保持空串由页面显示「未填写」。
+    hometown: card.hometown_display != null && ('' + card.hometown_display).trim() != ''
+      ? '' + card.hometown_display
+      : (card.hometown != null ? '' + card.hometown : ''),
+    hometownDisplay: card.hometown_display != null ? '' + card.hometown_display : '',
+    residenceDisplay: card.residence_display != null ? '' + card.residence_display : '',
     income: card.income != null ? '' + card.income : '',
     // self_intro 才是编辑页「自我介绍」真正写入的字段；漏掉它会让首页名片首屏「关于我」恒为空，
     // 只能等 second-pass 的 getUserDetail 再补，而那次请求一旦 429/失败就永久空白。
@@ -98,6 +104,44 @@ export async function getDiscoveryRecommendations(filters: any = null) {
   })
   if (!res.success) return res
   return { success: true, data: mapPage(res.data), code: res.code, message: res.message }
+}
+
+/**
+ * 首页卡片预览（后端 A-3）。
+ * 契约：`GET /users/{id}/card-preview` → `{ user_id, card, background_wall, photos[≤1], income_display }`。
+ * 与 `/users/{id}/profile` 的差别只有三点：**不扣浏览额度、不写 user_browse_history、不返回 profile**。
+ * 首页只用它拉背景墙与首图；基础资料已在推荐卡里，不要再为 9 格发第二次详情请求。
+ */
+export async function getUserCardPreview(userId: number) {
+  const res = await request({
+    url: '/users/' + userId + '/card-preview',
+    method: 'GET',
+    mockData: null
+  })
+  if (!res.success || res.data == null) return res
+  const body = res.data as any
+  const card = body.card != null ? body.card : {}
+  const rawPhotos = body.photos != null && Array.isArray(body.photos) ? body.photos as any[] : []
+  const photos: string[] = []
+  for (let i = 0; i < rawPhotos.length; i++) {
+    const item: any = rawPhotos[i]
+    const url = item != null && typeof item === 'object'
+      ? resolveMediaUrl(item.file_url != null ? item.file_url : item.url)
+      : resolveMediaUrl(item)
+    if (url != '' && photos.indexOf(url) < 0) photos.push(url)
+  }
+  return {
+    success: true,
+    code: res.code,
+    message: res.message,
+    data: {
+      userId: Number(body.user_id != null ? body.user_id : userId),
+      card: mapCard(card, '用户'),
+      background: resolveMediaUrl(body.background_wall),
+      photos,
+      incomeDisplay: body.income_display != null ? '' + body.income_display : ''
+    }
+  }
 }
 
 export async function getDiscoveryPlaza(filters: any = null) {

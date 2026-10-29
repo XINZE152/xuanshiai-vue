@@ -918,10 +918,10 @@ onMounted(async () => {
 	// 该记录是幂等的：若首页切卡已为该用户记过账，此处不会重复扣。
 	const countsAsBrowse = !isOwnProfile.value && !isPreview.value && !fromMatchmaker.value && parsed > 0
 	if (countsAsBrowse && !recordProfileView(parsed)) {
-		detailQuotaExhausted.value = true
-		detailError.value = '今日可查看的新资料已用完'
-		detailLoading.value = false
-		return
+		// 本地额度耗尽**不再阻断**：积分兑换的加次记在服务端权益池（extra_remaining），
+		// 本地只认 8/20，判 0 会直接复现「兑换了次数还是打不开」。
+		// 是否放行交给服务端：真超限时 load() 会收到 429，并置 detailQuotaExhausted 走额度页。
+		detailQuotaExhausted.value = false
 	}
 	await load()
 	detailLoadedOnce = true
@@ -1156,7 +1156,7 @@ const onLike = async () => {
 	if (!ok) return
 	const id = user.value.id != null ? Number(user.value.id) : 1
 	try {
-		const res = await likeUser(id)
+		const res = await likeUser(id, !isLikedUser.value)
 		if (res.success && res.data != null) {
 			const liked = res.data.liked == true
 			isLikedUser.value = liked
