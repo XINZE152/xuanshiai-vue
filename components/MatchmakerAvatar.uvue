@@ -19,7 +19,7 @@ import { resolveMediaUrl } from '@/api/config.uts'
 interface Props {
 	src?: string | null;
 	name?: string | null;
-	variant?: 'card' | 'rank' | 'detail';
+	variant?: 'card' | 'rank' | 'rank-lg' | 'detail';
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -63,7 +63,11 @@ const handleImageError = () => {
 </script>
 
 <style scoped>
+/* 组件拿不到 uvue.wxss 的基础规则（编译产物里只有 :host 一条），
+   所以带 border 的固定尺寸必须自己声明 border-box，
+   否则外框比父容器内容区大 2 个边框宽度，领奖台的金属圆环会被头像整个盖住。 */
 .matchmaker-avatar {
+	box-sizing: border-box;
 	overflow: hidden;
 	background: var(--warm);
 	display: flex;
@@ -101,14 +105,25 @@ const handleImageError = () => {
 }
 
 .matchmaker-avatar.rank {
-	width: 116rpx;
-	height: 116rpx;
+	width: 104rpx;
+	height: 104rpx;
 	border-radius: 50%;
 	border: 4rpx solid rgba(56, 152, 141, 0.14);
 }
 
 .matchmaker-avatar.rank .avatar-initials {
-	font-size: 32rpx;
+	font-size: 30rpx;
+}
+
+.matchmaker-avatar.rank-lg {
+	width: 136rpx;
+	height: 136rpx;
+	border-radius: 50%;
+	border: 6rpx solid rgba(56, 152, 141, 0.14);
+}
+
+.matchmaker-avatar.rank-lg .avatar-initials {
+	font-size: 40rpx;
 }
 
 .matchmaker-avatar.detail {

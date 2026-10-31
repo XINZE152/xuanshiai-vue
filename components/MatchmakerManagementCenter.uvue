@@ -5,7 +5,10 @@
 				<view class="welcome-aurora"></view>
 				<view class="welcome-glow"></view>
 				<view class="welcome-glow welcome-glow-b"></view>
-				<view class="welcome-avatar"><text>人</text></view>
+				<view class="welcome-avatar">
+					<image v-if="avatarSource != ''" class="welcome-avatar-image" :src="avatarSource" mode="aspectFill"></image>
+					<text v-else>人</text>
+				</view>
 				<view class="welcome-copy">
 					<view class="welcome-eyebrow"><text class="welcome-eyebrow-dot"></text><text class="welcome-eyebrow-text">{{ greeting }}</text></view>
 					<view class="welcome-title-row" :class="{ 'is-bounce': introBounce }"><text class="welcome-title">{{ displayName }}</text><view class="welcome-lockup"><text class="welcome-title-sep">·</text><text class="welcome-brand">宣誓爱</text></view></view>
@@ -23,6 +26,23 @@
 					<view v-for="(item, index) in briefMetrics" :key="item.key" class="metric-item" :class="{ 'metric-sep': index > 0 }" @click="onMetricAction(item)">
 						<view class="metric-value"><text v-if="item.valuePrefix" class="metric-currency">{{ item.valuePrefix }}</text><text>{{ item.value }}</text></view>
 						<text class="metric-label">{{ item.label }}</text>
+					</view>
+				</view>
+			</view>
+
+			<!-- 数据看板：仿参考稿的白卡 + 2×2 浅底小格（彩点 + 标签 + 大号数字），点击直达对应列表 -->
+			<view class="dashboard-panel">
+				<view class="dashboard-heading">
+					<text class="dashboard-title">数据看板</text>
+					<text class="dashboard-copy">会员与业绩动态，点击查看明细</text>
+				</view>
+				<view class="dashboard-grid">
+					<view v-for="item in dashboardItems" :key="item.key" class="dashboard-tile" @click="emit('action', item.action)">
+						<view class="dashboard-tile-head">
+							<view class="dashboard-dot" :class="item.tone"></view>
+							<text class="dashboard-tile-label">{{ item.label }}</text>
+						</view>
+						<view class="dashboard-tile-value"><text v-if="item.valuePrefix" class="dashboard-tile-currency">{{ item.valuePrefix }}</text><text>{{ item.value }}</text></view>
 					</view>
 				</view>
 			</view>
@@ -67,6 +87,7 @@
 
 <script setup lang="uts">
 import { ref, onMounted } from 'vue'
+import { resolveMediaUrl } from '@/api/config.uts'
 
 interface Props {
 	snapshot: any;
@@ -89,6 +110,8 @@ const identity = computed(() => {
 const greeting = computed(() => identity.value.greeting || '你好')
 const displayName = computed(() => identity.value.name || '服务红娘')
 const roleName = computed(() => identity.value.roleName || '服务红娘')
+// 欢迎卡头像 = 红娘主页头像（服务端 identity.avatar 就是 users.avatar），没设置时保留「人」字占位
+const avatarSource = computed(() => resolveMediaUrl(identity.value.avatar))
 
 // 按压时点亮光斑（小程序无 :hover，用 touch 模拟 meoo 的虚化发光）
 const welcomeLit = ref(false)
@@ -175,6 +198,16 @@ const metricValue = (key: string): string => {
 	return found != null && found.value != null ? String(found.value) : '0'
 }
 
+// 数据看板四项：数值与「待处理业务」「功能导航」同源（storeMetrics），点击动作交给页面路由。
+const dashboardItems = computed(() => {
+	return [
+		{ key: 'my_members', label: '我的会员', value: metricValue('served_members'), valuePrefix: '', tone: 'dot-member', action: 'metric:my_members' },
+		{ key: 'introduction_succeeded', label: '牵线成功', value: metricValue('introduction_succeeded'), valuePrefix: '', tone: 'dot-success', action: 'metric:introduction_succeeded' },
+		{ key: 'online_commission', label: '分成明细', value: metricValue('online_commission'), valuePrefix: '￥', tone: 'dot-commission', action: 'metric:online_commission' },
+		{ key: 'offline_performance', label: '财务明细', value: metricValue('offline_performance'), valuePrefix: '￥', tone: 'dot-finance', action: 'metric:offline_performance' }
+	]
+})
+
 // 功能导航：竖排列表卡（仿参考截图：圆角色块图标 + 标题 + 计数小字 + 右箭头）
 // 计数是红娘真正要一眼看到的信息，放在标题下方做灰色小字；不再用胶囊 CTA。
 const navigationItems = computed(() => {
@@ -186,7 +219,7 @@ const navigationItems = computed(() => {
 		{ key: 'requests', label: '约见申请', icon: '约', tone: 'tone-five', action: '查看约见申请', value: metricValue('meeting_requests') + ' 条待处理' },
 		{ key: 'meetings', label: '约会管理', icon: '会', tone: 'tone-one', action: '查看约会管理', value: '等待见面 ' + metricValue('pending_meeting') },
 		{ key: 'commission', label: '分成明细', icon: '分', tone: 'tone-three', action: '查看分成明细', value: '￥' + metricValue('online_commission') },
-		{ key: 'finance', label: '财务明细', icon: '财', tone: 'tone-five', action: '查看财务明细', value: metricValue('offline_performance') == '0' ? '--' : '￥' + metricValue('offline_performance') },
+		{ key: 'finance', label: '财务明细', icon: '财', tone: 'tone-five', action: '查看财务明细', value: Number(metricValue('offline_performance')) == 0 ? '--' : '￥' + metricValue('offline_performance') },
 		{ key: 'account', label: '我的账号', icon: '账', tone: 'tone-four', action: '查看我的账号', value: '' }
 	]
 	return base
@@ -230,6 +263,7 @@ const navigationItems = computed(() => {
 .welcome-avatar { position: relative; width: 96rpx; height: 96rpx; border-radius: 50%; background: rgba(255, 255, 255, 0.16); border: 2rpx solid rgba(255, 255, 255, 0.36); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform .4s cubic-bezier(.22, .61, .36, 1); }
 .welcome-section.is-lit .welcome-avatar { transform: scale(1.06); }
 .welcome-avatar text { color: #FFFFFF; font-size: 34rpx; font-weight: 800; }
+.welcome-avatar-image { width: 100%; height: 100%; border-radius: 50%; }
 .welcome-copy { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8rpx; }
 .welcome-eyebrow { display: flex; flex-direction: row; align-items: center; gap: 10rpx; }
 .welcome-eyebrow-dot { width: 12rpx; height: 12rpx; border-radius: 50%; background: #FFC9A6; }
@@ -258,6 +292,25 @@ const navigationItems = computed(() => {
 .metric-sep { border-left: 1rpx solid var(--metric-div); }
 .metric-value { position: relative; min-height: 54rpx; display: flex; flex-direction: row; align-items: baseline; color: var(--metric-num); font-family: var(--serif); font-size: 54rpx; line-height: 1; font-weight: 700; }.metric-currency { margin-right: 3rpx; font-family: var(--sans); font-size: 24rpx; font-weight: 700; }
 .metric-label { color: var(--muted); font-size: 22rpx; line-height: 1.3; text-align: center; }
+/* 数据看板：与「待处理业务」并列的第二张大卡，照参考稿做卡头（粗标题 + 灰副标题）+ 2×2 浅底小格。
+ * 格内彩点与标签同排、数字单独占一行：半宽格只有 267rpx 可用，数字若与标签同排，
+ * 「￥10,820.00」这类金额会被挤出格；分行后金额再长也完整显示。 */
+.dashboard-panel { display: flex; flex-direction: column; gap: 18rpx; padding: 26rpx 24rpx; border-radius: 24rpx; background: var(--surface); box-shadow: var(--shadow-sm); }
+.dashboard-heading { padding: 0 4rpx; display: flex; flex-direction: column; gap: 8rpx; }
+.dashboard-title { color: var(--ink); font-size: 28rpx; font-weight: 800; }
+.dashboard-copy { color: var(--muted); font-size: 22rpx; line-height: 1.4; }
+.dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14rpx; }
+.dashboard-tile { min-height: 128rpx; padding: 20rpx 22rpx; border-radius: 20rpx; background: #F4EFE6; display: flex; flex-direction: column; justify-content: space-between; gap: 14rpx; }
+.dashboard-tile-head { display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
+.dashboard-dot { width: 14rpx; height: 14rpx; border-radius: 50%; flex-shrink: 0; }
+.dashboard-tile-label { color: var(--ink2); font-size: 23rpx; font-weight: 700; }
+.dashboard-tile-value { display: flex; flex-direction: row; align-items: baseline; color: var(--ink); font-size: 44rpx; line-height: 1; font-weight: 800; }
+.dashboard-tile-currency { margin-right: 4rpx; font-size: 24rpx; font-weight: 700; }
+/* 彩点取色：会员墨青、成功绿、分成琥珀、财务靛蓝，四色互不混淆 */
+.dot-member { background: #2F7D6D; }
+.dot-success { background: #2E9E6B; }
+.dot-commission { background: #D98B2B; }
+.dot-finance { background: #6B62C8; }
 .quick-actions { padding: 25rpx 16rpx; border-radius: 20rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: row; justify-content: space-between; gap: 8rpx; }
 .quick-action { width: 20%; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 10rpx; }
 .function-icon { display: flex; align-items: center; justify-content: center; color: var(--paper); font-weight: 800; }
@@ -290,7 +343,7 @@ const navigationItems = computed(() => {
 .tone-three { background: #D6E5DE; color: #1B5249; }
 .tone-four { background: #E7EEE9; color: #3B6A5E; }
 .tone-five { background: #F5EBD6; color: #8A6A2A; }
-.metric-item:active, .brief-copy:active, .quick-action:active, .promotion-action:active, .function-row:active, .logout-action:active { opacity: 0.78; transform: scale(0.98); }
+.metric-item:active, .brief-copy:active, .quick-action:active, .promotion-action:active, .function-row:active, .logout-action:active, .dashboard-tile:active { opacity: 0.78; transform: scale(0.98); }
 /* meoo 式流光艺术字：光带扫过文字 */
 @keyframes welcome-shimmer { 0% { background-position: 200% center; } 100% { background-position: -200% center; } }
 /* meoo 式灵动弹跳：进入时上下弹两下 */

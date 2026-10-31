@@ -29,15 +29,17 @@
 			@contact="onPendingReviewContact"
 		/>
 		<scroll-view v-else-if="workspaceVisible" scroll-y class="workspace-scroller" :class="{ 'ls-scroll': isLeadEntryStudio }" :show-scrollbar="false" :scroll-top="workspaceScrollTop">
-			<view class="workspace-content">
+			<view class="workspace-content" :class="{ 'lead-space': workspaceKind == 'lead' }">
 				<view v-if="workspaceKind != 'news'" class="workspace-heading">
 					<text class="workspace-title">{{ workspaceTitle }}</text>
 					<text class="workspace-copy">{{ workspaceKind == 'entry' ? '提交后自动分派到您名下，信息仅用于平台牵线服务。' : '仅展示服务端已提供的数据，未开放能力不会创建本地记录。' }}</text>
 				</view>
 				<view v-if="workspaceKind != 'entry'" class="workspace-tabs">
-					<view v-for="item in workspaceTabs" :key="item" class="workspace-tab" :class="{ active: workspaceActiveTab == item }" @click="selectWorkspaceTab(item)"><text>{{ item }}</text></view>
+					<view class="workspace-tabs-row">
+						<view v-for="item in workspaceTabs" :key="item" class="workspace-tab" :class="{ active: workspaceActiveTab == item }" @click="selectWorkspaceTab(item)"><text>{{ item }}</text></view>
+					</view>
 				</view>
-				<view v-if="workspaceKind != 'entry' && workspaceKind != 'news'" class="workspace-search"><text class="workspace-search-glyph">⌕</text><input :placeholder="workspaceSearchPlaceholder" :value="workspaceKeyword" @input="onWorkspaceKeywordInput"/><view class="workspace-search-submit" @click="runWorkspaceSearch"><text class="workspace-search-glyph">⌕</text></view></view>
+				<view v-if="workspaceKind != 'entry' && workspaceKind != 'news'" class="workspace-search"><text class="workspace-search-glyph">⌕</text><input class="workspace-search-input" :placeholder="workspaceSearchPlaceholder" placeholder-class="workspace-search-ph" :value="workspaceKeyword" confirm-type="search" @input="onWorkspaceKeywordInput" @confirm="runWorkspaceSearch"/></view>
 
 				<view v-if="workspaceKind == 'commission'">
 					<view class="workspace-cash"><text>资金结算</text><text class="workspace-cash-value">{{ workspaceTitle == '财务明细' ? workspaceFinanceTotal : workspaceCommissionTotal }}</text><text>{{ workspaceCashNote }}</text></view>
@@ -55,18 +57,28 @@
 					</view>
 
 					<!-- 财务明细 · 结算说明 -->
-					<view v-else-if="workspaceTitle == '财务明细' && workspaceActiveTab == '结算说明'" class="workspace-notice"><text class="workspace-notice-title">结算说明</text><text>线下业绩含门店服务、线下 VIP 与活动收款，由平台按月统一结算；当前为本地演示数据，不对应真实账本。</text></view>
+					<view v-else-if="workspaceTitle == '财务明细' && workspaceActiveTab == '结算说明'" class="workspace-notice"><text class="workspace-notice-title">结算说明</text><text>线下业绩含门店服务、线下 VIP 与活动收款，由平台按月统一结算；当前逐笔记录取自本人作为销售红娘的线下 VIP 已收款订单。</text></view>
 
-					<!-- 财务明细 · 逐笔记录 -->
+					<!-- 财务明细 · 逐笔记录：本人作为销售红娘的线下 VIP 已收款订单 -->
 					<view v-else-if="workspaceTitle == '财务明细'">
-						<view class="workspace-demo-notice"><text>当前显示本地测试数据；服务端产生记录后将自动切换为真实数据。</text></view>
-						<view v-for="row in workspaceFinanceRows" :key="row.time" class="workspace-commission-row"><text>{{ row.time }}</text><view><image :src="row.avatar" mode="aspectFill"/><view><text>{{ row.name }}</text><text>{{ row.item }}</text></view><text>{{ row.amount }}</text></view></view>
+						<view v-if="workspaceFinanceUsingDemoData" class="workspace-demo-notice"><text>当前显示本地测试数据；服务端产生线下业绩后将自动切换为真实数据。</text></view>
+						<view v-if="workspaceFinanceLoading" class="workspace-state"><text>正在加载财务明细…</text></view>
+						<view v-else-if="workspaceFinanceError.length > 0" class="workspace-state"><text>{{ workspaceFinanceError }}</text><text class="workspace-state-action" @click="loadWorkspaceOfflineIncome">重新加载</text></view>
+						<view v-else-if="workspaceFinanceRows.length == 0" class="workspace-state"><text>暂时没有线下业绩记录</text></view>
+						<view v-else>
+							<view v-for="row in workspaceFinanceRows" :key="row.id" class="workspace-commission-row"><text>{{ row.time }}</text><view><image v-if="row.avatar.length > 0" :src="row.avatar" mode="aspectFill"/><view v-else class="workspace-commission-avatar"><text>{{ commissionAvatarText(row.name) }}</text></view><view><text>{{ row.name }}</text><text>{{ row.item }}</text></view><text>{{ row.amount }}</text></view></view>
+						</view>
 					</view>
 
-					<!-- 分成明细 · 逐笔记录 -->
+					<!-- 分成明细 · 逐笔记录：会员名/头像按支付订单回带，事件名取分成规则 -->
 					<view v-else>
-						<view class="workspace-demo-notice"><text>当前显示本地测试数据；服务端产生记录后将自动切换为真实数据。</text></view>
-						<view v-for="row in workspaceCommissionRows" :key="row.time" class="workspace-commission-row"><text>{{ row.time }}</text><view><image :src="row.avatar" mode="aspectFill"/><view><text>{{ row.name }}</text><text>{{ row.item }}</text></view><text>{{ row.amount }}</text></view></view>
+						<view v-if="workspaceCommissionUsingDemoData" class="workspace-demo-notice"><text>当前显示本地测试数据；服务端产生分成记录后将自动切换为真实数据。</text></view>
+						<view v-if="workspaceCommissionLoading" class="workspace-state"><text>正在加载分成明细…</text></view>
+						<view v-else-if="workspaceCommissionError.length > 0" class="workspace-state"><text>{{ workspaceCommissionError }}</text><text class="workspace-state-action" @click="loadWorkspaceCommissionEntries">重新加载</text></view>
+						<view v-else-if="workspaceCommissionRows.length == 0" class="workspace-state"><text>暂时没有分成记录</text></view>
+						<view v-else>
+							<view v-for="row in workspaceCommissionRows" :key="row.id" class="workspace-commission-row"><text>{{ row.time }}</text><view><image v-if="row.avatar.length > 0" :src="row.avatar" mode="aspectFill"/><view v-else class="workspace-commission-avatar"><text>{{ commissionAvatarText(row.name) }}</text></view><view><text>{{ row.name }}</text><text>{{ row.item }}</text></view><text>{{ row.amount }}</text></view></view>
+						</view>
 					</view>
 				</view>
 
@@ -96,10 +108,6 @@
 						</view>
 					</view>
 					<view v-else>
-					<view class="workspace-lead-toolbar">
-						<view class="workspace-lead-tool" :class="{ active: leadFilterStatus.length > 0 || leadFilterIntention > 0 }" @click="openLeadFilterSheet"><text>筛选</text></view>
-						<view class="workspace-lead-tool primary" @click="openLeadAddSheet"><text>+ 添加线索</text></view>
-					</view>
 					<view class="workspace-notice"><text>超级红娘可查看全部客源线索，普通红娘仅查看已分派的客源。</text></view>
 					<view v-if="workspaceLeadsLoading" class="workspace-state"><text>正在加载客源数据…</text></view>
 					<view v-else-if="workspaceLeadsError.length > 0" class="workspace-state"><text>{{ workspaceLeadsError }}</text><text class="workspace-state-action" @click="loadWorkspaceLeads">重新加载</text></view>
@@ -109,36 +117,44 @@
 							<view class="workspace-lead-top">
 								<view class="workspace-lead-name">
 									<text class="workspace-lead-title">{{ row.name }}</text>
-									<text class="workspace-lead-age">{{ row.genderAge }}</text>
+									<text class="workspace-lead-gender" :class="row.genderTone">{{ row.genderMark }}</text>
+									<text v-if="row.age > 0" class="workspace-lead-age">{{ row.age }}岁</text>
 								</view>
-								<text class="workspace-lead-time">{{ row.time }}</text>
+								<view class="workspace-lead-top-right">
+									<view class="workspace-lead-intake" :class="row.intakeTone">
+										<text class="workspace-lead-intake-label">{{ row.intakeLabel }}</text>
+									</view>
+									<text class="workspace-lead-time">{{ row.time }}</text>
+								</view>
 							</view>
 								<view class="workspace-lead-rows">
-									<view><text>电话</text><text>{{ row.phone }}</text></view>
-									<view><text>微信</text><text>{{ row.wechat }}</text></view>
-									<view><text>来源</text><text>{{ row.source }}</text></view>
-									<view><text>备注</text><text>{{ row.remark || '暂无备注' }}</text></view>
-								<view class="workspace-lead-status-row" @click="openLeadStatusSheet(row)">
-									<text>状态</text>
-									<text :class="'workspace-lead-status-' + row.statusTone">{{ row.statusLabel }} ›</text>
+									<view class="workspace-lead-row"><text>电话</text><text>{{ row.phone }}</text></view>
+									<view class="workspace-lead-row"><text>微信</text><text>{{ row.wechat }}</text></view>
+									<view class="workspace-lead-row"><text>来源</text><text>{{ row.source }}</text></view>
+									<view class="workspace-lead-row"><text>录入人</text><text>{{ row.creator }}</text></view>
+									<view class="workspace-lead-row" @click="openLeadStatusSheet(row)">
+										<text>状态</text>
+										<view class="workspace-lead-chip" :class="'workspace-lead-status-' + row.statusTone"><text>{{ row.statusLabel }}</text><text class="workspace-lead-chevron">›</text></view>
+									</view>
+									<view v-if="row.status == 'LOST'" class="workspace-lead-remark"><text>放弃原因</text><view class="workspace-lead-remark-box abandon"><text>{{ row.abandonReason.length > 0 ? row.abandonReason : '未填写原因' }}</text></view></view>
+									<view class="workspace-lead-row" @click="openLeadAssignSheet(row)">
+										<text>分派跟进</text>
+										<view class="workspace-lead-value"><text>{{ row.owner }}</text><text class="workspace-lead-chevron">›</text></view>
+									</view>
+									<view class="workspace-lead-row" @click="openLeadFollowPanel(row)">
+										<text>跟进</text>
+										<view class="workspace-lead-value"><text :class="{ 'workspace-lead-stale': row.isStale }">{{ row.followSummary }}</text><text class="workspace-lead-chevron">›</text></view>
+									</view>
+									<view class="workspace-lead-row" @click="openLeadIntentionSheet(row)"><text>意向</text><view class="workspace-lead-chip workspace-lead-intention"><text>{{ row.intentionLabel }}</text><text class="workspace-lead-chevron">›</text></view></view>
+									<view class="workspace-lead-remark"><text>备注</text><view class="workspace-lead-remark-box"><text>{{ row.remark || '暂无备注' }}</text></view></view>
 								</view>
-								<view @click="openLeadAssignSheet(row)">
-									<text>分派跟进</text>
-									<text>{{ row.owner }} ›</text>
-								</view>
-								<view @click="openLeadFollowPanel(row)">
-									<text>跟进</text>
-									<text :class="{ 'workspace-lead-stale': row.isStale }">{{ row.followSummary }} ›</text>
-								</view>
-								<view class="workspace-lead-click-row" @click="openLeadIntentionSheet(row)"><text>意向</text><text class="workspace-lead-intention">{{ row.intentionLabel }} ›</text></view>
-							</view>
 							<view class="workspace-actions">
 								<text @click="openLeadEditSheet(row)">编辑</text>
 								<text @click="copyLeadProfile(row)">复制资料</text>
 								<text v-if="row.status != 'LOST'" @click="confirmAbandonLead(row)">放弃线索</text>
 								<text v-else @click="confirmRestoreLead(row)">恢复客源</text>
 								<text v-if="row.status != 'CONVERTED' && row.status != 'CLOSED' && row.status != 'LOST'" @click="confirmConvertLead(row)">一键入库</text>
-								<text v-else-if="row.status != 'LOST'" @click="showToast('已入库，编号 ' + row.convertedUserId)">已入库</text>
+								<text v-else-if="row.status == 'CONVERTED'" @click="showToast('已入库，编号 ' + row.convertedUserId)">已入库</text>
 							</view>
 						</view>
 					</view>
@@ -373,7 +389,12 @@
 
 				<view v-else><view v-for="row in workspaceGenericRows" :key="row.title" class="workspace-generic-card"><view><text>{{ row.icon }}</text></view><view><text>{{ row.title }}</text><text>{{ row.desc }}</text></view><text @click="showToast(row.action)">{{ row.action }} ></text></view></view>
 			</view>
-			<view v-if="workspaceKind != 'meeting' && workspaceKind != 'entry' && workspaceKind != 'news'" class="workspace-add" :class="{ 'match-add': workspaceKind == 'match' }" @click="workspaceKind == 'lead' ? openLeadAddSheet() : (workspaceKind == 'match' ? openMatchAddSheet() : showToast('新增记录表单已打开'))"><text>+</text><text>添加</text></view>
+			<view v-if="workspaceKind != 'meeting' && workspaceKind != 'entry' && workspaceKind != 'news' && workspaceKind != 'lead'" class="workspace-add" :class="{ 'match-add': workspaceKind == 'match' }" @click="workspaceKind == 'match' ? openMatchAddSheet() : showToast('新增记录表单已打开')"><text>+</text><text>添加</text></view>
+			<!-- 客源线索：添加与筛选入口照搬资料待审的悬浮录入键（成对、右下角、同款圆形浅底） -->
+			<view v-if="workspaceKind == 'lead' && !leadFollowPanelVisible" class="lead-float-actions">
+				<view class="fab-lead-add" @click="openLeadAddSheet"><text class="fab-lead-glyph">✎</text><text>添加</text></view>
+				<view class="fab-lead-filter" :class="{ active: leadFilterStatus.length > 0 || leadFilterIntention > 0 }" @click="openLeadFilterSheet"><text class="fab-lead-glyph">☲</text><text>筛选</text></view>
+			</view>
 			<!-- 红娘喜讯：报喜入口沿用资料待审筛选键的位置与圆形样式 -->
 			<view v-if="workspaceKind == 'news'" class="workspace-add news-report" @click="openNewsReportSheet">
 				<text class="news-report-glyph">🌷</text>
@@ -564,7 +585,7 @@
 							<textarea
 								class="field-textarea case-textarea"
 								:value="caseItem.description"
-								maxlength="200"
+								maxlength="50"
 								placeholder="例如：成功帮助一位教师与工程师牵线。"
 								@input="(e: any) => onCaseDescriptionInput(index, e)"
 							/>
@@ -1083,6 +1104,8 @@ import {
 	deleteMatchmakerMeetingRequest,
 	getMatchmakerWorkspaceIntroductions,
 	getMatchmakerWorkspaceMeetingRequests,
+	getMatchmakerWorkspaceCommissionEntries,
+	getMatchmakerWorkspaceOfflineIncome,
 	getMatchmakerWorkspaceGoodNews,
 	getMatchmakerWorkspaceGoodNewsPennants,
 	uploadWorkspaceGoodNewsPhoto,
@@ -1095,9 +1118,7 @@ import { getCurrentInstance, nextTick } from 'vue'
 import { drawPennant, renderPennant, type PennantContent } from '@/utils/pennant-drawer.uts'
 import { savePosterToPhotos } from '@/utils/moxiang-poster-drawer.uts'
 import {
-	mockMatchmakerCommissionEntries,
-	mockMatchmakerCommissionRates,
-	mockMatchmakerFinanceEntries
+	mockMatchmakerCommissionRates
 } from '@/mock'
 
 // ===== 基本信息 =====
@@ -1172,10 +1193,18 @@ const workspaceSearchPlaceholder = computed(() => {
 	if (workspaceKind.value == 'meeting') return '请输入申请人、邀约对象或编号'
 	return '请输入关键词'
 })
-// 分成明细 / 财务明细 / 活动报名为纯演示数据（服务端未接入这些能力），由 mock 层驱动。
-const workspaceCommissionRows: any[] = mockMatchmakerCommissionEntries.map((row: any) => ({ ...row }))
+// 分成明细与财务明细读服务端（会员名与事件名由订单/规则回带）；分成标准仍为演示数据。
+const workspaceCommissionRows = ref<any[]>([])
+const workspaceCommissionLoading = ref(false)
+const workspaceCommissionError = ref('')
+const workspaceCommissionUsingDemoData = ref(false)
+const workspaceCommissionTotalAmount = ref('')
 const workspaceCommissionRates: any[] = mockMatchmakerCommissionRates.map((row: any) => ({ ...row }))
-const workspaceFinanceRows: any[] = mockMatchmakerFinanceEntries.map((row: any) => ({ ...row }))
+const workspaceFinanceRows = ref<any[]>([])
+const workspaceFinanceLoading = ref(false)
+const workspaceFinanceError = ref('')
+const workspaceFinanceUsingDemoData = ref(false)
+const workspaceFinanceTotalAmount = ref('')
 // 红娘喜讯与锦旗墙读服务端接口（数据源为后台「运营工具-喜讯管理」内容域），不再有本地演示数。
 const workspaceNews = ref<any[]>([])
 const workspacePennants = ref<any[]>([])
@@ -1227,6 +1256,11 @@ const newsStageTone = (stage: string): string => {
 	}
 	return 't-sage'
 }
+// 会员未上传头像时用首字占位，和资料待审卡片同一处理。
+const commissionAvatarText = (name: any): string => {
+	const text = name != null ? String(name).trim() : ''
+	return text.length > 0 ? text.substring(0, 1) : '会'
+}
 const parseDemoAmount = (text: string): number => {
 	let digits = ''
 	for (let i = 0; i < text.length; i++) {
@@ -1248,11 +1282,19 @@ const formatDemoAmount = (rows: any[]): string => {
 	}
 	return '￥' + intPart + grouped + '.' + segments[1]
 }
-const workspaceCommissionTotal = computed((): string => formatDemoAmount(workspaceCommissionRows))
-const workspaceFinanceTotal = computed((): string => formatDemoAmount(workspaceFinanceRows))
-const workspaceCashNote = computed((): string => workspaceTitle.value == '财务明细'
-	? '线下业绩与开单收款为本地演示数据，服务端接入后自动切换。'
-	: '分成金额计入账号余额，可申请提现；当前为本地演示数据。')
+const workspaceCommissionTotal = computed((): string => workspaceCommissionTotalAmount.value.length > 0
+	? workspaceCommissionTotalAmount.value
+	: formatDemoAmount(workspaceCommissionRows.value))
+const workspaceFinanceTotal = computed((): string => workspaceFinanceTotalAmount.value.length > 0
+	? workspaceFinanceTotalAmount.value
+	: formatDemoAmount(workspaceFinanceRows.value))
+const workspaceCashNote = computed((): string => {
+	if (workspaceTitle.value == '财务明细') return workspaceFinanceUsingDemoData.value
+		? '线下业绩与开单收款为本地演示数据，服务端接入后自动切换。'
+		: '线下业绩为本人作为销售红娘的线下 VIP 已收款订单，由平台按月统一结算。'
+	if (workspaceCommissionUsingDemoData.value) return '分成金额计入账号余额，可申请提现；当前为本地演示数据。'
+	return '分成金额计入账号余额，已入账部分可申请提现。'
+})
 const workspaceLeads = ref<any[]>([])
 // 九级意向独立保存，便于按 A-J 完整筛选与回显。
 const leadIntentionDetails = ref<any>({})
@@ -1367,6 +1409,17 @@ const workspaceVisibleLeads = computed(() => {
 	let rows = workspaceLeads.value
 	if (workspaceActiveTab.value == '已放弃线索') rows = rows.filter((item: any) => item.status == 'LOST')
 	if (workspaceActiveTab.value == '客源线索') rows = rows.filter((item: any) => item.status != 'LOST')
+	// 弃海池按弃海时点倒序（最新放弃在最上）：接口整体按客源 id 倒序，早录入晚放弃的会沉底。
+	if (workspaceActiveTab.value == '已放弃线索') {
+		rows = rows.slice().sort((a: any, b: any): number => {
+			const left = String(a.abandonedAt)
+			const right = String(b.abandonedAt)
+			if (left == right) return Number(b.id) - Number(a.id)
+			if (left.length == 0) return 1
+			if (right.length == 0) return -1
+			return left < right ? 1 : -1
+		})
+	}
 	if (leadFilterStatus.value.length > 0) rows = rows.filter((item: any) => leadFilterStatus.value.indexOf(item.status) >= 0)
 	if (leadFilterIntention.value > 0) rows = rows.filter((item: any) => Number(item.intentionValue) == leadFilterIntention.value)
 	const keyword = workspaceKeyword.value.trim().toLowerCase()
@@ -1646,6 +1699,27 @@ const daysBetweenNow = (timeText: string): number => {
 	return Math.floor((Date.now() - past) / 86400000)
 }
 
+// 生日存的是 YYYY-MM-DD（历史数据也可能只有年月），按满周岁算：今年生日还没到就减一岁。
+const leadAgeFromBirthday = (value: any): number => {
+	if (value == null) return 0
+	const text = String(value).trim()
+	if (text.length < 4) return 0
+	const year = Number(text.substring(0, 4))
+	if (isNaN(year) || year < 1900) return 0
+	const today = new Date()
+	let age = today.getFullYear() - year
+	if (text.length >= 7) {
+		const month = Number(text.substring(5, 7))
+		if (!isNaN(month) && month >= 1 && month <= 12) {
+			const dayText = text.length >= 10 ? Number(text.substring(8, 10)) : 1
+			const day = isNaN(dayText) || dayText < 1 ? 1 : dayText
+			const currentMonth = today.getMonth() + 1
+			if (currentMonth < month || (currentMonth == month && today.getDate() < day)) age = age - 1
+		}
+	}
+	return age > 0 && age < 120 ? age : 0
+}
+
 const loadWorkspaceLeads = async () => {
 	workspaceLeadsLoading.value = true
 	workspaceLeadsError.value = ''
@@ -1665,6 +1739,7 @@ const loadWorkspaceLeads = async () => {
 			const knownIntention = leadIntentionDetails.value[String(item.id)] != null ? Number(leadIntentionDetails.value[String(item.id)]) : (sourceIntentionValue >= 1 && sourceIntentionValue <= 9 ? sourceIntentionValue : leadIntentionDefaultValue(intentionLevel))
 			const lastFollowAt = item.last_follow_up_at != null ? formatLeadTime(item.last_follow_up_at) : ''
 			const staleDays = lastFollowAt.length > 0 ? daysBetweenNow(lastFollowAt) : daysBetweenNow(formatLeadTime(item.created_at))
+			const gender = item.gender != null ? Number(item.gender) : 0
 			return {
 				id: String(item.id),
 				name: item.name != null ? String(item.name) : '未命名客源',
@@ -1672,13 +1747,18 @@ const loadWorkspaceLeads = async () => {
 				phone: item.phone != null && String(item.phone).length > 0 ? String(item.phone) : '未提供',
 				wechat: item.wechat != null && String(item.wechat).length > 0 ? String(item.wechat) : '未提供',
 				source: item.source != null ? String(item.source) : '未知来源',
+				// 录入人取 created_by 的红娘显示名；捞取时后端把 created_by 换成捞取人，所以「谁捞回归谁」。
+				creator: item.creator_name != null && String(item.creator_name).length > 0 ? String(item.creator_name) : '未记录',
 				status: status,
 				statusLabel: leadStatusLabel(status),
 				statusTone: leadStatusTones[status] != null ? leadStatusTones[status] as string : 'new',
-				time: formatLeadTime(item.created_at),
+				// 弃海池的卡片头部时间按弃海时点显示，与「按弃海时间倒序」同一口径；存量没有生效弃海行的仍显示登记时间。
+				time: status == 'LOST' && item.abandoned_at != null ? formatLeadTime(item.abandoned_at) : formatLeadTime(item.created_at),
 				owner: item.matchmaker_name != null && String(item.matchmaker_name).length > 0 ? String(item.matchmaker_name) : '未分派',
 				matchmakerId: item.matchmaker_id != null ? Number(item.matchmaker_id) : 0,
 				remark: item.remark != null ? String(item.remark) : '',
+				abandonReason: item.abandon_reason != null ? String(item.abandon_reason) : '',
+				abandonedAt: item.abandoned_at != null ? String(item.abandoned_at) : '',
 				intentionLevel: intentionLevel,
 				intentionValue: knownIntention,
 				intentionLabel: leadIntentionOption(knownIntention).label as string,
@@ -1687,9 +1767,15 @@ const loadWorkspaceLeads = async () => {
 				followSummary: lastFollowAt.length > 0 ? '最近跟进 ' + lastFollowAt.substring(5, 10) : '暂无跟进记录',
 				convertedUserId: item.converted_user_id != null ? String(item.converted_user_id) : '',
 				photo: item.photo != null ? String(item.photo) : '',
-				gender: item.gender != null ? Number(item.gender) : 0,
+				gender: gender,
 				birthday: item.birthday != null ? String(item.birthday) : '',
-				genderAge: ''
+				genderMark: gender == 1 ? '♂ 男' : (gender == 2 ? '♀ 女' : '未填'),
+				genderTone: gender == 1 ? 'male' : (gender == 2 ? 'female' : 'unknown'),
+				// 年龄由生日现算，未填生日或年份不可用时为 0，卡片上整块不显示。
+				age: leadAgeFromBirthday(item.birthday),
+				// 「入库」胶囊：只有 CONVERTED 算入库；弃海/关闭的客源也如实显示未入库。
+				intakeLabel: status == 'CONVERTED' ? '已入库' : '未入库',
+				intakeTone: status == 'CONVERTED' ? 'done' : 'todo'
 			}
 		})
 	} catch (e) {
@@ -2219,7 +2305,7 @@ const leadConfirmSubmitting = ref(false)
 const leadConvertGender = ref(2)
 const leadConfirmTip = computed(() => {
 	if (leadConfirmKind.value == 'abandon') return '放弃后该线索将进入「已放弃线索」列表，可随时恢复。'
-	if (leadConfirmKind.value == 'restore') return '恢复后客源将回到「客源线索」列表并分派给您跟进。'
+	if (leadConfirmKind.value == 'restore') return '捞取后客源将回到「客源线索」列表，录入人与跟进红娘都改为您。'
 	return '入库后将创建正式用户并进入公开资料审核阶段，请确认信息真实有效。'
 })
 const confirmAbandonLead = (row: any) => {
@@ -2270,7 +2356,7 @@ const submitLeadConfirm = async () => {
 		} else if (leadConfirmKind.value == 'abandon') {
 			showToast('已放弃线索')
 		} else {
-			showToast('客源已恢复')
+			showToast('恭喜，本客源已经成功捞取到您名下，请至“客源线索”中进行维护跟进，加油！')
 		}
 		await loadWorkspaceLeads()
 	} catch (e) {
@@ -2439,6 +2525,58 @@ const loadWorkspaceMatches = async () => {
 		workspaceMatchesError.value = '网络数据加载失败，请检查本地服务后重试'
 	} finally {
 		workspaceMatchesLoading.value = false
+	}
+}
+
+const loadWorkspaceCommissionEntries = async () => {
+	workspaceCommissionLoading.value = true
+	workspaceCommissionError.value = ''
+	workspaceCommissionUsingDemoData.value = false
+	workspaceCommissionTotalAmount.value = ''
+	try {
+		const result = await getMatchmakerWorkspaceCommissionEntries(1, 100)
+		if (!result.success || result.data == null) {
+			workspaceCommissionRows.value = []
+			workspaceCommissionError.value = result.message != null ? String(result.message) : '分成明细加载失败'
+			return
+		}
+		const source = result.data
+		workspaceCommissionUsingDemoData.value = source.isDemo == true
+		workspaceCommissionRows.value = Array.isArray(source.items) ? source.items : []
+		workspaceCommissionTotalAmount.value = source.totalAmount != null ? String(source.totalAmount) : ''
+	} catch (e) {
+		workspaceCommissionRows.value = []
+		workspaceCommissionUsingDemoData.value = false
+		workspaceCommissionTotalAmount.value = ''
+		workspaceCommissionError.value = '网络数据加载失败，请检查本地服务后重试'
+	} finally {
+		workspaceCommissionLoading.value = false
+	}
+}
+
+const loadWorkspaceOfflineIncome = async () => {
+	workspaceFinanceLoading.value = true
+	workspaceFinanceError.value = ''
+	workspaceFinanceUsingDemoData.value = false
+	workspaceFinanceTotalAmount.value = ''
+	try {
+		const result = await getMatchmakerWorkspaceOfflineIncome(1, 100)
+		if (!result.success || result.data == null) {
+			workspaceFinanceRows.value = []
+			workspaceFinanceError.value = result.message != null ? String(result.message) : '财务明细加载失败'
+			return
+		}
+		const source = result.data
+		workspaceFinanceUsingDemoData.value = source.isDemo == true
+		workspaceFinanceRows.value = Array.isArray(source.items) ? source.items : []
+		workspaceFinanceTotalAmount.value = source.totalAmount != null ? String(source.totalAmount) : ''
+	} catch (e) {
+		workspaceFinanceRows.value = []
+		workspaceFinanceUsingDemoData.value = false
+		workspaceFinanceTotalAmount.value = ''
+		workspaceFinanceError.value = '网络数据加载失败，请检查本地服务后重试'
+	} finally {
+		workspaceFinanceLoading.value = false
 	}
 }
 
@@ -3306,6 +3444,9 @@ const openWorkspace = async (title: string, kind: string, initialTab: string = '
 	if (kind == 'lead') await loadWorkspaceLeads()
 	if (kind == 'match') await loadWorkspaceMatches()
 	if (kind == 'meeting') await loadWorkspaceMeetings()
+	// 「线上分成」与「财务明细」各读服务端；「专属推广工具」没有对应数据源，仍是演示数据。
+	if (kind == 'commission' && title == '线上分成') await loadWorkspaceCommissionEntries()
+	if (kind == 'commission' && title == '财务明细') await loadWorkspaceOfflineIncome()
 	if (kind == 'news') {
 		newsStage.value = ''
 		newsDetailId.value = ''
@@ -3335,6 +3476,19 @@ const refreshManagementCenter = async () => {
 }
 
 const handleManagementCenterAction = (name: string) => {
+	// 数据看板：四项直达——我的会员进资料待审「我的」，牵线成功进牵线列表「成功」，两条金额进对应明细
+	if (name == 'metric:my_members') {
+		openPendingReview('mine')
+		return
+	}
+	if (name == 'metric:online_commission') {
+		openWorkspace('线上分成', 'commission')
+		return
+	}
+	if (name == 'metric:offline_performance') {
+		openWorkspace('财务明细', 'commission')
+		return
+	}
 	if (name == 'metric:pending_introduction') {
 		openWorkspace('待我牵线', 'match', '待牵线')
 		return
@@ -3648,8 +3802,8 @@ const submitApplication = async () => {
 	}
 	for (let index = 0; index < successCases.value.length; index++) {
 		const description = successCases.value[index].description.trim()
-		if (description.length > 1000) {
-			showToast('成功案例说明最多 1000 个字符')
+		if (description.length > 50) {
+			showToast('成功案例说明最多 50 个字符')
 			return
 		}
 	}
@@ -3791,13 +3945,17 @@ const submitApplication = async () => {
 /* ===== 滚动区域 ===== */
 .workspace-scroller { flex: 1; height: 0; background: var(--canvas); }
 .workspace-content { min-height: 100%; padding: 20rpx 22rpx 130rpx; background: var(--canvas); }
+/* 客源线索右下角是成对悬浮键（224rpx 高），底部留白要比其他工作台更足，避免最后一张卡的操作行被压住。 */
+.workspace-content.lead-space { padding-bottom: 250rpx; }
 .workspace-heading { padding: 8rpx 4rpx 18rpx; display: flex; flex-direction: column; gap: 5rpx; }
 .workspace-title { font-size: 32rpx; font-weight: 800; color: var(--ink); }.workspace-copy,.workspace-muted { font-size: 20rpx; color: var(--muted); }
-.workspace-tabs { height: 74rpx; display: flex; background: var(--surface); border-radius: 20rpx 20rpx 0 0; }.workspace-tab { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; font-size: 21rpx; white-space: nowrap; }.workspace-tab.active { color: var(--accent2); font-weight: 800; }.workspace-tab.active:after { content: ''; position: absolute; bottom: 0; width: 42rpx; height: 6rpx; border-radius: 99rpx; background: var(--accent); }
-.workspace-search { height: 70rpx; margin: 18rpx 0; padding: 0 7rpx 0 18rpx; border: 1rpx solid var(--line); background: var(--surface); border-radius: 14rpx; display: flex; align-items: center; gap: 10rpx; font-size: 30rpx; color: var(--muted); box-shadow: var(--shadow-sm); }.workspace-search input { flex: 1; min-width: 0; font-size: 22rpx; color: var(--ink); }.workspace-search-submit { width: 92rpx; height: 56rpx; border-radius: 14rpx; background: var(--accent); color: var(--paper); display: flex; align-items: center; justify-content: center; }.workspace-search-glyph { font-size: 34rpx; line-height: 1; font-weight: 700; color: inherit; }
+/* 页签：1:1 照搬资料待审的 .pr-tabs（浅灰胶囊托盘 + 选中深青实心反白，无下划线） */
+.workspace-tabs { flex-shrink: 0; padding: 4rpx 0 0; display: flex; flex-direction: row; justify-content: center; }.workspace-tabs-row { display: flex; flex-direction: row; width: 100%; padding: 8rpx; border-radius: 999rpx; background: var(--warm); }.workspace-tab { flex: 1; height: 62rpx; padding: 0 10rpx; border-radius: 999rpx; display: flex; flex-direction: row; align-items: center; justify-content: center; }.workspace-tab text { color: var(--muted); font-size: 24rpx; font-weight: 700; }.workspace-tab.active { background: var(--accent2); }.workspace-tab.active text { color: var(--paper); }.workspace-tab:active { opacity: .82; }
+.workspace-search { height: 78rpx; margin: 18rpx 0; padding: 0 26rpx; border-radius: 999rpx; background: var(--warm); display: flex; flex-direction: row; align-items: center; gap: 14rpx; }.workspace-search-input { flex: 1; min-width: 0; font-size: 25rpx; color: var(--ink); }.workspace-search-ph { color: var(--muted); font-size: 25rpx; }.workspace-search-glyph { font-size: 32rpx; line-height: 1; color: var(--muted); flex-shrink: 0; }
 .workspace-cash { min-height: 254rpx; padding: 30rpx; position: relative; border-radius: 20rpx; background: var(--accent-bg); display: flex; flex-direction: column; gap: 12rpx; color: var(--ink2); font-size: 23rpx; }.workspace-cash-value { font-size: 56rpx; color: var(--ink); font-weight: 800; }.workspace-cash > view { position: absolute; top: 40rpx; right: 26rpx; padding: 14rpx 24rpx; border-radius: 999rpx; background: var(--surface); color: var(--accent2); font-size: 21rpx; font-weight: 800; }
 .workspace-notice,.workspace-promotion { margin-top: 20rpx; padding: 22rpx; border-radius: 20rpx; background: var(--surface); display: flex; flex-direction: column; gap: 10rpx; color: var(--ink2); font-size: 21rpx; line-height: 1.55; box-shadow: var(--shadow-sm); }.workspace-notice-title { font-size: 25rpx; color: var(--ink); font-weight: 800; }.workspace-promotion { background: var(--sage-soft); color: var(--accent2); font-weight: 800; }.workspace-promotion > view { display: flex; gap: 12rpx; }.workspace-promotion > view text { flex: 1; padding: 12rpx 8rpx; border-radius: 999rpx; background: var(--surface); text-align: center; font-size: 19rpx; }
 .workspace-commission-row { margin-top: 18rpx; color: var(--muted); font-size: 20rpx; }.workspace-commission-row > view { margin-top: 8rpx; padding: 20rpx; border-radius: 20rpx; background: var(--surface); display: flex; align-items: center; gap: 16rpx; box-shadow: var(--shadow-sm); }.workspace-commission-row image,.workspace-member-header image,.workspace-match-person image { width: 60rpx; height: 60rpx; border-radius: 50%; }.workspace-commission-row > view > view { flex: 1; display: flex; flex-direction: column; gap: 4rpx; color: var(--ink); font-size: 21rpx; }.workspace-commission-row > view > view text:last-child { color: var(--muted); font-size: 19rpx; }.workspace-commission-row > view > text:last-child { color: var(--accent2); font-size: 27rpx; font-weight: 800; }
+.workspace-commission-row > view > .workspace-commission-avatar { flex: 0 0 60rpx; width: 60rpx; height: 60rpx; border-radius: 50%; background: var(--warm); color: var(--accent2); display: flex; align-items: center; justify-content: center; font-size: 24rpx; font-weight: 800; }
 .workspace-info-card,.workspace-match-card { margin-top: 18rpx; padding: 22rpx; border-radius: 20rpx; background: var(--surface); display: flex; flex-direction: column; gap: 16rpx; color: var(--ink); font-size: 28rpx; font-weight: 800; box-shadow: var(--shadow-sm); }.workspace-info-card > view:not(.workspace-actions):not(.workspace-member-header) { padding-bottom: 13rpx; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; color: var(--ink2); font-size: 21rpx; font-weight: 400; }.workspace-info-card > view:not(.workspace-actions):not(.workspace-member-header) text:last-child { color: var(--ink); }.workspace-actions { display: flex; gap: 9rpx; }.workspace-actions text { flex: 1; padding: 12rpx 4rpx; border-radius: 14rpx; background: var(--warm); color: var(--accent2); text-align: center; font-size: 18rpx; font-weight: 700; }
 .workspace-state { margin-top: 18rpx; min-height: 180rpx; padding: 28rpx; border-radius: 20rpx; background: var(--surface); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 18rpx; color: var(--muted); font-size: 22rpx; box-shadow: var(--shadow-sm); }.workspace-state-action { padding: 12rpx 24rpx; border-radius: 999rpx; background: var(--sage-soft); color: var(--accent2); font-size: 21rpx; font-weight: 700; }
 .workspace-filter-note { padding: 12rpx; color: var(--accent2); font-size: 22rpx; line-height: 1.5; }.workspace-demo-notice { margin: 4rpx 12rpx 12rpx; padding: 12rpx 14rpx; border-radius: 14rpx; background: var(--accent-bg); color: var(--accent2); font-size: 19rpx; line-height: 1.45; }
@@ -4808,67 +4966,64 @@ const submitApplication = async () => {
 }
 
 /* ===== 客源线索工作台 ===== */
-.workspace-lead-toolbar {
-	margin-top: 14rpx;
-	display: flex;
-	flex-direction: row;
-	gap: 10rpx;
-}
-
-.workspace-lead-tool {
-	flex: 1;
-	min-height: 66rpx;
-	padding: 0 8rpx;
-	border: 1px solid var(--match-line);
-	border-radius: 12rpx;
-	background: var(--surface);
-	color: var(--ink2);
-	text-align: center;
-	font-size: 22rpx;
-	font-weight: 700;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.workspace-lead-tool.active {
-	background: var(--match-mist);
-	border-color: var(--accent);
-	color: var(--accent2);
-}
-
-.workspace-lead-tool.primary {
-	background: var(--match-deep);
-	border-color: var(--match-deep);
-	color: var(--paper);
-}
-
-.workspace-lead-card {
-	margin-top: 14rpx;
-	padding: 22rpx 20rpx 16rpx;
-	border: 1px solid var(--match-line);
-	border-radius: 16rpx;
-	background: var(--match-paper);
+/* 添加/筛选悬浮键：1:1 照搬资料待审的 .review-float-actions 成对悬浮键 */
+.lead-float-actions {
+	position: fixed;
+	right: 20rpx;
+	bottom: calc(env(safe-area-inset-bottom) + 20rpx);
+	z-index: 75;
 	display: flex;
 	flex-direction: column;
-	gap: 12rpx;
+	gap: 16rpx;
+}
+
+.fab-lead-add,
+.fab-lead-filter {
+	width: 104rpx;
+	height: 104rpx;
+	border-radius: 50%;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 2rpx;
 	box-shadow: var(--match-shadow);
 }
 
+.fab-lead-add { background: var(--accent-bg); }
+.fab-lead-add text { color: var(--accent2); font-size: 19rpx; font-weight: 800; }
+.fab-lead-filter { background: var(--match-blush); }
+.fab-lead-filter text { color: var(--match-coral); font-size: 19rpx; font-weight: 800; }
+.fab-lead-filter.active { background: var(--accent-bg); }
+.fab-lead-filter.active text { color: var(--accent2); }
+.fab-lead-glyph { font-size: 26rpx !important; }
+.fab-lead-add:active,
+.fab-lead-filter:active { opacity: 0.8; transform: scale(0.96); }
+
+.workspace-lead-card {
+	margin-top: 14rpx;
+	padding: 30rpx 28rpx 20rpx;
+	border-radius: 24rpx;
+	background: var(--surface);
+	display: flex;
+	flex-direction: column;
+	gap: 6rpx;
+	box-shadow: var(--shadow-sm);
+}
+
 .workspace-lead-card .workspace-actions {
-	padding-top: 12rpx;
-	border-top: 1px solid var(--match-line);
+	margin-top: 16rpx;
 	flex-wrap: wrap;
 }
 
 .workspace-lead-card .workspace-actions text {
 	flex: 1 1 30%;
 	min-width: 29%;
-	padding: 12rpx 6rpx;
-	border-radius: 10rpx;
-	background: var(--match-mist);
-	color: var(--accent2);
-	font-size: 19rpx;
+	padding: 16rpx 6rpx;
+	border-radius: 12rpx;
+	background: var(--warm);
+	color: var(--ink2);
+	font-size: 21rpx;
 	font-weight: 700;
 	text-align: center;
 }
@@ -4884,25 +5039,86 @@ const submitApplication = async () => {
 .workspace-lead-name {
 	display: flex;
 	flex-direction: row;
-	align-items: baseline;
+	align-items: center;
 	gap: 10rpx;
+	flex: 1;
 	min-width: 0;
 }
 
 .workspace-lead-title {
 	color: var(--ink);
-	font-size: 32rpx;
+	font-size: 34rpx;
 	font-weight: 800;
 }
 
+/* 性别徽标：配色沿用约见/牵线卡片的男女档（浅底 + 深字），未知给中性灰，避免卡片间另起一套色 */
+.workspace-lead-gender {
+	padding: 4rpx 12rpx;
+	border-radius: 10rpx;
+	font-size: 19rpx;
+	font-weight: 800;
+	flex-shrink: 0;
+}
+
+.workspace-lead-gender.male {
+	background: var(--match-sky);
+	color: var(--match-deep);
+}
+
+.workspace-lead-gender.female {
+	background: var(--match-blush);
+	color: var(--match-coral);
+}
+
+.workspace-lead-gender.unknown {
+	background: var(--warm);
+	color: var(--muted);
+}
+
+/* 年龄由生日现算（满周岁），跟在性别徽标后面，用中性灰不跟姓名抢视觉重量 */
 .workspace-lead-age {
 	color: var(--muted);
-	font-size: 21rpx;
+	font-size: 22rpx;
+	font-weight: 700;
+	flex-shrink: 0;
 }
 
 .workspace-lead-time {
 	color: var(--muted);
-	font-size: 19rpx;
+	font-size: 20rpx;
+}
+
+/* 右上角让出固定宽度给「入库」胶囊，日期落到它下面，长名字（如「孟亦航（示例）」）不会被挤断 */
+.workspace-lead-top-right {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 8rpx;
+	flex-shrink: 0;
+}
+
+/* 入库胶囊：照参考稿的实心小药丸（饱和底 + 反白加粗字、全程无图标），已入库用品牌深绿，未入库用珊瑚色提醒 */
+.workspace-lead-intake {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	padding: 7rpx 20rpx;
+	border-radius: 999rpx;
+}
+
+.workspace-lead-intake.todo {
+	background: var(--match-coral);
+}
+
+.workspace-lead-intake.done {
+	background: var(--accent2);
+}
+
+.workspace-lead-intake-label {
+	font-size: 22rpx;
+	font-weight: 800;
+	letter-spacing: 1rpx;
+	color: #ffffff;
 }
 
 .workspace-lead-rows {
@@ -4910,44 +5126,134 @@ const submitApplication = async () => {
 	flex-direction: column;
 }
 
-.workspace-lead-rows > view {
+/* 参考稿的读法：灰色标签列定宽，值一律左对齐顶在同一条竖线上，行间不画分隔线。 */
+.workspace-lead-row {
 	display: flex;
 	flex-direction: row;
-	justify-content: space-between;
-	padding: 11rpx 0;
-	border-bottom: 1px solid var(--match-line);
-	color: var(--ink2);
-	font-size: 22rpx;
+	align-items: center;
+	gap: 22rpx;
 	min-width: 0;
+	min-height: 68rpx;
 }
 
-.workspace-lead-rows > view:last-child {
-	border-bottom: none;
+.workspace-lead-row > text:first-child {
+	width: 104rpx;
+	flex-shrink: 0;
+	color: var(--muted);
+	font-size: 23rpx;
 }
 
-.workspace-lead-rows > view text:last-child {
+.workspace-lead-row > text:last-child {
+	flex: 1;
+	min-width: 0;
 	color: var(--ink);
+	font-size: 25rpx;
 	font-weight: 600;
-	text-align: right;
-	max-width: 72%;
-	overflow: hidden;
-	white-space: nowrap;
-	text-overflow: ellipsis;
+	text-align: left;
+}
+
+.workspace-lead-value {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 6rpx;
+}
+
+.workspace-lead-value > text:first-child {
+	color: var(--ink);
+	font-size: 25rpx;
+	font-weight: 600;
+}
+
+.workspace-lead-chevron {
+	color: var(--muted) !important;
+	font-size: 24rpx !important;
+	font-weight: 400 !important;
+}
+
+/* 备注是长文本，按参考稿 Description 的处理：灰色小标题 + 浅底内嵌块，可折行不截断。 */
+.workspace-lead-remark {
+	display: flex;
+	flex-direction: column;
+	gap: 10rpx;
+	padding: 14rpx 0 18rpx;
+}
+
+.workspace-lead-remark > text {
+	color: var(--muted);
+	font-size: 23rpx;
+}
+
+.workspace-lead-remark-box {
+	padding: 18rpx 20rpx;
+	border-radius: 14rpx;
+	background: var(--canvas);
+}
+
+.workspace-lead-remark-box > text {
+	color: var(--ink2);
+	font-size: 23rpx;
+	line-height: 1.6;
+}
+
+/* 弃海原因：沿用资料待审「驳回说明」的提示色，和备注区分开。 */
+.workspace-lead-remark-box.abandon {
+	background: var(--match-blush);
+}
+
+.workspace-lead-remark-box.abandon > text {
+	color: var(--match-coral);
+}
+
+/* 状态与意向是可选值，借参考稿 Today / Ongoing 的浅底色块 + 彩色字 + 下拉角标。 */
+.workspace-lead-chip {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6rpx;
+	padding: 9rpx 18rpx;
+	border-radius: 10rpx;
+	background: var(--warm);
+}
+
+.workspace-lead-chip > text {
+	font-size: 22rpx;
+	font-weight: 800;
+	color: var(--ink2);
 }
 
 .workspace-lead-status-new {
+	background: var(--accent-bg);
+}
+
+.workspace-lead-status-new > text {
 	color: var(--accent2) !important;
 }
 
 .workspace-lead-status-ok {
-	color: var(--accent2) !important;
+	background: var(--sage-soft);
+}
+
+.workspace-lead-status-ok > text {
+	color: var(--sage) !important;
 }
 
 .workspace-lead-status-warn {
-	color: var(--match-coral) !important;
+	background: var(--review-orange-soft);
+}
+
+.workspace-lead-status-warn > text {
+	color: var(--review-orange) !important;
 }
 
 .workspace-lead-status-muted {
+	background: var(--warm);
+}
+
+.workspace-lead-status-muted > text {
 	color: var(--muted) !important;
 }
 
@@ -4956,12 +5262,12 @@ const submitApplication = async () => {
 	font-weight: 700 !important;
 }
 
-.workspace-lead-click-row {
-	min-height: 48rpx;
+.workspace-lead-intention {
+	background: var(--match-sky);
 }
 
-.workspace-lead-intention {
-	color: var(--accent2) !important;
+.workspace-lead-intention > text {
+	color: var(--accent) !important;
 }
 
 /* 跟进记录面板 */

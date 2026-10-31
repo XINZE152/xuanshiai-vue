@@ -57,6 +57,7 @@ const expectedSubpackages = {
   'pagesSub/matchmaker': [
     'apply',
     'detail',
+    'rank',
     'payment',
     'become-matchmaker',
     'become-partner',
@@ -64,7 +65,8 @@ const expectedSubpackages = {
     'become-promoter',
     'promoter-center',
     'application-success',
-    'custom'
+    'custom',
+    'my-account'
   ],
   'pagesSub/profileExtra': [
     'settings',
@@ -75,6 +77,8 @@ const expectedSubpackages = {
     'my-moments',
     'my-tasks',
     'my-registration',
+    'my-date',
+    'my-date-service',
     'my-posters',
     'my-poster-preview',
     'history',
@@ -86,7 +90,6 @@ const expectedSubpackages = {
     'spotlights',
     'support',
     'my-ai-avatar',
-    'my-portrait',
     'my-portrait-master',
     'my-portrait-result',
     'my-portrait-archive'
@@ -105,7 +108,12 @@ const expectedSubpackages = {
 
 assert.equal(subpackagePages.size, Object.keys(expectedSubpackages).length)
 for (const [rootPath, expectedPages] of Object.entries(expectedSubpackages)) {
-  assert.deepEqual([...subpackagePages.get(rootPath)], expectedPages, `${rootPath} route set changed`)
+  // pages.json 里的先后顺序没有契约含义，只锁「有哪些页」
+  assert.deepEqual(
+    [...subpackagePages.get(rootPath)].sort(),
+    [...expectedPages].sort(),
+    `${rootPath} route set changed`
+  )
 }
 
 console.log('PASS mp-weixin subpackage contract')

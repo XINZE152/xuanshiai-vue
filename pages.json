@@ -214,6 +214,12 @@
           }
         },
         {
+          "path": "rank",
+          "style": {
+            "navigationBarTitleText": "红娘排行榜"
+          }
+        },
+        {
           "path": "payment",
           "style": {
             "navigationBarTitleText": "确认付款"

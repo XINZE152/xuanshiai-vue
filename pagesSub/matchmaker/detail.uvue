@@ -132,11 +132,26 @@
 
 		<!-- 联系方式只在双方授权后的服务流程中由服务端提供。 -->
 		<view class="footer-safe">
-			<view class="footer-button phone" @click="applyForService">
-				<text class="footer-icon">♡</text>
-				<view class="footer-copy">
+			<view
+				class="footer-button"
+				@touchstart="onArcherStart"
+				@touchmove="onArcherMove"
+				@touchend="onArcherEnd"
+				@touchcancel="onArcherEnd"
+			>
+				<view class="footer-copy" :class="{ faded: archerProgress > 0.04 }">
 					<text class="footer-title">申请红娘服务</text>
-					<text class="footer-desc">提交需求后由平台安排</text>
+					<text class="footer-desc">向右拖动弓箭 命中爱心即可进入</text>
+				</view>
+				<view class="footer-target" :class="{ hit: archerHit }">
+					<text class="footer-heart">♥</text>
+				</view>
+				<view
+					class="footer-archer"
+					:class="{ loose: archerHit, spring: archerSpring }"
+					:style="{ left: archerLeft }"
+				>
+					<text class="footer-bow">🏹</text>
 				</view>
 			</view>
 		</view>
@@ -366,6 +381,89 @@ const applyForService = () => {
 	uni.navigateTo({ url: '/pagesSub/matchmaker/custom' })
 }
 
+// ===== 底部弓箭滑射 =====
+// 位置全程用 px 算：rpx 进 calc 在小程序里不可靠，而且绝对定位的弓箭盒只要越出胶囊
+// 就会被整块裁掉，所以两端的活动范围刻意收在左右圆帽的内侧，满程时箭身刚好压进爱心。
+const ARCHER_PILL_RPX = 750 - 28 * 2 // 胶囊宽 = 屏宽减左右外边距
+const ARCHER_EDGE_RPX = 16 // 弓箭盒与爱心都从胶囊边缘收进 16rpx
+const ARCHER_BOX_RPX = 64 // 两者同宽，箭身推进去一半即命中
+const ARCHER_HEART_RPX = ARCHER_PILL_RPX - ARCHER_EDGE_RPX - ARCHER_BOX_RPX / 2 // 爱心圆心
+const ARCHER_REST_RPX = ARCHER_EDGE_RPX
+const ARCHER_REACH_RPX = ARCHER_HEART_RPX - ARCHER_BOX_RPX // 满程时弓箭右沿正好压到爱心圆心
+const ARCHER_TRAVEL_RPX = ARCHER_REACH_RPX - ARCHER_REST_RPX
+// 松手时推进到这个比例就算命中，差一点就自动退回原位
+const ARCHER_FIRE_RATIO = 0.8
+
+const archerProgress = ref(0)
+const archerHit = ref(false)
+const archerSpring = ref(false)
+let archerStartX = 0
+let archerDragging = false
+let archerFired = false
+let archerScaleCache = 0
+
+const archerScale = (): number => {
+	if (archerScaleCache == 0) {
+		const info = uni.getSystemInfoSync()
+		const windowWidth = info.windowWidth ?? info.screenWidth ?? 375
+		archerScaleCache = Number(windowWidth) / 750
+	}
+	return archerScaleCache
+}
+
+const archerLeft = computed((): string => {
+	return ((ARCHER_REST_RPX + ARCHER_TRAVEL_RPX * archerProgress.value) * archerScale()).toFixed(1) + 'px'
+})
+
+const archerTouch = (e: any): any => {
+	return e != null && e.touches != null && e.touches.length > 0 ? e.touches[0] : null
+}
+
+const onArcherStart = (e: any) => {
+	if (archerFired) return
+	const touch = archerTouch(e)
+	if (touch == null) return
+	archerStartX = Number(touch.clientX)
+	archerDragging = true
+	// 拖动过程中不能带过渡，否则弓箭永远慢手指半拍
+	archerSpring.value = false
+}
+
+const onArcherMove = (e: any) => {
+	if (!archerDragging || archerFired) return
+	const touch = archerTouch(e)
+	if (touch == null) return
+	const travelPx = ARCHER_TRAVEL_RPX * archerScale()
+	if (travelPx <= 0) return
+	let ratio = (Number(touch.clientX) - archerStartX) / travelPx
+	if (ratio < 0) ratio = 0
+	if (ratio > 1) ratio = 1
+	archerProgress.value = ratio
+}
+
+const onArcherEnd = () => {
+	if (!archerDragging || archerFired) return
+	archerDragging = false
+	archerSpring.value = true
+	if (archerProgress.value < ARCHER_FIRE_RATIO) {
+		archerProgress.value = 0
+		return
+	}
+	archerFired = true
+	archerProgress.value = 1
+	archerHit.value = true
+	// 命中动画（200ms 过渡）走完再跳转，页面推走之后再复位，返回时就能重新滑
+	setTimeout(() => {
+		applyForService()
+	}, 260)
+	setTimeout(() => {
+		archerHit.value = false
+		archerSpring.value = false
+		archerProgress.value = 0
+		archerFired = false
+	}, 780)
+}
+
 const showToast = (msg: string) => {
 	toastMessage.value = msg
 	toastVisible.value = true
@@ -384,7 +482,6 @@ const showToast = (msg: string) => {
 	--violet: #8B58E8;
 	--violet-soft: #EFE2FF;
 	--green: #5BAF80;
-	--blue: #7EC8A0;
 	min-height: 100vh;
 	background: linear-gradient(180deg, var(--rose-faint) 0%, var(--paper) 40%, var(--paper) 100%);
 }
@@ -808,7 +905,7 @@ const showToast = (msg: string) => {
 .notice-title { font-size: 25rpx; font-weight: 900; color: var(--rose-dark); }
 .notice-copy { font-size: 21rpx; line-height: 1.58; color: var(--ink2); }
 
-/* ===== 底部联系栏 ===== */
+/* ===== 底部弓箭滑射 ===== */
 .footer-safe {
 	position: fixed;
 	left: 0; right: 0; bottom: 0;
@@ -816,29 +913,54 @@ const showToast = (msg: string) => {
 	padding: 16rpx 28rpx calc(env(safe-area-inset-bottom) + 18rpx);
 	background: rgba(255, 255, 255, 0.96);
 	border-top: 1px solid rgba(255, 210, 226, 0.72);
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 18rpx;
+	display: flex;
+	flex-direction: column;
 }
 
 .footer-button {
-	min-width: 0; min-height: 94rpx;
-	border-radius: 22rpx;
+	position: relative;
+	width: 100%;
+	min-width: 0;
+	height: 96rpx;
+	box-sizing: border-box;
+	padding: 0 26rpx;
+	border-radius: 999rpx;
 	display: flex; flex-direction: row; align-items: center; justify-content: center;
-	gap: 12rpx;
 	color: var(--surface);
-	box-shadow: 0 8rpx 24rpx rgba(17, 23, 24, 0.12);
+	background: linear-gradient(135deg, var(--green), #12D071);
+	box-shadow: 0 10rpx 26rpx rgba(17, 23, 24, 0.16);
 }
 
-.footer-button.phone { background: linear-gradient(135deg, var(--green), #12D071); }
-.footer-button.wechat { background: linear-gradient(135deg, var(--blue), #15A3FF); }
+.footer-copy {
+	min-width: 0;
+	display: flex; flex-direction: column; align-items: center; gap: 4rpx;
+	opacity: 1;
+	transition: opacity 160ms ease-out;
+}
+.footer-copy.faded { opacity: 0.26; }
+.footer-title { display: block; max-width: 100%; font-size: 30rpx; line-height: 1.2; font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.footer-desc { display: block; max-width: 100%; font-size: 20rpx; line-height: 1.35; opacity: 0.85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.footer-icon { font-size: 34rpx; font-weight: 900; line-height: 1; }
-.footer-wechat { width: 40rpx; height: 40rpx; }
+/* 爱心靶位固定钉在右圆帽内，left 由脚本逐帧给 px，两端都留在胶囊边界里 */
+.footer-target,
+.footer-archer {
+	position: absolute;
+	top: 16rpx;
+	height: 64rpx;
+	width: 64rpx;
+	border-radius: 50%;
+	display: flex; flex-direction: row; align-items: center; justify-content: center;
+}
 
-.footer-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 2rpx; }
-.footer-title { font-size: 27rpx; line-height: 1.2; font-weight: 900; }
-.footer-desc { font-size: 19rpx; line-height: 1.35; opacity: 0.88; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.footer-target { right: 16rpx; background: rgba(255, 255, 255, 0.22); transition: background-color 180ms ease-out; }
+.footer-heart { display: block; font-size: 32rpx; line-height: 1; text-align: center; transition: transform 180ms ease-out, color 180ms ease-out; }
+.footer-target.hit { background: rgba(255, 255, 255, 0.62); }
+.footer-target.hit .footer-heart { color: var(--green); transform: scale(1.24); }
+
+.footer-archer { left: 16rpx; background: var(--surface); box-shadow: 0 4rpx 12rpx rgba(17, 23, 24, 0.18); z-index: 2; }
+.footer-archer.spring { transition: left 200ms ease-out, opacity 200ms ease-out; }
+.footer-archer.loose { opacity: 0; }
+.footer-bow { display: block; font-size: 30rpx; line-height: 1; text-align: center; color: var(--green); }
 
 /* ===== 微信二维码弹窗 ===== */
 .wechat-overlay {

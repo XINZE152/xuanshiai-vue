@@ -7,7 +7,6 @@
         <view class="pr-tabs-row">
           <view v-for="tab in tabs" :key="tab.key" class="pr-tab" :class="{ active: activeTab == tab.key }" @tap="selectTab(tab.key)">
             <text>{{ tab.label }}</text>
-            <view class="pr-tab-line"></view>
           </view>
         </view>
       </scroll-view>
@@ -15,7 +14,6 @@
       <view class="pr-search">
         <text class="pr-search-icon">⌕</text>
         <input class="pr-search-input" placeholder="请输入昵称/编号/姓名/手机号" placeholder-class="pr-search-ph" :value="keyword" confirm-type="search" @input="onKeyword" @confirm="loadMembers" />
-        <view class="pr-search-btn" @tap="loadMembers"><text>搜索</text></view>
       </view>
 
       <scroll-view scroll-y class="pr-list" :show-scrollbar="false">
@@ -27,20 +25,9 @@
         <view v-else-if="members.length == 0" class="state-card"><text>{{ emptyText }}</text></view>
 
           <view v-for="member in members" :key="member.user_id" class="mcard" :id="'mcard-' + member.user_id" @tap="openMemberProfile(member)">
-          <view class="mcard-top">
-            <view class="mcard-ark"><text class="mcard-ark-glyph">◈</text><text>公开档案</text></view>
-            <text class="mcard-no">编号：G{{ member.user_id }}</text>
-            <text class="mcard-vip" v-if="isVipMember(member)"><text>VIP</text></text>
-            <view class="mcard-status" :class="'st-' + member.review_status.toLowerCase()" @tap.stop="openReview(member)">
-              <text>{{ reviewLabel(member.review_status) }}</text>
-              <text class="mcard-status-dot">●</text>
-            </view>
-            <view class="mcard-profile-entry" @tap.stop="openMemberProfile(member)"><text>会员主页 ›</text></view>
-          </view>
-
           <view class="mcard-body">
             <view class="mcard-ava" :class="member.gender == 1 ? 'male' : 'female'">
-              <image v-if="member.avatar" :src="member.avatar" mode="aspectFill" />
+              <image v-if="member.avatar" :src="avatarSrc(member.avatar)" mode="aspectFill" />
               <text v-else>{{ avatarText(member.nickname) }}</text>
               <view class="mcard-ava-badge"><text>{{ member.gender == 1 ? '♂' : (member.gender == 2 ? '♀' : '') }}</text></view>
             </view>
@@ -48,6 +35,14 @@
               <view class="mcard-name-row">
                 <text class="mcard-name">{{ member.nickname }}</text>
                 <view class="realname-tag" :class="member.realname_status == 2 ? 'ok' : ''"><text>{{ member.realname_status == 2 ? '已实名' : '未实名' }}</text></view>
+                <view class="mcard-vip" v-if="isVipMember(member)"><text>VIP</text></view>
+              </view>
+              <view class="mcard-sub">
+                <text class="mcard-no">编号：G{{ member.user_id }}</text>
+                <view v-if="member.created_at != null && String(member.created_at).length > 0" class="mcard-reg">
+                  <text class="mcard-sub-dot">·</text>
+                  <text>登记：{{ formatTime(member.created_at) }}</text>
+                </view>
               </view>
               <text class="mcard-meta">{{ memberMeta(member) }}</text>
               <view class="mcard-owner" @tap.stop="openAssign(member)">
@@ -55,10 +50,14 @@
                 <text class="mcard-owner-label">跟进服务：</text>
                 <text class="mcard-owner-value">{{ member.matchmaker_name || '待分派' }}</text>
               </view>
-              <view v-if="member.created_at != null && String(member.created_at).length > 0" class="mcard-reg">
-                <text class="mcard-reg-glyph">◷</text>
-                <text>登记：{{ formatTime(member.created_at) }}</text>
+            </view>
+            <view class="mcard-side">
+              <view class="mcard-status" :class="'st-' + member.review_status.toLowerCase()" @tap.stop="openReview(member)">
+                <text>{{ reviewLabel(member.review_status) }}</text>
+                <text class="mcard-status-dot">●</text>
               </view>
+              <view class="mcard-ark"><text class="mcard-ark-glyph">◈</text><text>公开档案</text></view>
+              <view class="mcard-profile-entry" @tap.stop="openMemberProfile(member)"><text>会员主页 ›</text></view>
             </view>
           </view>
 
@@ -159,7 +158,7 @@
       </view>
       <scroll-view scroll-y class="subpage-list" :show-scrollbar="false">
         <view class="match-member">
-          <view class="match-member-ava"><image v-if="selected.avatar" :src="selected.avatar" mode="aspectFill" /><text v-else>{{ avatarText(selected.nickname) }}</text></view>
+          <view class="match-member-ava"><image v-if="selected.avatar" :src="avatarSrc(selected.avatar)" mode="aspectFill" /><text v-else>{{ avatarText(selected.nickname) }}</text></view>
           <view class="match-member-copy">
             <view class="mcard-name-row"><text class="mcard-name">{{ selected.nickname }}</text><text class="match-member-no">会员(G{{ selected.user_id }})</text></view>
             <text class="mcard-meta">{{ memberMeta(selected) }}</text>
@@ -183,7 +182,7 @@
         <view v-for="row in candidates" :key="row.user_id" class="candidate-card">
           <view class="mcard-body">
             <view class="mcard-ava" :class="row.gender == 1 ? 'male' : 'female'">
-              <image v-if="row.avatar" :src="row.avatar" mode="aspectFill" />
+              <image v-if="row.avatar" :src="avatarSrc(row.avatar)" mode="aspectFill" />
               <text v-else>{{ avatarText(row.nickname) }}</text>
             </view>
             <view class="mcard-info">
@@ -361,6 +360,7 @@ import {
   updateMatchmakerMemberNote,
   updateMatchmakerReviewMember
 } from '@/api'
+import { resolveMediaUrl } from '@/api/config.uts'
 
 interface Props {
   snapshot: any;
@@ -528,6 +528,9 @@ const preferenceChips = computed(() => {
 
 /* ---------- 工具 ---------- */
 const formatTime = (value: any): string => value == null ? '' : String(value).replace('T', ' ').substring(0, 19)
+// 服务端头像下发裸相对路径：/static/ 是小程序包内资源，/storage/ 只在后端磁盘上。
+// 直接绑给 image 会被按包内路径解析，上传头像必然加载不出，还把首字兜底一起顶掉了。
+const avatarSrc = (value: any): string => resolveMediaUrl(value)
 const avatarText = (name: any): string => {
   const text = name != null ? String(name).trim() : ''
   return text.length > 0 ? text.substring(0, 1) : '会'
@@ -1475,78 +1478,80 @@ onMounted(() => {
 .pr-shell { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--canvas); }
 .pr-main { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
-/* tabs */
-.pr-tabs { flex-shrink: 0; width: 100%; border-bottom: 1rpx solid var(--line); background: var(--canvas); }
-.pr-tabs-row { flex-direction: row; display: flex; }
-.pr-tab { flex-shrink: 0; padding: 22rpx 24rpx 18rpx; display: flex; flex-direction: column; align-items: center; }
-.pr-tab text { color: var(--muted); font-size: 25rpx; }
-.pr-tab.active text { color: var(--ink); font-size: 27rpx; font-weight: 800; }
-.pr-tab-line { display: none; width: 42rpx; height: 6rpx; margin-top: 8rpx; border-radius: 999rpx; background: var(--accent); }
-.pr-tab.active .pr-tab-line { display: flex; }
+/* tabs：分段胶囊条。选中项只换底色与字色，字号不动，避免顶动相邻标签。 */
+.pr-tabs { flex-shrink: 0; width: 100%; padding: 20rpx 24rpx 0; box-sizing: border-box; background: var(--canvas); }
+.pr-tabs-row { display: inline-flex; flex-direction: row; padding: 8rpx; border-radius: 999rpx; background: var(--warm); }
+.pr-tab { flex-shrink: 0; height: 62rpx; padding: 0 28rpx; border-radius: 999rpx; display: flex; flex-direction: row; align-items: center; justify-content: center; }
+.pr-tab text { color: var(--muted); font-size: 24rpx; font-weight: 700; }
+.pr-tab.active { background: var(--accent2); }
+.pr-tab.active text { color: var(--paper); }
+.pr-tab:active { opacity: .82; }
 
-/* search */
-.pr-search { flex-shrink: 0; margin: 20rpx 24rpx 4rpx; height: 72rpx; padding: 0 8rpx 0 22rpx; border-radius: 999rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
-.pr-search-icon { color: var(--muted); font-size: 30rpx; font-weight: 800; }
-.pr-search-input { flex: 1; min-width: 0; height: 70rpx; font-size: 23rpx; color: var(--ink); }
-.pr-search-ph { color: var(--muted); font-size: 23rpx; }
-.pr-search-btn { width: 118rpx; height: 58rpx; border-radius: 999rpx; background: var(--accent2); color: var(--paper); display: flex; align-items: center; justify-content: center; font-size: 23rpx; font-weight: 800; }
+/* search —— 与「客源线索」同一枚暖底胶囊：无描边无投影，搜动作交给键盘搜索键 */
+.pr-search { flex-shrink: 0; margin: 18rpx 24rpx 4rpx; height: 78rpx; padding: 0 26rpx; border-radius: 999rpx; background: var(--warm); display: flex; flex-direction: row; align-items: center; gap: 14rpx; }
+.pr-search-icon { color: var(--muted); font-size: 32rpx; line-height: 1; flex-shrink: 0; }
+.pr-search-input { flex: 1; min-width: 0; height: 70rpx; font-size: 25rpx; color: var(--ink); }
+.pr-search-ph { color: var(--muted); font-size: 25rpx; }
 
 /* list */
 .pr-list { flex: 1; height: 0; padding: 14rpx 24rpx 260rpx; box-sizing: border-box; }
-.state-card { margin-bottom: 18rpx; min-height: 170rpx; padding: 24rpx; border-radius: 20rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20rpx; color: var(--muted); font-size: 24rpx; text-align: center; }
+.state-card { margin-bottom: 20rpx; min-height: 170rpx; padding: 24rpx; border: 1rpx solid var(--line); border-radius: 28rpx; background: var(--surface); box-shadow: var(--shadow-md); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20rpx; color: var(--muted); font-size: 24rpx; text-align: center; }
 .state-action { min-width: 160rpx; height: 60rpx; border-radius: 999rpx; background: var(--accent2); color: var(--paper); display: flex; align-items: center; justify-content: center; font-size: 22rpx; font-weight: 800; }
 .state-inline { padding: 14rpx 0; color: var(--muted); font-size: 21rpx; text-align: center; }
 
-/* member card */
-.mcard { position: relative; margin-bottom: 20rpx; padding: 22rpx 22rpx 18rpx; border-radius: 20rpx; background: var(--surface); box-shadow: var(--shadow-sm); }
-.mcard-top { display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
-.mcard-ark { display: flex; flex-direction: row; align-items: center; gap: 6rpx; padding: 6rpx 12rpx; border-radius: 8rpx; background: var(--review-orange-soft); }
-.mcard-ark text { color: var(--review-orange); font-size: 18rpx; font-weight: 800; }
-.mcard-ark-glyph { font-size: 16rpx !important; }
-.mcard-no { flex: 1; min-width: 0; color: var(--muted); font-size: 19rpx; }
-.mcard-status { display: flex; flex-direction: row; align-items: center; gap: 6rpx; padding: 7rpx 12rpx; border-radius: 8rpx; background: var(--review-orange-soft); }
-.mcard-status text { color: var(--review-orange); font-size: 19rpx; font-weight: 800; }
+/* member card
+ * 版式按「交易流水」参考稿：左侧色块图素 + 中间标题/次要信息两行 + 右侧彩色数值与类别标签。
+ * 内容一字未改，只是把顶部拥挤的标签条拆进正文与右栏。 */
+.mcard { position: relative; margin-bottom: 20rpx; padding: 24rpx; border: 1rpx solid var(--line); border-radius: 28rpx; background: var(--surface); box-shadow: var(--shadow-md); }
+.mcard-body { display: flex; flex-direction: row; align-items: flex-start; gap: 20rpx; }
+
+/* 右栏：审核状态按数值排版（彩色加粗在上），公开档案作类别标签，主页入口收尾。 */
+.mcard-side { width: 130rpx; flex-shrink: 0; padding-top: 2rpx; display: flex; flex-direction: column; align-items: flex-end; gap: 12rpx; }
+.mcard-status { display: flex; flex-direction: row; align-items: center; gap: 6rpx; padding: 10rpx 4rpx; margin: -10rpx -4rpx 0 0; }
+.mcard-status text { color: var(--review-orange); font-size: 27rpx; font-weight: 800; }
 .mcard-status-dot { font-size: 12rpx !important; }
-.mcard-status.st-passed { background: var(--sage-soft); }
 .mcard-status.st-passed text { color: var(--sage); }
-.mcard-status.st-rejected { background: var(--match-blush); }
 .mcard-status.st-rejected text { color: var(--match-coral); }
+.mcard-ark { display: flex; flex-direction: row; align-items: center; gap: 5rpx; }
+.mcard-ark text { color: var(--muted); font-size: 18rpx; }
+.mcard-ark-glyph { font-size: 15rpx !important; }
 .mcard-vip { padding: 4rpx 10rpx; border-radius: 8rpx; background: #b98a2b; }
 .mcard-vip text { color: var(--paper); font-size: 17rpx; font-weight: 800; }
-.mcard-profile-entry { padding: 7rpx 12rpx; border-radius: 8rpx; background: var(--accent-bg); }
+.mcard-profile-entry { padding: 9rpx 16rpx; border-radius: 999rpx; background: var(--accent-bg); }
 .mcard-profile-entry text { color: var(--accent2); font-size: 19rpx; font-weight: 800; }
 
-.mcard-body { margin-top: 18rpx; display: flex; flex-direction: row; gap: 18rpx; }
-.mcard-ava { position: relative; width: 96rpx; height: 96rpx; border-radius: 50%; overflow: hidden; background: var(--accent-bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.mcard-ava image { width: 96rpx; height: 96rpx; border-radius: 50%; }
-.mcard-ava text { color: var(--accent2); font-size: 36rpx; font-weight: 800; }
+.mcard-ava { position: relative; width: 104rpx; height: 104rpx; border-radius: 30rpx; overflow: hidden; background: var(--accent-bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.mcard-ava image { width: 104rpx; height: 104rpx; border-radius: 30rpx; }
+.mcard-ava text { color: var(--accent2); font-size: 38rpx; font-weight: 800; }
 .mcard-ava.female { background: var(--match-blush); }
 .mcard-ava.female text { color: var(--match-coral); }
-.mcard-ava-badge { position: absolute; left: 2rpx; bottom: 2rpx; width: 30rpx; height: 30rpx; border-radius: 50%; background: var(--accent2); display: flex; align-items: center; justify-content: center; }
+.mcard-ava-badge { position: absolute; left: 4rpx; bottom: 4rpx; width: 32rpx; height: 32rpx; border-radius: 50%; background: var(--accent2); display: flex; align-items: center; justify-content: center; }
 .mcard-ava-badge text { color: var(--paper); font-size: 16rpx; }
-.mcard-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 9rpx; }
-.mcard-name-row { display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
-.mcard-name { color: var(--ink); font-size: 29rpx; font-weight: 800; }
+.mcard-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10rpx; }
+.mcard-name-row { display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 12rpx; }
+.mcard-name { max-width: 100%; color: var(--ink); font-size: 30rpx; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .realname-tag { padding: 4rpx 12rpx; border-radius: 999rpx; background: var(--match-sky); }
 .realname-tag text { color: var(--accent); font-size: 17rpx; font-weight: 700; }
 .realname-tag.ok { background: var(--sage-soft); }
 .realname-tag.ok text { color: var(--sage); }
-.mcard-meta { color: var(--ink2); font-size: 21rpx; line-height: 1.4; }
-.mcard-owner { display: flex; flex-direction: row; align-items: center; gap: 8rpx; align-self: flex-start; padding: 6rpx 14rpx; border-radius: 8rpx; background: var(--accent-bg); }
-.mcard-owner-glyph { color: var(--accent2); font-size: 18rpx; }
-.mcard-owner-label { color: var(--ink2); font-size: 19rpx; }
-.mcard-owner-value { color: var(--accent2); font-size: 19rpx; font-weight: 800; }
+/* 编号与登记时间合成一行次要信息，对应参考稿标题下的时间戳行。 */
+.mcard-sub { display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; }
+.mcard-no { color: var(--muted); font-size: 19rpx; }
 .mcard-reg { display: flex; flex-direction: row; align-items: center; gap: 8rpx; }
-.mcard-reg-glyph { color: var(--muted); font-size: 19rpx; }
 .mcard-reg text { color: var(--muted); font-size: 19rpx; }
-.mcard-reason { display: block; margin-top: 14rpx; color: var(--match-coral); font-size: 20rpx; line-height: 1.5; }
+.mcard-sub-dot { color: var(--line) !important; font-size: 19rpx !important; }
+.mcard-meta { color: var(--ink2); font-size: 21rpx; line-height: 1.4; }
+.mcard-owner { display: flex; flex-direction: row; align-items: center; gap: 8rpx; }
+.mcard-owner-glyph { color: var(--match-coral); font-size: 18rpx; }
+.mcard-owner-label { color: var(--muted); font-size: 20rpx; }
+.mcard-owner-value { color: var(--ink); font-size: 20rpx; font-weight: 800; }
+.mcard-reason { display: block; margin-top: 18rpx; padding: 14rpx 18rpx; border-radius: 14rpx; background: var(--match-blush); color: var(--match-coral); font-size: 20rpx; line-height: 1.5; }
 
-.mcard-actions { margin-top: 18rpx; padding-top: 16rpx; border-top: 1px solid var(--line); display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
-.act-more { width: 96rpx; height: 56rpx; border: 1rpx solid var(--accent); border-radius: 999rpx; display: flex; align-items: center; justify-content: center; }
+.mcard-actions { margin-top: 20rpx; padding-top: 20rpx; border-top: 1rpx solid var(--warm); display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
+.act-more { width: 96rpx; height: 62rpx; border: 1rpx solid var(--accent); border-radius: 999rpx; display: flex; align-items: center; justify-content: center; }
 .act-more text { color: var(--accent); font-size: 20rpx; font-weight: 800; }
-.act { flex: 1; min-width: 0; height: 56rpx; border-radius: 999rpx; background: var(--warm); display: flex; align-items: center; justify-content: center; }
-.act text { color: var(--ink2); font-size: 19rpx; }
-.act:last-child { flex: 1.35; }
+.act { flex: 1; min-width: 0; height: 62rpx; border-radius: 999rpx; background: var(--warm); display: flex; align-items: center; justify-content: center; }
+.act text { color: var(--ink2); font-size: 20rpx; }
 
 /* 筛选为页面级右侧抽屉，不受列表和卡片的 overflow 影响。 */
 .filter-layer { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 110; display: flex; flex-direction: row; }
@@ -1659,7 +1664,7 @@ onMounted(() => {
 .seg-item.on text { color: var(--accent); font-weight: 800; }
 
 .intro-row { margin-bottom: 16rpx; padding: 20rpx; border-radius: 16rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: row; align-items: center; gap: 16rpx; }
-.intro-ava { width: 76rpx; height: 76rpx; border-radius: 50%; background: var(--accent-bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.intro-ava { width: 80rpx; height: 80rpx; border-radius: 24rpx; background: var(--accent-bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .intro-ava text { color: var(--accent2); font-size: 28rpx; font-weight: 800; }
 .intro-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8rpx; }
 .intro-name { color: var(--ink); font-size: 25rpx; font-weight: 700; }
@@ -1674,9 +1679,9 @@ onMounted(() => {
 
 /* match page */
 .match-member { margin-bottom: 18rpx; padding: 22rpx; border-radius: 20rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: row; align-items: center; gap: 18rpx; }
-.match-member-ava { width: 84rpx; height: 84rpx; border-radius: 50%; background: var(--accent-bg); overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.match-member-ava image { width: 84rpx; height: 84rpx; border-radius: 50%; }
-.match-member-ava text { color: var(--accent2); font-size: 30rpx; font-weight: 800; }
+.match-member-ava { width: 92rpx; height: 92rpx; border-radius: 26rpx; background: var(--accent-bg); overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.match-member-ava image { width: 92rpx; height: 92rpx; border-radius: 26rpx; }
+.match-member-ava text { color: var(--accent2); font-size: 32rpx; font-weight: 800; }
 .match-member-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 9rpx; }
 .match-member-no { color: var(--muted); font-size: 19rpx; }
 .match-pref { margin-bottom: 18rpx; padding: 20rpx 22rpx; border-radius: 20rpx; background: var(--surface); box-shadow: var(--shadow-sm); }
@@ -1687,11 +1692,11 @@ onMounted(() => {
 .match-tip { margin-bottom: 18rpx; padding: 20rpx 22rpx; border-radius: 20rpx; background: var(--review-orange-soft); display: flex; flex-direction: column; gap: 8rpx; }
 .match-tip-title { color: var(--review-orange); font-size: 21rpx; font-weight: 800; }
 .match-tip-copy { color: var(--ink2); font-size: 19rpx; line-height: 1.5; }
-.candidate-card { margin-bottom: 16rpx; padding: 20rpx 22rpx; border-radius: 20rpx; background: var(--surface); box-shadow: var(--shadow-sm); }
+.candidate-card { margin-bottom: 16rpx; padding: 22rpx 24rpx; border: 1rpx solid var(--line); border-radius: 28rpx; background: var(--surface); box-shadow: var(--shadow-md); }
 .candidate-card .mcard-body { margin-top: 0; }
 .cand-no { color: var(--muted); font-size: 19rpx; }
-.cand-ark { align-self: flex-start; padding: 6rpx 12rpx; border-radius: 8rpx; background: var(--review-orange-soft); }
-.cand-ark text { color: var(--review-orange); font-size: 18rpx; font-weight: 800; }
+.cand-ark { align-self: flex-start; display: flex; flex-direction: row; align-items: center; gap: 5rpx; }
+.cand-ark text { color: var(--muted); font-size: 18rpx; }
 
 /* overlay sheets */
 .overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 90; display: flex; flex-direction: row; align-items: flex-end; }
@@ -1781,5 +1786,5 @@ onMounted(() => {
 .cpd-btn.primary.disabled { opacity: .55; }
 .cpd-btn:active { opacity: .8; }
 
-.mcard-status:active, .act:active, .act-more:active, .more-item:active, .panel-submit:active, .pr-search-btn:active, .state-action:active, .seg-item:active { opacity: 0.75; }
+.mcard-status:active, .act:active, .act-more:active, .more-item:active, .panel-submit:active, .state-action:active, .seg-item:active { opacity: 0.75; }
 </style>

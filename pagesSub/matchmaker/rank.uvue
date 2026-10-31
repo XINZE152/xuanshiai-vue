@@ -1,0 +1,488 @@
+<template>
+	<view class="rank-page">
+		<scroll-view scroll-y class="page-scroller" :show-scrollbar="false">
+			<view class="page-content">
+				<view class="rank-head">
+					<text class="rank-head-title">红娘排行榜</text>
+					<text class="rank-head-sub">按已完成服务数量排序</text>
+				</view>
+
+				<view v-if="loading" class="state-box">
+					<text class="state-text">正在加载榜单…</text>
+				</view>
+
+				<view v-else-if="loadError.length > 0" class="state-box">
+					<text class="state-text">{{ loadError }}</text>
+					<view class="retry-btn" @click="loadRanking">
+						<text class="retry-text">重新加载</text>
+					</view>
+				</view>
+
+				<view v-else-if="list.length == 0" class="state-box">
+					<text class="state-text">暂无上榜红娘，更多红娘正在入驻中。</text>
+				</view>
+
+				<block v-else>
+					<!-- 领奖台固定三席，视觉顺序 2-1-3；三列底边对齐，台座越高的人站得越高 -->
+					<view class="podium">
+						<view
+							class="podium-col"
+							:class="col.tone"
+							v-for="col in podiumCols"
+							:key="col.rank"
+							@click="handleOpenDetail(col)"
+						>
+							<view v-if="!col.empty" class="col-frame">
+								<MatchmakerAvatar :src="col.item.avatar" :name="col.item.name" :variant="col.variant" />
+							</view>
+							<text v-if="!col.empty" class="col-name">{{ col.item.name }}</text>
+							<text v-if="!col.empty" class="col-meta">服务 {{ col.item.serviceCount }} 人</text>
+							<text v-if="!col.empty" class="col-meta">成功 {{ col.item.successCount }} 约</text>
+							<view class="col-block">
+								<view class="block-lid"></view>
+								<view class="block-body">
+									<text class="block-num">{{ col.rank }}</text>
+								</view>
+							</view>
+						</view>
+					</view>
+
+					<!-- 第 4 名起按名次逐行列出 -->
+					<view v-if="restRows.length > 0" class="rest-card">
+						<view
+							class="rest-item"
+							:class="{ 'rest-item-line': row.showLine }"
+							v-for="row in restRows"
+							:key="row.rank"
+							@click="handleOpenRow(row)"
+						>
+							<view class="rest-rank">
+								<text class="rest-rank-text">{{ row.rank }}</text>
+							</view>
+							<view class="rest-avatar">
+								<MatchmakerAvatar :src="row.item.avatar" :name="row.item.name" variant="rank" />
+							</view>
+							<view class="rest-info">
+								<text class="rest-name">{{ row.item.name }}</text>
+								<text class="rest-meta">服务 {{ row.item.serviceCount }} 人 · 成功 {{ row.item.successCount }} 约</text>
+							</view>
+						</view>
+					</view>
+
+					<view class="joining">
+						<view class="joining-line"></view>
+						<text class="joining-text">更多红娘正在入驻中</text>
+					</view>
+				</block>
+			</view>
+		</scroll-view>
+	</view>
+</template>
+
+<script setup lang="uts">
+import MatchmakerAvatar from '@/components/MatchmakerAvatar.uvue';
+import { getVolunteerMatchmakers } from '@/api';
+
+interface PodiumCol {
+	rank: number;
+	tone: string;
+	variant: string;
+	empty: boolean;
+	item: any;
+}
+
+interface RestRow {
+	rank: number;
+	showLine: boolean;
+	item: any;
+}
+
+const list = ref<any[]>([]);
+const loading = ref(true);
+const loadError = ref('');
+
+const makeCol = (item: any, rank: number): PodiumCol => {
+	return {
+		rank: rank,
+		// 空席也保留自己的奖牌色，台座形状不因缺人而错位
+		tone: rank == 1 ? 'champion' : (rank == 2 ? 'silver' : 'bronze'),
+		variant: rank == 1 ? 'rank-lg' : 'rank',
+		empty: item == null,
+		item: item
+	}
+};
+
+// 名次取自 list 的下标，视图只改排列方式，不重排数据。
+const podiumCols = computed((): PodiumCol[] => {
+	const src = list.value
+	return [
+		makeCol(src.length >= 2 ? src[1] : null, 2),
+		makeCol(src.length >= 1 ? src[0] : null, 1),
+		makeCol(src.length >= 3 ? src[2] : null, 3)
+	]
+});
+
+const restRows = computed((): RestRow[] => {
+	const src = list.value
+	const rows: RestRow[] = []
+	for (let i = 3; i < src.length; i++) {
+		rows.push({ rank: i + 1, showLine: i < src.length - 1, item: src[i] })
+	}
+	return rows
+});
+
+const loadRanking = async () => {
+	loading.value = true
+	loadError.value = ''
+	try {
+		const res = await getVolunteerMatchmakers(1, 50)
+		if (res.success && res.data != null) {
+			list.value = res.data as any[]
+		} else {
+			loadError.value = '排行榜加载失败，请稍后重试。'
+		}
+	} catch (e) {
+		loadError.value = '排行榜加载失败，请检查网络后重试。'
+	} finally {
+		loading.value = false
+	}
+}
+
+const openDetail = (item: any) => {
+	uni.navigateTo({ url: '/pagesSub/matchmaker/detail?id=' + item.id })
+};
+
+const handleOpenDetail = (col: PodiumCol) => {
+	if (col.empty) return
+	openDetail(col.item)
+};
+
+const handleOpenRow = (row: RestRow) => {
+	openDetail(row.item)
+};
+
+onMounted(() => {
+	loadRanking()
+});
+</script>
+
+<style scoped>
+	/* 本页所有容器都显式写 display，不依赖基础样式表：
+	   这个页面的编译产物没有拿到基础 view/text 规则（其他页面都有），
+	   那时 view 退回 block、text 退回 inline，居中和 flex:1 会整片失效。 */
+	.rank-page {
+		height: 100vh;
+		display: flex;
+		flex-direction: column;
+		/* 色调继承 pages/matchmaker：浅色纸面 + 青绿强调，领奖台只用榜单卡已有的金银铜三色 */
+		background: #FAF8F5;
+		--canvas: #FAF8F5;
+		--paper: #FFFFFF;
+		--surface: #FFFFFF;
+		--ink: #1A1A1A;
+		--ink2: #5A6B5C;
+		--muted: #A0B0A2;
+		--line: #E8EDE6;
+		--accent: #7EC8A0;
+		--accent2: #5BAF80;
+		--soft: #A0B0A2;
+		--warm: #F5F9F2;
+		--accent-bg: #E8F5EE;
+		--gold: #ECAE3F;
+		--gold-deep: #E9A428;
+		--gold-lid: #F7DCA4;
+		--silver: #C9CDD3;
+		--silver-deep: #B0B7C0;
+		--silver-lid: #E1E5EA;
+		--bronze: #A9764E;
+		--bronze-deep: #9F6E4E;
+		--bronze-lid: #CFA47F;
+	}
+
+	.page-scroller { height: 100vh; }
+
+	.page-content {
+		display: flex;
+		flex-direction: column;
+		padding: 26rpx 28rpx 90rpx;
+	}
+
+	.rank-head {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding-bottom: 34rpx;
+	}
+
+	.rank-head-title {
+		display: block;
+		font-size: 40rpx;
+		line-height: 1.2;
+		font-family: "Kaiti SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+		font-weight: 700;
+		color: var(--ink);
+	}
+
+	.rank-head-sub {
+		display: block;
+		margin-top: 12rpx;
+		font-size: 22rpx;
+		line-height: 1.2;
+		color: var(--muted);
+	}
+
+	/* ===== 领奖台 ===== */
+	/* view 默认不是 flex，横向排布必须显式写 row */
+	.podium {
+		display: flex;
+		flex-direction: row;
+		align-items: flex-end;
+	}
+
+	.podium-col {
+		display: flex;
+		flex-direction: column;
+		flex: 0 0 33.3333%;
+		width: 33.3333%;
+		min-width: 0;
+		align-items: center;
+		text-align: center;
+		padding-bottom: 16rpx;
+	}
+
+	.col-frame {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		box-sizing: border-box;
+		width: 114rpx;
+		height: 114rpx;
+		padding: 5rpx;
+		border-radius: 50%;
+		background: var(--silver);
+	}
+
+	.podium-col.champion .col-frame {
+		width: 148rpx;
+		height: 148rpx;
+		padding: 6rpx;
+		background: var(--gold);
+	}
+
+	.podium-col.bronze .col-frame { background: var(--bronze); }
+
+	.col-name {
+		display: block;
+		max-width: 100%;
+		margin-top: 16rpx;
+		font-size: 28rpx;
+		line-height: 1.3;
+		font-weight: 700;
+		color: var(--ink);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.col-meta {
+		display: block;
+		max-width: 100%;
+		margin-top: 6rpx;
+		font-size: 21rpx;
+		line-height: 1.4;
+		color: var(--muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	/* 台座：盖板与柱身分色做出立体感，柱身留 14% 内缩让盖板两侧探出 */
+	.col-block {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		width: 92%;
+		margin-top: 26rpx;
+	}
+
+	.podium-col.champion .col-block { height: 236rpx; }
+	.podium-col.silver .col-block { height: 158rpx; }
+	.podium-col.bronze .col-block { height: 112rpx; }
+
+	.block-lid {
+		flex: 0 0 auto;
+		width: 100%;
+		height: 20rpx;
+		border-radius: 12rpx 12rpx 0 0;
+		background: var(--silver-lid);
+	}
+
+	.block-body {
+		width: 86%;
+		flex: 1 1 auto;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		border-radius: 4rpx 4rpx 16rpx 16rpx;
+		background: linear-gradient(180deg, #D5D9DE 0%, var(--silver-deep) 100%);
+	}
+
+	.block-num {
+		display: block;
+		font-size: 62rpx;
+		line-height: 1;
+		font-weight: 800;
+		color: #FFFFFF;
+	}
+
+	.podium-col.champion .block-lid { background: var(--gold-lid); }
+
+	.podium-col.champion .block-body {
+		background: linear-gradient(180deg, #F3C86B 0%, var(--gold-deep) 100%);
+	}
+
+	.podium-col.champion .block-num { font-size: 80rpx; }
+
+	.podium-col.bronze .block-lid { background: var(--bronze-lid); }
+
+	.podium-col.bronze .block-body {
+		background: linear-gradient(180deg, #C79268 0%, var(--bronze-deep) 100%);
+	}
+
+	/* ===== 第 4 名起 ===== */
+	.rest-card {
+		display: flex;
+		flex-direction: column;
+		margin-top: 34rpx;
+		padding: 4rpx 24rpx;
+		border-radius: 26rpx;
+		background: var(--paper);
+		box-shadow: 0 14rpx 36rpx rgba(88, 74, 56, 0.06);
+	}
+
+	.rest-item {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		padding: 22rpx 0;
+	}
+
+	.rest-item-line { border-bottom: 1rpx solid var(--line); }
+
+	.rest-rank {
+		flex: 0 0 auto;
+		width: 44rpx;
+		height: 44rpx;
+		margin-right: 18rpx;
+		border-radius: 50%;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		background: var(--warm);
+	}
+
+	.rest-rank-text {
+		display: block;
+		font-size: 22rpx;
+		line-height: 1;
+		font-weight: 800;
+		color: var(--ink2);
+	}
+
+	.rest-avatar { flex: 0 0 auto; margin-right: 18rpx; }
+
+	.rest-info {
+		display: flex;
+		flex-direction: column;
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+
+	.rest-name {
+		display: block;
+		max-width: 100%;
+		font-size: 28rpx;
+		line-height: 1.3;
+		font-weight: 700;
+		color: var(--ink);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.rest-meta {
+		display: block;
+		max-width: 100%;
+		margin-top: 6rpx;
+		font-size: 21rpx;
+		line-height: 1.4;
+		color: var(--muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	/* ===== 底部与状态 ===== */
+	.joining {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		margin-top: 56rpx;
+	}
+
+	.joining-line {
+		flex: 0 0 auto;
+		width: 56rpx;
+		height: 4rpx;
+		margin-bottom: 20rpx;
+		border-radius: 2rpx;
+		background: var(--line);
+	}
+
+	.joining-text {
+		display: block;
+		font-size: 24rpx;
+		line-height: 1.2;
+		text-align: center;
+		letter-spacing: 2rpx;
+		color: var(--muted);
+	}
+
+	.state-box {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 90rpx 0;
+	}
+
+	.state-text {
+		display: block;
+		max-width: 100%;
+		font-size: 26rpx;
+		line-height: 1.4;
+		text-align: center;
+		color: var(--muted);
+	}
+
+	.retry-btn {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		margin-top: 26rpx;
+		padding: 16rpx 40rpx;
+		border-radius: 999rpx;
+		background: var(--accent-bg);
+	}
+
+	.retry-text {
+		display: block;
+		font-size: 26rpx;
+		line-height: 1.2;
+		font-weight: 700;
+		color: var(--accent2);
+	}
+</style>

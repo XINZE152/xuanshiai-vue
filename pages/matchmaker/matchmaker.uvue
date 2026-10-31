@@ -76,7 +76,7 @@
 							</scroll-view>
 						</view>
 
-						<MatchmakerRank v-if="rankList.length > 0" :list="rankList" @item-click="handleMatchmakerDetail" />
+						<MatchmakerRank v-if="rankList.length > 0" :list="rankList" @item-click="handleMatchmakerDetail" @more="handleRankMore" />
 					<view class="join-entry-row">
 						<view class="join-entry" @click="handleBecomeMatchmaker">
 							<image class="join-entry-icon" src="/static/icons/join-matchmaker.png" mode="aspectFit"></image>
@@ -555,6 +555,10 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 		uni.navigateTo({
 			url: '/pagesSub/matchmaker/detail?id=' + item.id
 		})
+	}
+
+	const handleRankMore = () => {
+		uni.navigateTo({ url: '/pagesSub/matchmaker/rank' })
 	}
 
 	const handleSelectPlan = (item : any) => {

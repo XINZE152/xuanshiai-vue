@@ -26,7 +26,7 @@ const card = read('components/MatchmakerCard.uvue')
 expect(card, '<MatchmakerAvatar :src="data.avatar" :name="data.name" variant="card" />', 'card uses shared avatar fallback')
 
 const ranking = read('components/MatchmakerRank.uvue')
-expect(ranking, '<MatchmakerAvatar :src="item.avatar" :name="item.name" variant="rank" />', 'ranking uses shared avatar fallback')
+expect(ranking, '<MatchmakerAvatar :src="slot.item.avatar" :name="slot.item.name" :variant="slot.variant" />', 'ranking uses shared avatar fallback')
 
 const detail = read('pagesSub/matchmaker/detail.uvue')
 expect(detail, '<MatchmakerAvatar :src="matchmaker.avatar" :name="matchmaker.name" variant="detail" />', 'detail uses shared avatar fallback')

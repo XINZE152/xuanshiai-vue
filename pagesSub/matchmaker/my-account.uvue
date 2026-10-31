@@ -15,7 +15,7 @@
 					</view>
 					<view class="vip-tag-row">
 						<view class="vip-tag">
-							<text class="vip-tag-text">服务红娘</text>
+							<text class="vip-tag-text">{{ roleName }}</text>
 						</view>
 						<text class="vip-tag-desc">红娘身份已生效</text>
 					</view>
@@ -131,8 +131,8 @@
 							<textarea
 								class="homepage-textarea"
 								:value="caseItem.description"
-								maxlength="1000"
-								placeholder="这条案例怎么帮到双方，1000 字以内，注意脱敏"
+								maxlength="50"
+								placeholder="这条案例怎么帮到双方，50 字以内，注意脱敏"
 								@input="(e: any) => onCaseDescription(caseIndex, e)"
 							/>
 							<view class="homepage-case-images">
@@ -215,6 +215,7 @@ import { computed, ref } from 'vue'
 import {
 	getProfileOverview,
 	getMatchmakerWorkspaceHomepage,
+	getMatchmakerWorkspaceIdentity,
 	updateMatchmakerWorkspaceHomepage,
 	uploadUserProfileMedia,
 	uploadWorkspaceLeadPhoto,
@@ -227,6 +228,22 @@ const user = ref({
 	nickname: '加载中',
 	avatar: '',
 })
+
+// 角色徽标由工作台身份接口给出（总店超级红娘 / 门店超级红娘 / 服务红娘），
+// 不再写死：后台调整角色后本页随之变化；接口失败时退回「服务红娘」。
+const roleName = ref('服务红娘')
+
+const loadIdentity = async () => {
+	try {
+		const res = await getMatchmakerWorkspaceIdentity()
+		if (!res.success || res.data == null) return
+		const data = res.data as any
+		const name = data.roleName != null ? ('' + data.roleName).trim() : ''
+		if (name.length > 0) roleName.value = name
+	} catch (error) {
+		console.error('[MyAccount] identity load failed', error)
+	}
+}
 
 const loadOverview = async () => {
 	try {
@@ -688,6 +705,7 @@ const bottomMenuItems = [
 
 onLoad(() => {
 	loadOverview()
+	loadIdentity()
 	loadHomepage()
 })
 </script>
