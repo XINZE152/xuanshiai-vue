@@ -3,7 +3,6 @@
 export const USE_MOCK = false
 export const API_BASE_URL = 'https://xhztest.xyz'
 export const ROLE_APPLICATION_USE_MOCK = false
-export const PAPER_PLANE_CHANCE_USE_MOCK = true
 
 // 情感实验室（MBTI）开关集中在此管理。
 // 后端 app/api/router.py 目前没有任何 /emotion-lab/* 路由，真实调用一律 404

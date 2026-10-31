@@ -44,7 +44,7 @@ function editor(options = {}) {
 async function testPreferences() {
   const prefSource = fs.readFileSync(path.join(root, 'pagesSub/userExtra/user/preference.uvue'), 'utf8')
   const script = prefSource.split('<script setup lang="uts">')[1].split('</script>')[0].replace(/^import .*$/gm, '')
-  let response = { success: true, data: { dating_goal: null, meeting_pace: null, children_intention: null } }
+  let response = { success: true, data: {} }
   const writes = []
   const context = {
     ref: value => ({ value }), computed: fn => ({ get value() { return fn() } }),
@@ -53,23 +53,39 @@ async function testPreferences() {
     getOwnPreferences: async () => response,
     updateOwnPreferences: async data => { writes.push(data); return { success: true, data } }
   }
-  const code = babel.transformSync(script + '\nglobalThis.pref = { load, save, setPlan, planGoal, planPace, planKids, loaded };', { filename: 'preference.ts', configFile: false, babelrc: false, plugins: ['@babel/plugin-transform-typescript'] }).code
+  const code = babel.transformSync(script + '\nglobalThis.pref = { load, save, setEduIndex, setMarriageTimeline, onOccupationChange, onExtraNoteInput, eduMin, eduIndex, marriageTimelineIndex, occupationIndex, extraNote, loaded };', { filename: 'preference.ts', configFile: false, babelrc: false, plugins: ['@babel/plugin-transform-typescript'] }).code
   vm.runInNewContext(code, context)
   const p = context.pref
   await p.load()
-  assert.equal(p.planGoal.value, -1)
-  assert.equal(p.planPace.value, -1)
-  assert.equal(p.planKids.value, -1)
-  response = { success: true, data: { dating_goal: '倾向恋爱', meeting_pace: '真诚高效', children_intention: '不想要孩子' } }
+  assert.equal(p.marriageTimelineIndex.value, 0)
+  assert.equal(p.occupationIndex.value, 0)
+  assert.equal(p.extraNote.value, '')
+  assert.equal(p.eduIndex.value, 0)
+
+  response = { success: true, data: { marriage_timeline: '两年内结婚', preferred_occupation: '教师', extra_requirement: '希望对方喜欢运动', education_min: 5 } }
   await p.load()
-  assert.equal(p.planGoal.value, 0)
-  assert.equal(p.planPace.value, 1)
-  assert.equal(p.planKids.value, 2)
-  p.setPlan(2, 2)
+  assert.equal(p.marriageTimelineIndex.value, 2)
+  assert.equal(p.occupationIndex.value, 6)
+  assert.equal(p.extraNote.value, '希望对方喜欢运动')
+  assert.equal(p.eduIndex.value, 5)
+
+  p.setMarriageTimeline(4)
+  p.onOccupationChange({ detail: { value: 6 } })
+  p.onExtraNoteInput({ detail: { value: '  新补充  ' } })
+  p.setEduIndex(2)
   await p.save()
-  assert.equal(writes[0].dating_goal, '倾向恋爱')
-  assert.equal(writes[0].meeting_pace, '真诚高效')
-  assert.equal(writes[0].children_intention, null)
+  assert.equal(writes[0].marriage_timeline, '时机成熟时结婚')
+  assert.equal(writes[0].preferred_occupation, '教师')
+  assert.equal(writes[0].extra_requirement, '新补充')
+  assert.equal(writes[0].education_min, 2)
+
+  // 旧“期待”的 1/2/3 标签串要翻成补充说明；旧的 6-8 学历要归零，不能再写回越界值。
+  response = { success: true, data: { extra_requirement: '1,2,3', education_min: 7 } }
+  await p.load()
+  assert.equal(p.extraNote.value, '有稳定工作、重视家庭、愿意认真沟通')
+  assert.equal(p.eduMin.value, null)
+  assert.equal(p.eduIndex.value, 0)
+
   response = { success: false }
   await p.load()
   await p.save()

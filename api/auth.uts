@@ -6,6 +6,8 @@
 import { request } from './request.uts'
 import { mockMeProfile } from '@/mock'
 import { CURRENT_USER_ID_KEY, USE_MOCK, buildApiUrl, getAccessToken, setAuthTokens, clearAuthTokens } from './config.uts'
+// 退出登录要清掉缓存的己方头像，否则换号后聊天页仍显示上一个账号的头像。
+import { resetMyAvatarCache } from './message.uts'
 
 // 登录态自动续期入口（实现位于 request.uts，此处 re-export 供外部统一从 auth 模块引用）。
 export { refreshAccessToken } from './request.uts'
@@ -249,5 +251,6 @@ export async function logout() {
     })
   } finally {
     clearAuthTokens()
+    resetMyAvatarCache()
   }
 }

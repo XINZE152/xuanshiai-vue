@@ -10,7 +10,8 @@
 			<view class="avatar protected-avatar" v-if="protectPhoto">
 				<view class="protected-avatar-mark"></view>
 			</view>
-			<image class="avatar" v-else :src="message.avatar" mode="aspectFill"></image>
+			<image class="avatar" v-else-if="displayAvatar != ''" :src="displayAvatar" mode="aspectFill" @error="onAvatarError"></image>
+			<view class="avatar avatar-fallback" v-else><text class="avatar-fallback-text">{{ avatarFallbackText }}</text></view>
 		</view>
 
 		<!-- 消息内容 -->
@@ -18,6 +19,7 @@
 			<view class="message-top">
 				<view class="name-row">
 					<text class="name">{{ message.name }}</text>
+					<text class="pin-tag" v-if="message.pinned === true">置顶</text>
 				</view>
 				<text class="time text-muted">{{ formatTime }}</text>
 			</view>
@@ -71,6 +73,19 @@ const emit = defineEmits<{
 }>();
 
 let suppressClick = false;
+
+// 头像空值或加载失败时，用昵称首字做中性占位（不按性别猜默认图）。
+const avatarFailed = ref(false);
+const displayAvatar = computed(() => {
+	if (avatarFailed.value) return '';
+	const src = props.message.avatar;
+	return src != null && String(src) != '' ? String(src) : '';
+});
+const avatarFallbackText = computed(() => {
+	const name = props.message.name;
+	return name != null && String(name) != '' ? String(name).charAt(0) : '友';
+});
+const onAvatarError = () => { avatarFailed.value = true; };
 
 // 未读数显示文本（超过99显示99+）
 const badgeText = computed(() => {
@@ -159,7 +174,7 @@ const handleLongPress = () => {
 }
 
 .xsa-message-item.pinned {
-	background: var(--canvas);
+	background: var(--warm);
 }
 
 .xsa-message-item:active {
@@ -186,6 +201,20 @@ const handleLongPress = () => {
 	display: flex;
 	align-items: center;
 	justify-content: center;
+}
+
+.avatar-fallback {
+	background: var(--warm);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.avatar-fallback-text {
+	font-size: 20px;
+	font-weight: 600;
+	color: var(--ink2);
+	line-height: 1;
 }
 
 .protected-avatar-mark {
@@ -262,6 +291,17 @@ const handleLongPress = () => {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.pin-tag {
+	flex-shrink: 0;
+	padding: 1px 6px;
+	border-radius: 6px;
+	background: var(--accent-bg);
+	color: var(--accent2);
+	font-size: 10px;
+	line-height: 14px;
+	font-weight: 600;
 }
 
 .time {

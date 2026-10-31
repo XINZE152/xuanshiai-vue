@@ -23,10 +23,10 @@
 				<button class="apply-button secondary" :disabled="submitting" @click="handleClose">取消</button>
 				<button
 				class="apply-button primary"
-				:disabled="submitting || message.trim().length == 0 || remainingApplications <= 0"
+				:disabled="submitting || message.trim().length == 0"
 				@click="handleSubmit"
 			>
-				{{ submitting ? '提交中' : remainingApplications <= 0 ? '今日次数已用完' : '确认发送' }}
+				{{ submitting ? '提交中' : '确认发送' }}
 				</button>
 			</view>
 		</view>

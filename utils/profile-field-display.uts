@@ -12,7 +12,12 @@ MARRIAGE_STATUS_LABELS.set('single', '未婚')
 MARRIAGE_STATUS_LABELS.set('divorced', '离异')
 MARRIAGE_STATUS_LABELS.set('widowed', '丧偶')
 
-/** 学历：与落笔页 ENUM_OPTIONS 对齐（1-6），后端区间上限 8 时回落原值 */
+/**
+ * 学历（**AI 画像刻度**，1-6）：与后端 app/schemas/ai_profile.py 的抽取契约一致
+ * —— `_RANGE_FIELDS` 里 education_level 区间 (1,6)，注释明写「1=初中及以下…6=博士」。
+ * 仅用于 ai_profile 旅程字段（master 草稿 / 结果页）的展示，**不要**拿它渲染 user_profile。
+ * 用户资料口径见下面的 USER_EDUCATION_LABELS。
+ */
 const EDUCATION_LEVEL_LABELS: Map<string, string> = new Map()
 EDUCATION_LEVEL_LABELS.set('1', '初中及以下')
 EDUCATION_LEVEL_LABELS.set('2', '高中/中专')
@@ -20,6 +25,37 @@ EDUCATION_LEVEL_LABELS.set('3', '大专')
 EDUCATION_LEVEL_LABELS.set('4', '本科')
 EDUCATION_LEVEL_LABELS.set('5', '硕士')
 EDUCATION_LEVEL_LABELS.set('6', '博士')
+
+/**
+ * 学历（**用户资料刻度**，1-5）：与后端 app/services/discovery.py 的
+ * `_EDUCATION_LABELS` 一致 —— 1 高中及以下 / 2 大专 / 3 本科 / 4 硕士 / 5 博士。
+ * 这是首页、详情、编辑页的唯一字典；后端 schemas/auth.py 放行到 8，6-8 为未启用档位，按「博士」兜底。
+ */
+const USER_EDUCATION_LABELS: Map<string, string> = new Map()
+USER_EDUCATION_LABELS.set('1', '高中及以下')
+USER_EDUCATION_LABELS.set('2', '大专')
+USER_EDUCATION_LABELS.set('3', '本科')
+USER_EDUCATION_LABELS.set('4', '硕士')
+USER_EDUCATION_LABELS.set('5', '博士')
+USER_EDUCATION_LABELS.set('6', '博士')
+USER_EDUCATION_LABELS.set('7', '博士')
+USER_EDUCATION_LABELS.set('8', '博士')
+
+/** 用户资料学历选择项（index = 存储值，0 为未选择）。编辑页 picker 必须复用它，禁止再写字面量。 */
+export const USER_EDUCATION_OPTIONS: string[] = ['未选择', '高中及以下', '大专', '本科', '硕士', '博士']
+
+/** 用户资料学历裸值 → 展示文案。空值「未填写」；非数字原样返回；6-8 按「博士」兜底。 */
+export function educationLabel(raw: any): string {
+	if (raw == null) return '未填写'
+	const text = ('' + raw).trim()
+	if (text == '') return '未填写'
+	const level = Number(text)
+	if (!isNaN(level)) {
+		const mapped = mapLookup(USER_EDUCATION_LABELS, text)
+		return mapped != '' ? mapped : '未填写'
+	}
+	return text
+}
 
 /** 收入档位：PRODUCT.md 2026-09-03 口径，个人月收入、左闭右开、0-6 */
 const INCOME_BAND_LABELS: Map<string, string> = new Map()

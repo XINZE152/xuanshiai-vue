@@ -26,7 +26,7 @@
 				<view class="cert-item" @tap="openStep('education')">
 					<view class="cert-icon-wrap" :class="{ 'cert-done': educationStatus == 2 }"><text class="cert-icon-text">学历</text></view>
 					<view class="cert-text-wrap"><text class="cert-label">学历认证</text><text class="cert-desc">{{ educationDescription }}</text></view>
-					<text v-if="educationStatus == 2" class="status passed">已认证</text><text v-else-if="educationStatus == 1" class="status reviewing">审核中</text><view v-else class="action-pill"><text>{{ educationStatus == 3 ? '重新提交' : '去认证' }}</text></view>
+					<text v-if="educationStatus == 2" class="status passed">已认证</text><text v-else-if="educationReviewing" class="status reviewing">审核中</text><view v-else class="action-pill"><text>{{ educationStatus == 3 ? '重新提交' : '去认证' }}</text></view>
 				</view>
 				<view class="cert-item">
 					<view class="cert-icon-wrap" :class="{ 'cert-done': avatarUploaded }"><text class="cert-icon-text">头像</text></view>
@@ -156,7 +156,7 @@ const realnameDescription = computed(() => {
 	if (realnameStatus.value == 3 || realnameStatus.value == 5) return '实名认证未通过，请重新提交'
 	return '填写本人真实身份信息后提交审核'
 })
-const educationDescription = computed(() => educationStatus.value == 2 ? '学历信息已通过平台人工审核' : (educationStatus.value == 1 ? '学历材料正在等待平台审核' : (educationStatus.value == 3 ? (educationFailReason.value != '' ? educationFailReason.value : '审核未通过，可重新提交') : '提交学历、学校和证明图片')))
+const educationDescription = computed(() => educationStatus.value == 2 ? '学历信息已通过平台人工审核' : (educationReviewing.value ? '学历材料正在等待平台审核' : (educationStatus.value == 3 ? (educationFailReason.value != '' ? educationFailReason.value : '审核未通过，可重新提交') : '提交学历、学校和证明图片')))
 const pledgeDescription = computed(() => pledgeStatus.value == 2 ? '手写承诺已通过平台审核' : (pledgeStatus.value == 1 ? '单身承诺正在等待平台审核' : (pledgeStatus.value == 3 ? (pledgeFailReason.value != '' ? pledgeFailReason.value : '审核未通过，可重新签署') : (realnameStatus.value == 2 ? '手写签署当前单身状态承诺' : '完成实名认证后可签署'))))
 const messageOf = (res: any, fallback: string): string => res != null && res.message != null && String(res.message) != '' ? String(res.message) : fallback
 const mediaUrl = (value: string): string => resolveMediaUrl(value)

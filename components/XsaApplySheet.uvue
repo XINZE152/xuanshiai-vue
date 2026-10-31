@@ -31,7 +31,7 @@
 
 <script setup lang="uts">
 	import XsaSheet from '@/components/XsaSheet.uvue'
-	import { applyToMeet, getCommunityQuotas } from '@/api'
+	import { applyToMeet, getCommunityQuotas, getMyQuotas } from '@/api'
 	import { guardRealName } from '@/utils/realNameGate.uts'
 
 	interface Props {
@@ -53,19 +53,34 @@
 	const submitting = ref(false)
 	const remain = ref(2)
 
+	// 余额只用于展示。额度唯一权威口径是 GET /users/me/quotas（后端 A-4 起与真实扣次同源），
+	// /community/quotas 仅作降级；两者都不再作为"能不能点提交"的判据——由服务端 429 裁决。
+	const loadRemain = async () => {
+		try {
+			const mine = await getMyQuotas()
+			if (mine.success && mine.data != null && mine.data.apply != null) {
+				remain.value = mine.data.apply.totalRemaining
+				return
+			}
+		} catch (e) {
+			console.error(e)
+		}
+		try {
+			const res = await getCommunityQuotas()
+			if (res.success && res.data != null && res.data.applyDaily != null) {
+				remain.value = res.data.applyDaily.remain
+			}
+		} catch (e) {
+			console.error(e)
+		}
+	}
+
 	watch(
 		() => props.visible,
 		async (v: boolean) => {
 			if (v) {
 				message.value = ''
-				try {
-					const res = await getCommunityQuotas()
-					if (res.success && res.data != null && res.data.applyDaily != null) {
-						remain.value = res.data.applyDaily.remain
-					}
-				} catch (e) {
-					console.error(e)
-				}
+				await loadRemain()
 			}
 		}
 	)
@@ -91,10 +106,8 @@
 		}
 		const ok = await guardRealName('apply')
 		if (!ok) return
-		if (remain.value <= 0) {
-			uni.showToast({ title: '今日免费次数已用完，可用积分加次', icon: 'none' })
-			return
-		}
+		// 不再用本地 remain 拦截：额度可能刚被积分加过（extra_remaining 只在 /users/me/quotas 里），
+		// 本地判 0 会让「兑换了次数还是点不动」。是否放行交给服务端，429 时按 F-07 引导兑换。
 		submitting.value = true
 		try {
 			const res = await applyToMeet(props.userId, text)
@@ -131,9 +144,73 @@
 						: res != null && res.message != null
 							? res.message
 							: '发送失败，请重试'
-				uni.showToast({ title: msg, icon: 'none' })
 				if (data != null && data.remain != null) {
 					remain.value = data.remain
+				}
+				// F-07：按后端业务码分流，而不是所有失败都只弹一句 toast。
+				// 403 的 detail 是 {code,message,retryable}，request 层已提成 res.businessCode。
+				const httpCode = res != null && res.code != null ? Number(res.code) : 0
+				const biz = res != null && res.businessCode != null ? '' + res.businessCode : ''
+				if (biz == 'PROFILE_INCOMPLETE') {
+					uni.showModal({
+						title: '资料未完善',
+						content: '对方需要看到完整资料才会回应，先花 1 分钟补齐资料。',
+						confirmText: '去完善',
+						success: (r) => {
+							if (r.confirm) {
+								emit('close')
+								uni.navigateTo({ url: '/pagesSub/userExtra/user/edit' })
+							}
+						}
+					})
+				} else if (biz == 'PHONE_REQUIRED') {
+					uni.showModal({
+						title: '请先绑定手机号',
+						content: '绑定手机号后才能发起认识申请。',
+						confirmText: '去绑定',
+						success: (r) => {
+							if (r.confirm) {
+								emit('close')
+								uni.navigateTo({ url: '/pagesSub/profileExtra/security' })
+							}
+						}
+					})
+				} else if (biz == 'REALNAME_REQUIRED') {
+					uni.showModal({
+						title: '请先完成实名认证',
+						content: '实名认证通过后才能发起认识申请。',
+						confirmText: '去认证',
+						success: (r) => {
+							if (r.confirm) {
+								emit('close')
+								uni.navigateTo({ url: '/pagesSub/profileExtra/certification?focus=realname' })
+							}
+						}
+					})
+				} else if (biz == 'APPLICATION_RESTRICTED') {
+					uni.showToast({ title: msg != '' ? msg : '当前账号状态暂不可发起申请', icon: 'none' })
+				} else if (httpCode == 409) {
+					uni.showModal({
+						title: '已有进行中的申请',
+						content: msg != '' ? msg : '双方已有进行中的认识申请或匹配，请到消息页查看。',
+						showCancel: false,
+						confirmText: '知道了',
+						success: () => { emit('close') }
+					})
+				} else if (httpCode == 429) {
+					uni.showModal({
+						title: '今日次数已用完',
+						content: '可用积分兑换「申请认识次数」，兑换后立即生效。',
+						confirmText: '去兑换',
+						success: (r) => {
+							if (r.confirm) {
+								emit('close')
+								uni.navigateTo({ url: '/pagesSub/profileExtra/my-tasks' })
+							}
+						}
+					})
+				} else {
+					uni.showToast({ title: msg, icon: 'none' })
 				}
 			}
 		} catch (e) {

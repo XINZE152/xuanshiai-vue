@@ -28,6 +28,27 @@ includes(chatPage, "res.code == 'CHAT_NOT_ALLOWED'", 'permission failures should
 includes(chatPage, 'result.success != true', 'send success should require the business success flag')
 includes(chatPage, 'uploadChatMedia', 'media should be uploaded before sending a media message')
 includes(chatPage, 'revokeMessage', 'sent messages should support a server-side revoke')
+
+// F-M1 长按菜单：撤回等动作收进长按，气泡外不再常驻可点文字。
+includes(chatPage, '@longpress="openMessageMenu(message)"', 'message bubbles should open a long-press menu')
+includes(chatPage, "const openMessageMenu = (message: any)", 'long-press menu builder')
+includes(chatPage, "items.push('复制')", 'copy action')
+includes(chatPage, "items.push('重新编辑')", 're-edit action')
+includes(chatPage, "items.push('撤回')", 'revoke action inside the long-press menu')
+includes(chatPage, "message.type === 'system'", 'system messages should not expose a message menu')
+assert.ok(!chatPage.includes('class="revoke-action"'), 'revoke should not stay as a permanent control under the bubble')
+assert.ok(!chatPage.includes('.revoke-action'), 'styles of the removed permanent revoke control should be gone')
+includes(chatPage, 'messageMenuOpenedAt', 'a long press should suppress the tap that follows it')
+
+// F-M6 AI 军师入口先校验会员态，读取失败退回本地缓存而不是误判非会员。
+includes(chatPage, 'await getMembershipStatus()', 'advisor entry should check the real membership state')
+includes(chatPage, 'AI 军师仅对有效会员开放', 'non members should get the membership guidance')
+includes(chatPage, 'getCurrentUserVipStatus()', 'advisor gate should fall back to the cached membership state')
+
+// F-M10 聊天页导航栏显示对方昵称。
+includes(chatPage, 'applyPeerTitle()', 'peer title should be applied once the chat is allowed')
+includes(chatPage, 'uni.setNavigationBarTitle', 'navigation title should carry the peer nickname')
+
 includes(chatPage, 'getContactExchanges', 'contact exchange state should be loaded from the API')
 includes(chatPage, 'createContactExchange', 'contact exchange should be explicitly requested')
 includes(chatPage, 'respondContactExchange', 'contact exchange should require a receiver response')
