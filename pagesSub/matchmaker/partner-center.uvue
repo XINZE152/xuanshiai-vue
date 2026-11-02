@@ -12,6 +12,7 @@
 		<scroll-view scroll-y class="partner-scroll" :show-scrollbar="false">
 			<view v-if="loading" class="loading-state"><view class="loading-block large"></view><view class="loading-block"></view><view class="loading-block"></view></view>
 
+			<MatchmakerRemoteServices v-else-if="screen == 'withdraw' || screen == 'finance'" initial-tab="账户资金" :finance-only="true"/>
 			<view v-else-if="screen == 'home'" class="home-content">
 				<view class="balance-card">
 					<view class="balance-copy"><text class="balance-label">可提现额度（元）</text><text class="balance-value">{{ withdrawableBalance }}</text></view>
@@ -228,6 +229,7 @@
 </template>
 
 <script setup lang="uts">
+import MatchmakerRemoteServices from '@/components/MatchmakerRemoteServices.uvue'
 import XsaToast from '@/components/XsaToast.uvue'
 import MatchmakerServiceNavSheet from '@/components/MatchmakerServiceNavSheet.uvue'
 import { createPartnerTeamInvite, createPartnerTeamQrcode, getPartnerCenterSnapshot, getPartnerJoinRequests, reviewPartnerJoinRequest, updatePartnerTeamName, updatePartnerAccountProfile, createPartnerWithdrawal } from '@/api'

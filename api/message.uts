@@ -25,8 +25,8 @@ const DEFAULT_ME_AVATAR = '/static/portraits/profile-man-light.webp'
 /** 普通用户消息中心与普通文字聊天使用 FastAPI；父母端仍由 subject fail-closed 保护。 */
 export const MESSAGE_USE_MOCK = false
 export const CHAT_USE_MOCK = false
-/** 联系方式交换尚未有对应 FastAPI 路由，继续隔离在本地 Mock。 */
-export const CONTACT_EXCHANGE_USE_MOCK = true
+/** 普通用户联系方式交换使用会话结构化请求；父母端仍保持隔离。 */
+export const CONTACT_EXCHANGE_USE_MOCK = false
 export const CHAT_MEDIA_USE_MOCK = true
 
 export type MessageSubject = {
@@ -1185,6 +1185,47 @@ export async function revokeMessage(
   return okResponse({ messageId: messageId, revoked: true, clientCommandId: commandId })
 }
 
+/** 仅映射联系方式请求；无论服务端版本如何，待确认的值都不交给页面。 */
+function mapContactExchange(row: any, viewerId: number): any {
+  if (row == null || (row.request_type != 'PHONE' && row.request_type != 'WECHAT')) return null
+  const requesterId = Number(row.requester_id)
+  const responderId = Number(row.responder_id)
+  if (!isPositiveInteger(Number(row.id)) || !isPositiveInteger(Number(row.session_id)) ||
+    !isPositiveInteger(requesterId) || !isPositiveInteger(responderId) ||
+    (requesterId != viewerId && responderId != viewerId)) return null
+  let status = String(row.status).toLowerCase()
+  if (['pending', 'accepted', 'rejected', 'withdrawn', 'expired'].indexOf(status) < 0) return null
+  if (status == 'pending' && row.expire_at != null) {
+    // 服务端 MySQL UTC datetime 序列化没有时区后缀，不能按设备本地时区解释。
+    const rawExpiry = String(row.expire_at)
+    const expiry = /[zZ]$|[+-]\d{2}:\d{2}$/.test(rawExpiry) ? rawExpiry : rawExpiry + 'Z'
+    const expiresAt = Date.parse(expiry)
+    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) status = 'expired'
+  }
+  const payload = row.payload
+  const value = status == 'accepted' && payload != null && typeof payload.contact_value == 'string'
+    ? String(payload.contact_value).trim() : ''
+  return {
+    id: Number(row.id),
+    sessionId: Number(row.session_id),
+    contactType: row.request_type == 'PHONE' ? 'phone' : 'wechat',
+    status: status,
+    requestedByMe: requesterId == viewerId,
+    contactValue: value != '' ? value : null
+  }
+}
+
+function contactExchangeResponse(res: any, viewerId: number, sessionId: number = 0): any {
+  if (Number(uni.getStorageSync(CURRENT_USER_ID_KEY)) != viewerId) return failResponse('登录状态已变化，请重新打开会话', 'AUTH_CHANGED')
+  const normalized = normalizeBusinessResponse(res)
+  if (normalized == null || normalized.success != true) return normalized
+  const exchange = mapContactExchange(businessData(normalized), viewerId)
+  if (exchange == null || (sessionId > 0 && exchange.sessionId != sessionId)) {
+    return failResponse('联系方式请求响应无效', 'INVALID_CONTACT_EXCHANGE_RESPONSE')
+  }
+  return okResponse(exchange)
+}
+
 export async function getContactExchanges(
   userId: number,
   subject: MessageSubject | null = null
@@ -1198,7 +1239,26 @@ export async function getContactExchanges(
     const result = getMockContactExchanges(userId, subjectContext.key)
     return result.success == true ? okResponse(result.list) : failResponse(result.message, result.code, result)
   }
-  return failResponse('联系方式交换后端契约尚未开放', 'CONTACT_EXCHANGE_NOT_AVAILABLE')
+  const viewerId = Number(uni.getStorageSync(CURRENT_USER_ID_KEY))
+  if (!isPositiveInteger(viewerId)) return failResponse('请先登录', 'AUTH_REQUIRED')
+  const sessionRes = await getChatSessionId(userId, subject)
+  if (sessionRes == null || sessionRes.success != true || sessionRes.data == null) return sessionRes
+  const sessionId = Number(sessionRes.data.id)
+  const res = normalizeBusinessResponse(await messageRequest({
+    url: '/chat/sessions/' + sessionId + '/requests', method: 'GET'
+  }))
+  if (Number(uni.getStorageSync(CURRENT_USER_ID_KEY)) != viewerId) return failResponse('登录状态已变化，请重新打开会话', 'AUTH_CHANGED')
+  if (res == null || res.success != true) return res
+  const rows = businessData(res)
+  if (!Array.isArray(rows)) return failResponse('联系方式状态响应无效', 'INVALID_CONTACT_EXCHANGE_RESPONSE')
+  const exchanges: any[] = []
+  for (const row of rows) {
+    if (row == null || (row.request_type != 'PHONE' && row.request_type != 'WECHAT')) continue
+    const exchange = mapContactExchange(row, viewerId)
+    if (exchange == null || exchange.sessionId != sessionId) return failResponse('联系方式状态响应无效', 'INVALID_CONTACT_EXCHANGE_RESPONSE')
+    exchanges.push(exchange)
+  }
+  return okResponse(exchanges)
 }
 
 export async function createContactExchange(
@@ -1220,7 +1280,25 @@ export async function createContactExchange(
     const result = createMockContactExchange(userId, contactType, contactValue, commandId, subjectContext.key)
     return result.success == true ? okResponse(result.exchange) : failResponse(result.message, result.code, result)
   }
-  return failResponse('联系方式交换后端契约尚未开放', 'CONTACT_EXCHANGE_NOT_AVAILABLE')
+  const value = contactValue.trim()
+  if (contactType == 'wechat' && !/^[a-zA-Z][a-zA-Z0-9_-]{5,19}$/.test(value)) {
+    return failResponse('请输入正确的微信号（6–20位，以字母开头）', 'INVALID_CONTACT_VALUE')
+  }
+  const viewerId = Number(uni.getStorageSync(CURRENT_USER_ID_KEY))
+  if (!isPositiveInteger(viewerId)) return failResponse('请先登录', 'AUTH_REQUIRED')
+  const sessionRes = await getChatSessionId(userId, subject)
+  if (sessionRes == null || sessionRes.success != true || sessionRes.data == null) return sessionRes
+  const sessionId = Number(sessionRes.data.id)
+  if (Number(uni.getStorageSync(CURRENT_USER_ID_KEY)) != viewerId) return failResponse('登录状态已变化，请重新打开会话', 'AUTH_CHANGED')
+  // 手机号由服务端读取当前账号绑定号码，不允许客户端替用户填写。
+  const payload: any = contactType == 'wechat' ? { contact_value: value } : null
+  const res = await messageRequest({
+    url: '/chat/sessions/' + sessionId + '/requests',
+    method: 'POST',
+    data: { request_type: contactType == 'phone' ? 'PHONE' : 'WECHAT', payload: payload },
+    headers: { 'Idempotency-Key': commandId }
+  })
+  return contactExchangeResponse(res, viewerId, sessionId)
 }
 
 export async function respondContactExchange(
@@ -1241,7 +1319,15 @@ export async function respondContactExchange(
     const result = respondMockContactExchange(exchangeId, action, commandId, subjectContext.key)
     return result.success == true ? okResponse(result.exchange) : failResponse(result.message, result.code, result)
   }
-  return failResponse('联系方式交换后端契约尚未开放', 'CONTACT_EXCHANGE_NOT_AVAILABLE')
+  const viewerId = Number(uni.getStorageSync(CURRENT_USER_ID_KEY))
+  if (!isPositiveInteger(viewerId)) return failResponse('请先登录', 'AUTH_REQUIRED')
+  const res = await messageRequest({
+    url: '/chat/session-requests/' + exchangeId,
+    method: 'PATCH',
+    data: { action: action == 'accept' ? 'ACCEPT' : 'REJECT' },
+    headers: { 'Idempotency-Key': commandId }
+  })
+  return contactExchangeResponse(res, viewerId)
 }
 
 /** Compatibility alias retained for callers of the former placeholder export. */

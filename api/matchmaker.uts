@@ -3,7 +3,7 @@
  * 包含：服务红娘、热心红娘、私人定制
  */
 
-import { request } from './request.uts'
+import { request, MATCHMAKER_REMOTE_MODE, hasRemoteMatchmakerEndpoint, remoteMatchmakerUnavailable, getRemoteCommissionEntries, createRemoteWithdrawal } from './matchmaker-remote.uts'
 import { API_BASE_URL, USE_MOCK, getAccessToken, clearAuthTokens, buildApiUrl, resolveMediaUrl } from './config.uts'
 import {
   mockMatchmakerManagementCenterAccess,
@@ -16,7 +16,7 @@ import {
 } from '@/mock/matchmaker.uts'
 
 // 仅本机联调可在服务端尚未写入工作台记录时展示脱敏测试明细；部署环境始终只用服务端数据。
-const canUseWorkspaceDemoFallback = !USE_MOCK && API_BASE_URL.indexOf('127.0.0.1') >= 0
+// 真实模式下空数据、错误都不得替换为演示记录。
 
 function toMatchmakerCard(item: any) {
   const successCount = item.success_count != null ? Number(item.success_count) : 0
@@ -172,11 +172,11 @@ function formatWorkspaceTime(value: any): string {
  */
 export async function getMatchmakerWorkspaceIdentity() {
   const result = await request({
-    url: '/matchmaker/workbench/identity',
+    url: MATCHMAKER_REMOTE_MODE ? '/matchmaker/management-center/dashboard' : '/matchmaker/workbench/identity',
     method: 'GET'
   })
   if (!result.success || result.data == null) return result
-  const identity: any = result.data
+  const identity: any = MATCHMAKER_REMOTE_MODE ? (result.data.identity || {}) : result.data
   return {
     success: true,
     data: {
@@ -266,7 +266,7 @@ export async function getPartnerCenterSnapshot() {
   const serverMembers = result.success && result.data != null && Array.isArray(result.data.effective_members)
     ? result.data.effective_members
     : (result.success && result.data != null && Array.isArray(result.data.effectiveMembers) ? result.data.effectiveMembers : [])
-  const useDemoFallback = canUseWorkspaceDemoFallback && (!result.success || result.data == null || serverMembers.length == 0)
+  const useDemoFallback = USE_MOCK
   if (!result.success && !useDemoFallback) return result
   const source = useDemoFallback ? mockPartnerCenterSnapshot : result.data
   if (source == null) return result
@@ -319,9 +319,17 @@ export async function updatePartnerAccountProfile(changes: any) {
   return { success: false, data: null, code: 501, message: '请在账号资料和账号安全页面修改昵称或手机号' }
 }
 
-/** 本期未接入提现，客户端不会创建本地资金或提现记录。 */
+/** 服务端控制提现开关、额度与审核，不创建本地资金记录。 */
+async function createWorkspaceWithdrawal(data: any) {
+  const account = data != null && data.account != null ? String(data.account).trim() : ''
+  const payee = data != null && data.payee != null ? String(data.payee).trim() : ''
+  if (account.length < 4 || payee.length < 1) return { success: false, data: null, code: 422, message: '请填写收款账号和收款人' }
+  const masked = payee.charAt(0) + '** / 尾号 ' + account.substring(account.length - 4)
+  return createRemoteWithdrawal(String(data.amount), masked)
+}
+
 export async function createPartnerWithdrawal(data: any) {
-  return { success: false, data: null, code: 501, message: '提现接口不在本期范围内' }
+  return createWorkspaceWithdrawal(data)
 }
 
 function normalizePromoterCenterSnapshot(data: any) {
@@ -356,7 +364,7 @@ function normalizePromoterCenterSnapshot(data: any) {
 export async function getPromoterCenterSnapshot() { const result = await request({ url: '/matchmaker/promoter-center', method: 'GET' }); if (!result.success || result.data == null) return result; return { success: true, data: normalizePromoterCenterSnapshot(result.data), code: result.code, message: result.message } }
 export async function updatePromoterCenterProfile(changes: any) { return { success: false, data: null, code: 501, message: '请在账号资料和账号安全页面修改昵称或手机号' } }
 export async function addPromoterLead(data: any) { const source = data != null ? data : {}; const name = source.nickname != null && String(source.nickname).trim() != '' ? String(source.nickname).trim() : String(source.realName || '').trim(); return request({ url: '/matchmaker/promoter-center/leads', method: 'POST', data: { name: name, phone: source.phone != null ? String(source.phone).trim() : '', wechat: source.wechat != null ? String(source.wechat).trim() : '', source: source.source != null && String(source.source).trim() != '' ? String(source.source).trim() : 'promoter', remark: source.description != null ? String(source.description).trim() : '' } }) }
-export async function createPromoterWithdrawal(data: any) { return { success: false, data: null, code: 501, message: '提现接口不在本期范围内' } }
+export async function createPromoterWithdrawal(data: any) { return createWorkspaceWithdrawal(data) }
 export async function createPromoterPromotionCode() { return request({ url: '/matchmaker/promoter-center/promotion-codes', method: 'POST' }) }
 
 /** 查询红娘工作范围内会员公开资料审核队列（支持 review_status/search 分页参数）。 */
@@ -450,6 +458,16 @@ export async function getMatchmakerWorkspaceProfile() {
  */
 export async function getMatchmakerWorkspaceHomepage() {
   const result = await request({ url: '/matchmaker/workbench/homepage', method: 'GET' })
+  if (MATCHMAKER_REMOTE_MODE && !result.success && Number(result.code) == 404) {
+    const profile = await getMatchmakerWorkspaceProfile()
+    if (!profile.success || profile.data == null) return profile
+    const id = Number(profile.data.user_id)
+    if (!Number.isInteger(id) || id < 1) return { success: false, data: null, code: 422, message: '工作台身份无效，请重新登录' }
+    const detail = await request({ url: '/matchmakers/' + id, method: 'GET' })
+    if (!detail.success || detail.data == null) return detail
+    const item = detail.data
+    return { success: true, data: { nickname: String(item.nickname || profile.data.display_name || ''), avatar: item.avatar || '', slogan: item.slogan || '', specialties: Array.isArray(item.specialties) ? item.specialties : [], introduction: item.intro || '', cases: Array.isArray(item.cases) ? item.cases : [] }, code: detail.code, message: detail.message }
+  }
   if (!result.success || result.data == null) return result
   const source: any = result.data
   const rawCases = Array.isArray(source.success_cases) ? source.success_cases as any[] : []
@@ -488,7 +506,9 @@ export async function updateMatchmakerWorkspaceHomepage(changes: any) {
       images: Array.isArray(item.images) ? (item.images as any[]).map((image: any) => String(image).trim()).filter((image: string) => image.length > 0) : []
     })).filter((item: any) => item.description.length > 0)
   }
-  return request({ url: '/matchmaker/workbench/homepage', method: 'PATCH', data: data })
+  const result = await request({ url: '/matchmaker/workbench/homepage', method: 'PATCH', data: data })
+  if (!result.success && Number(result.code) == 404) return { success: false, data: null, code: 404, message: '远端尚未部署红娘主页编辑接口，请先更新后端服务' }
+  return result
 }
 
 /** 查询当前服务红娘工作范围内的客源线索。 */
@@ -584,6 +604,7 @@ export async function createWorkspaceLead(data: any) {
 
 /** 上传客源线索照片，返回 { url, thumbnail_url, size }。 */
 export async function uploadWorkspaceLeadPhoto(filePath: string) {
+  if (!hasRemoteMatchmakerEndpoint('POST', '/matchmaker/workbench/leads/photo')) return remoteMatchmakerUnavailable()
   return new Promise<any>((resolve) => {
     uni.uploadFile({
       url: buildApiUrl('/matchmaker/workbench/leads/photo'),
@@ -638,11 +659,9 @@ export async function getMatchmakerWorkspaceIntroductions() {
     data: { page: 1, page_size: 100 },
     mockData: USE_MOCK ? { items: mockMatchmakerWorkspaceIntroductions, total: mockMatchmakerWorkspaceIntroductions.length } : null
   })
-  const serverItems = result.success && result.data != null && Array.isArray(result.data.items) ? result.data.items : []
-  const useDemoFallback = canUseWorkspaceDemoFallback && (!result.success || result.data == null || serverItems.length == 0)
-  if (!result.success && !useDemoFallback) return result
-  const source = useDemoFallback ? { items: mockMatchmakerWorkspaceIntroductions, total: mockMatchmakerWorkspaceIntroductions.length } : result.data
-  if (source == null) return result
+  // 牵线记录不做本机演示兜底：假记录的会员编号进不了主页也读不到联系方式，空列表就交给页面显示空状态。
+  if (!result.success || result.data == null) return result
+  const source = result.data
   const items = Array.isArray(source.items) ? source.items : []
   return {
     success: true,
@@ -651,6 +670,10 @@ export async function getMatchmakerWorkspaceIntroductions() {
         id: item.id != null ? String(item.id) : '',
         status: normalizeWorkspaceIntroductionStatus(item.status),
         failureReason: item.failure_reason != null ? String(item.failure_reason) : '',
+        applicationResponse: item.application_response != null ? String(item.application_response) : 'UNANSWERED',
+        responseReason: item.response_reason != null ? String(item.response_reason) : '',
+        fromPhoneViewed: item.from_phone_viewed === true,
+        toPhoneViewed: item.to_phone_viewed === true,
         note: item.note != null ? String(item.note) : '',
         createdAt: formatWorkspaceTime(item.created_at),
         updatedAt: formatWorkspaceTime(item.updated_at),
@@ -658,10 +681,11 @@ export async function getMatchmakerWorkspaceIntroductions() {
         toUser: normalizeWorkspaceIntroductionPerson(item.to_user)
       })),
       total: source.total != null ? Number(source.total) : items.length,
-      isDemo: useDemoFallback
+      workflowVersion: Number(source.workflow_version || 0),
+      isDemo: USE_MOCK
     },
-    code: useDemoFallback ? 0 : result.code,
-    message: useDemoFallback ? '本地测试数据' : result.message
+    code: result.code,
+    message: result.message
   }
 }
 
@@ -688,7 +712,7 @@ export async function getMatchmakerWorkspaceMeetingRequests() {
     mockData: USE_MOCK ? { items: mockMatchmakerWorkspaceMeetingRequests, total: mockMatchmakerWorkspaceMeetingRequests.length } : null
   })
   const serverItems = result.success && result.data != null && Array.isArray(result.data.items) ? result.data.items : []
-  const useDemoFallback = canUseWorkspaceDemoFallback && (!result.success || result.data == null || serverItems.length == 0)
+  const useDemoFallback = USE_MOCK
   if (!result.success && !useDemoFallback) return result
   const source = useDemoFallback ? { items: mockMatchmakerWorkspaceMeetingRequests, total: mockMatchmakerWorkspaceMeetingRequests.length } : result.data
   if (source == null) return result
@@ -755,6 +779,14 @@ function sumDemoAmounts(rows: any[]): number {
  * 与后台「总店红娘-分成明细」同一口径；合计剔除冲正行，与工作台概览的线上分成一致。
  */
 export async function getMatchmakerWorkspaceCommissionEntries(page: number = 1, pageSize: number = 100) {
+  if (MATCHMAKER_REMOTE_MODE) {
+    const result = await getRemoteCommissionEntries()
+    if (!result.success || !Array.isArray(result.data)) return result
+    const rows = result.data as any[]
+    const labels: any = { PENDING: '待入账', AVAILABLE: '已入账', FROZEN: '冻结中', REVERSED: '已冲正' }
+    const total = rows.filter((row: any) => row.status != 'REVERSED').reduce((sum: number, row: any) => sum + Number(row.amount || 0), 0)
+    return { success: true, data: { items: rows.map((row: any) => ({ id: String(row.id), time: formatWorkspaceTime(row.created_at), name: '订单 #' + String(row.order_id), avatar: '', item: '服务分成', amount: signedWorkspaceMoney(row.amount), status: row.status, statusLabel: labels[row.status] || String(row.status), orderNo: '' })), total: rows.length, page: 1, pageSize: rows.length, hasMore: false, totalAmount: '￥' + formatWorkspaceMoney(total), isDemo: false }, code: result.code, message: result.message }
+  }
   const result = await request({
     url: '/matchmaker/workbench/commission-entries',
     method: 'GET',
@@ -763,7 +795,7 @@ export async function getMatchmakerWorkspaceCommissionEntries(page: number = 1, 
   })
   const serverItems = result.success && result.data != null && Array.isArray(result.data.items) ? result.data.items : []
   const useMockSource = USE_MOCK && result.success && result.data != null
-  const useDemoFallback = useMockSource || (canUseWorkspaceDemoFallback && (!result.success || result.data == null || serverItems.length == 0))
+  const useDemoFallback = useMockSource
   if (!result.success && !useDemoFallback) return result
   if (useDemoFallback) {
     const demoItems = mockMatchmakerCommissionEntries
@@ -835,7 +867,7 @@ export async function getMatchmakerWorkspaceOfflineIncome(page: number = 1, page
   })
   const serverItems = result.success && result.data != null && Array.isArray(result.data.items) ? result.data.items : []
   const useMockSource = USE_MOCK && result.success && result.data != null
-  const useDemoFallback = useMockSource || (canUseWorkspaceDemoFallback && (!result.success || result.data == null || serverItems.length == 0))
+  const useDemoFallback = useMockSource
   if (!result.success && !useDemoFallback) return result
   if (useDemoFallback) {
     const demoItems = mockMatchmakerFinanceEntries
@@ -979,6 +1011,7 @@ export async function getMatchmakerWorkspaceGoodNewsPennants(page: number, pageS
 
 /** 报喜图片上传：返回的 url 是服务端相对路径，直接写入 extra.images，展示时再拼域名。 */
 export async function uploadWorkspaceGoodNewsPhoto(filePath: string) {
+  if (!hasRemoteMatchmakerEndpoint('POST', '/matchmaker/workbench/good-news/photo')) return remoteMatchmakerUnavailable()
   return new Promise<any>((resolve) => {
     uni.uploadFile({
       url: buildApiUrl('/matchmaker/workbench/good-news/photo'),
@@ -1037,17 +1070,22 @@ export async function createMatchmakerIntroduction(data: any) {
   return request({
     url: '/matchmaker/workbench/introductions', method: 'POST', data: {
       from_user_id: Number(source.fromUserId), to_user_id: Number(source.toUserId),
-      applied_at: source.appliedAt || null, finished_at: source.finishedAt || null,
-      result: String(source.result || 'SUCCEEDED'), failure_reason: String(source.failureReason || '').trim() || null
+      applied_at: source.appliedAt || null, result: 'PENDING'
     }
   })
 }
 
 /** 更新牵线状态；仅牵线失败需要携带失败原因。 */
-export async function updateMatchmakerIntroductionStatus(id: string, status: string, failureReason: string) {
-  const data: any = { status: status }
+export async function updateMatchmakerIntroductionStatus(id: string, status: string, failureReason: string, contactConfirmed: boolean = false) {
+  const data: any = { status: status, contact_confirmed: contactConfirmed }
   if (status == 'FAILED' && failureReason.trim().length > 0) data.failure_reason = failureReason.trim()
   return request({ url: '/matchmaker/workbench/introductions/' + encodeURIComponent(id) + '/status', method: 'PATCH', data: data })
+}
+
+/** 查看这一条牵线的指定一方电话；后端审计并在双方电话已查看时推进状态。 */
+export async function viewMatchmakerIntroductionContact(id: string, side: string) {
+  if (!Number.isInteger(Number(id)) || Number(id) < 1 || (side != 'from' && side != 'to')) return { success: false, data: null, code: 422, message: '无效的牵线记录或查看方' }
+  return request({ url: '/matchmaker/workbench/introductions/' + encodeURIComponent(id) + '/contact-views', method: 'POST', data: { side: side } })
 }
 
 /** 更新约见申请处理状态：待处理 SUBMITTED / 已处理 ACCEPTED、DECLINED、CLOSED。 */
@@ -1188,6 +1226,7 @@ export async function updateMatchmakerMemberNickname(id: string, nickname: strin
 
 /** 代传会员头像 / 相册，服务端直接标记审核通过，保存后立即可见。 */
 export async function uploadMatchmakerMemberMedia(id: string, filePath: string, kind: string) {
+  if (MATCHMAKER_REMOTE_MODE) return remoteMatchmakerUnavailable()
   const normalizedKind = kind == 'avatar' || kind == 'background' ? kind : 'photo'
   return new Promise<any>((resolve) => {
     uni.uploadFile({

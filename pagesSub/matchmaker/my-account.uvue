@@ -32,10 +32,10 @@
 				<view class="homepage-head">
 					<view class="homepage-head-text">
 						<text class="homepage-title">红娘主页</text>
-						<text class="homepage-desc">{{ homepageEditing ? '保存后公开主页立即更新' : '昵称、签名、擅长领域、介绍与成功案例' }}</text>
+						<text class="homepage-desc">{{ homepageEditing ? '保存后同步更新服务红娘卡片与公开主页' : '头像、昵称、签名、擅长领域、介绍与成功案例均可编辑' }}</text>
 					</view>
 					<view v-if="!homepageEditing && homepageLoaded" class="homepage-open-btn" @tap="startHomepageEdit">
-						<text class="homepage-open-text">编辑主页</text>
+						<text class="homepage-open-text">编辑资料</text>
 						<text class="homepage-open-arrow">›</text>
 					</view>
 				</view>
@@ -557,7 +557,7 @@ const saveHomepage = async () => {
 		homepageError.value = '一句话签名不能超过 64 个字'
 		return
 	}
-	if (introduction.length > 0 && introduction.length < 10) {
+	if (introduction != homepage.value.introduction && introduction.length < 10) {
 		homepageError.value = '个人介绍至少 10 个字'
 		return
 	}

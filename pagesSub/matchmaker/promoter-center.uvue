@@ -3,6 +3,7 @@
 		<view class="promoter-nav"><text class="promoter-nav-title">{{ title }}</text><view class="back" @click="goBack"><view></view></view><view class="nav-entries"><view class="nav-entry" @click="open('account')"><view class="entry-person"><view class="entry-person-head"></view><view class="entry-person-body"></view><view class="entry-person-dot"></view></view></view><view class="nav-entry" @click="serviceNavVisible = true"><view class="entry-lines"><view></view><view></view><view></view></view></view></view></view>
 		<scroll-view scroll-y class="scroll" :show-scrollbar="false">
 			<view v-if="loading" class="loading"><view></view><view></view><view></view></view>
+			<MatchmakerRemoteServices v-else-if="page == 'withdraw' || page == 'finance'" initial-tab="账户资金" :finance-only="true"/>
 			<view v-else-if="page == 'home'" class="content promoter-home">
 				<view class="promoter-fund-card">
 					<view class="promoter-fund-main"><text>可提现额度（元）</text><text>{{ availableBalance }}</text></view>
@@ -24,9 +25,9 @@
 					<view class="promoter-menu-row" @click="open('members')"><view class="promoter-menu-icon members"><text>会</text></view><text>名下会员</text><view class="promoter-menu-value"><text>有效会员 {{ effectiveMembers.length }} 人</text><i></i></view></view>
 					<view class="promoter-menu-row" @click="open('leads')"><view class="promoter-menu-icon leads"><text>线</text></view><text>客源线索</text><view class="promoter-menu-value"><text>录入</text><i></i></view></view>
 					<view class="promoter-menu-row" @click="open('commission')"><view class="promoter-menu-icon commission"><text>分</text></view><text>消费分成</text><view class="promoter-menu-value"><text>待结算</text><i></i></view></view>
-					<view class="promoter-menu-row" @click="open('merchant')"><view class="promoter-menu-icon merchant-entry"><text>商</text></view><text>商家联盟</text><view class="promoter-menu-value"><text>待开放</text><i></i></view></view>
+					<view class="promoter-menu-row" @click="open('merchant')"><view class="promoter-menu-icon merchant-entry"><text>商</text></view><text>商家联盟</text><view class="promoter-menu-value"><text>余额与提现</text><i></i></view></view>
 					<view class="promoter-menu-row" @click="open('offline')"><view class="promoter-menu-icon offline"><text>单</text></view><text>线下开单</text><view class="promoter-menu-value"><text>签约后可见</text><i></i></view></view>
-					<view class="promoter-menu-row" @click="open('withdraw')"><view class="promoter-menu-icon withdraw"><text>提</text></view><text>申请提现</text><view class="promoter-menu-value"><text>待开放</text><i></i></view></view>
+					<view class="promoter-menu-row" @click="open('withdraw')"><view class="promoter-menu-icon withdraw"><text>提</text></view><text>申请提现</text><view class="promoter-menu-value"><text>余额与提现</text><i></i></view></view>
 					<view class="promoter-menu-row" @click="contactVisible = true"><view class="promoter-menu-icon support"><text>服</text></view><text>联系客服</text><view class="promoter-menu-value"><text>需要帮助请联系</text><i></i></view></view>
 					<view class="promoter-menu-row" @click="goApplyPartner"><view class="promoter-menu-icon partner"><text>合</text></view><text>申请合伙</text><view class="promoter-menu-value"><text>申请成为合伙人</text><i></i></view></view>
 					<view class="promoter-menu-row last" @click="open('account')"><view class="promoter-menu-icon account"><text>我</text></view><text>我的账号</text><view class="promoter-menu-value"><text>设置</text><i></i></view></view>
@@ -273,6 +274,7 @@
 </template>
 
 <script setup lang="uts">
+import MatchmakerRemoteServices from '@/components/MatchmakerRemoteServices.uvue'
 import XsaToast from '@/components/XsaToast.uvue'
 import MatchmakerServiceNavSheet from '@/components/MatchmakerServiceNavSheet.uvue'
 import XsaSheet from '@/components/XsaSheet.uvue'

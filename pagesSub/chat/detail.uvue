@@ -242,7 +242,7 @@
 						<button class="contact-type" :class="{ selected: contactType == 'phone' }" @click="contactType = 'phone'">手机号</button>
 						<button class="contact-type" :class="{ selected: contactType == 'wechat' }" @click="contactType = 'wechat'">微信号</button>
 					</view>
-					<input v-if="contactType == 'wechat'" class="contact-input" :value="contactValue" @input="onContactValueInput" placeholder="输入你的微信号" maxlength="64" />
+					<input v-if="contactType == 'wechat'" class="contact-input" :value="contactValue" @input="onContactValueInput" placeholder="输入你的微信号" maxlength="20" />
 					<text v-else class="contact-phone-hint">将使用当前账号已绑定的手机号</text>
 					<button class="contact-send" :disabled="contactSubmitting" @click="submitContactExchange">{{ contactSubmitting ? '正在发送...' : '发起交换请求' }}</button>
 					<text v-if="contactError != ''" class="contact-error">{{ contactError }}</text>
@@ -1241,19 +1241,22 @@
 			if (isParentMode.value || !chatAllowed.value) return
 			const subject = activeMessageSubject.value
 			if (subject == null) return
+			const version = chatMutationVersion.value
 			contactLoading.value = true
 			contactError.value = ''
+			contactExchanges.value = []
 			try {
 				const res = await getContactExchanges(userId.value, subject)
+				if (version != chatMutationVersion.value) return
 				if (res != null && res.success == true && Array.isArray(res.data)) {
 					contactExchanges.value = res.data
 					return
 				}
 				contactError.value = responseMessage(res, '联系方式状态加载失败')
 			} catch (error) {
-				contactError.value = '联系方式状态加载失败'
+				if (version == chatMutationVersion.value) contactError.value = '联系方式状态加载失败'
 			} finally {
-				contactLoading.value = false
+				if (version == chatMutationVersion.value) contactLoading.value = false
 			}
 		}
 
@@ -1274,47 +1277,57 @@
 		}
 
 		const contactExchangeStatus = (exchange: any): string => {
-			if (exchange.status == 'accepted') return '已确认，双方可见'
+			if (exchange.status == 'accepted') return exchange.contactValue ? '已确认，双方可见' : '已确认，暂无可展示的联系方式'
 			if (exchange.status == 'rejected') return '对方未同意'
+			if (exchange.status == 'expired') return '请求已过期，请重新发起'
+			if (exchange.status == 'withdrawn') return '请求已撤回'
 			return exchange.requestedByMe == true ? '等待对方确认' : '等待你的确认'
 		}
 
 		const submitContactExchange = async () => {
-			if (contactSubmitting.value || isParentMode.value) return
+			if (contactSubmitting.value || isParentMode.value || !chatAllowed.value) return
 			const subject = activeMessageSubject.value
 			if (subject == null) return
+			const version = chatMutationVersion.value
 			contactSubmitting.value = true
 			contactError.value = ''
 			try {
 				const res = await createContactExchange(
 					userId.value, contactType.value, contactValue.value.trim(), contactCommandId('create'), subject
 				)
+				if (version != chatMutationVersion.value) return
 				if (res == null || res.success != true) {
 					contactError.value = responseMessage(res, '联系方式请求发送失败')
 					return
 				}
 				contactValue.value = ''
 				await loadContactExchanges()
+			} catch (error) {
+				if (version == chatMutationVersion.value) contactError.value = '联系方式请求发送失败，请刷新状态后重试'
 			} finally {
-				contactSubmitting.value = false
+				if (version == chatMutationVersion.value) contactSubmitting.value = false
 			}
 		}
 
 		const respondToContactExchange = async (exchange: any, action: string) => {
-			if (contactSubmitting.value || exchange == null || isParentMode.value) return
+			if (contactSubmitting.value || exchange == null || isParentMode.value || !chatAllowed.value) return
 			const subject = activeMessageSubject.value
 			if (subject == null) return
+			const version = chatMutationVersion.value
 			contactSubmitting.value = true
 			contactError.value = ''
 			try {
 				const res = await respondContactExchange(Number(exchange.id), action, contactCommandId(action, Number(exchange.id)), subject)
+				if (version != chatMutationVersion.value) return
 				if (res == null || res.success != true) {
 					contactError.value = responseMessage(res, '联系方式请求处理失败')
 					return
 				}
 				await loadContactExchanges()
+			} catch (error) {
+				if (version == chatMutationVersion.value) contactError.value = '联系方式请求处理失败，请刷新状态后重试'
 			} finally {
-				contactSubmitting.value = false
+				if (version == chatMutationVersion.value) contactSubmitting.value = false
 			}
 		}
 

@@ -1,0 +1,199 @@
+/** xhztest.xyz OpenAPI snapshot: 2026-11-02. No admin permission bypass. */
+import { request as sharedRequest } from './request.uts'
+import { API_BASE_URL, USE_MOCK, getAccessToken } from './config.uts'
+
+export const MATCHMAKER_REMOTE_MODE = API_BASE_URL == 'https://xhztest.xyz'
+const REMOTE_OPERATIONS: string[] = [
+  "GET /matchmaker/application-types",
+  "POST /matchmaker/applications",
+  "GET /matchmaker/applications/mine",
+  "GET /matchmakers",
+  "GET /matchmakers/ranking",
+  "GET /matchmakers/{matchmaker_id}",
+  "GET /matchmakers/{matchmaker_id}/ratings",
+  "GET /matchmaker/management-center/access",
+  "GET /matchmaker/management-center/dashboard",
+  "GET /matchmaker/workbench/profile",
+  "PATCH /matchmaker/workbench/profile",
+  "GET /matchmaker/workbench/homepage",
+  "PATCH /matchmaker/workbench/homepage",
+  "POST /matchmaker/workbench/leads/photo",
+  "GET /matchmaker/workbench/leads",
+  "POST /matchmaker/workbench/leads",
+  "PATCH /matchmaker/workbench/leads/{lead_id}",
+  "POST /matchmaker/workbench/leads/{lead_id}/follow-ups",
+  "GET /matchmaker/workbench/leads/{lead_id}/follow-ups",
+  "POST /matchmaker/workbench/leads/{lead_id}/abandon",
+  "GET /matchmaker/workbench/leads/followers",
+  "POST /matchmaker/workbench/leads/{lead_id}/assign",
+  "POST /matchmaker/workbench/leads/{lead_id}/convert",
+  "POST /matchmaker/workbench/leads/{lead_id}/restore",
+  "GET /matchmaker/workbench/members",
+  "POST /matchmaker/workbench/members",
+  "GET /matchmaker/workbench/introductions",
+  "POST /matchmaker/workbench/introductions",
+  "GET /matchmaker/workbench/meeting-requests",
+  "PATCH /matchmaker/workbench/members/{member_id}/public-profile-review",
+  "GET /matchmaker/workbench/members/{member_id}/follow-ups",
+  "POST /matchmaker/workbench/members/{member_id}/follow-ups",
+  "GET /matchmaker/workbench/members/{member_id}/contact",
+  "GET /matchmaker/workbench/members/{member_id}/match-candidates",
+  "GET /matchmaker/workbench/members/{member_id}/match-history",
+  "GET /matchmaker/workbench/matchmakers",
+  "PATCH /matchmaker/workbench/members/{member_id}/assignment",
+  "GET /matchmaker/workbench/members/{member_id}/note",
+  "PATCH /matchmaker/workbench/members/{member_id}/note",
+  "GET /matchmaker/partner-center",
+  "PUT /matchmaker/partner-center/team",
+  "POST /matchmaker/partner-center/invites",
+  "GET /matchmaker/promoter-center",
+  "POST /matchmaker/promoter-center/leads",
+  "POST /matchmaker/promoter-center/promotion-codes",
+  "POST /matchmaker/promoter-center/team-requests",
+  "DELETE /matchmaker/promoter-center/team-requests/{request_id}",
+  "GET /matchmaker/partner-center/join-requests",
+  "PATCH /matchmaker/partner-center/join-requests/{request_id}",
+  "POST /matchmaker/partner-center/qrcode",
+  "PATCH /matchmaker/workbench/meeting-requests/{request_id}/status",
+  "DELETE /matchmaker/workbench/meeting-requests/{request_id}",
+  "POST /matchmaker/workbench/meeting-requests/{request_id}/schedule",
+  "PATCH /matchmaker/workbench/meetings/{meeting_id}/status",
+  "PATCH /matchmaker/workbench/introductions/{introduction_id}/status",
+  // Workflow v2: only enabled by UI after the list returns workflow_version=2.
+  "POST /matchmaker/workbench/introductions/{introduction_id}/contact-views",
+  "GET /matchmaker/service-products",
+  "POST /matchmaker/service-products",
+  "GET /matchmaker/service-products/{product_id}",
+  "PATCH /matchmaker/service-products/{product_id}",
+  "POST /matchmaker/service-requests/orders",
+  "GET /matchmaker/service-requests/orders",
+  "GET /matchmaker/service-requests/orders/{order_no}",
+  "POST /matchmaker/service-requests",
+  "GET /matchmaker/service-requests/mine",
+  "GET /matchmaker/service-requests/assigned",
+  "GET /matchmaker/service-requests/{service_id}",
+  "PATCH /matchmaker/service-requests/{service_id}",
+  "PATCH /matchmaker/service-requests/{service_id}/contact",
+  "GET /matchmaker/service-requests/{service_id}/contact",
+  "POST /matchmaker/service-requests/{service_id}/contact-exchanges",
+  "PATCH /matchmaker/service-requests/contact-exchanges/{exchange_id}",
+  "GET /matchmaker/service-requests/contact-exchanges/{exchange_id}",
+  "GET /matchmaker/service-requests/contact-exchanges/{exchange_id}/contacts",
+  "POST /matchmaker/services/{service_id}/rating",
+  "POST /matchmaker/meetings/requests",
+  "POST /matchmaker/meetings/requests/from-service",
+  "GET /matchmaker/meetings/requests/mine",
+  "PATCH /matchmaker/meetings/requests/{request_id}",
+  "POST /matchmaker/meetings/{meeting_id}/feedback",
+  "POST /finance/orders",
+  "GET /finance/balance",
+  "GET /finance/commission-entries",
+  "POST /finance/withdrawals"
+]
+
+export function hasRemoteMatchmakerEndpoint(method: string, path: string): boolean {
+  if (!MATCHMAKER_REMOTE_MODE) return true
+  const clean = path.split('?')[0].replace('/api/v1/', '/')
+  const actual = clean.split('/')
+  for (const operation of REMOTE_OPERATIONS) {
+    const parts = operation.split(' ')
+    if (parts[0] != method.toUpperCase()) continue
+    const expected = parts[1].split('/')
+    if (expected.length != actual.length) continue
+    let matches = true
+    for (let i = 0; i < expected.length; i++) {
+      if (expected[i].charAt(0) == '{' && actual[i] != '') continue
+      if (expected[i] != actual[i]) { matches = false; break }
+    }
+    if (matches) return true
+  }
+  return false
+}
+
+export function remoteMatchmakerUnavailable(): any {
+  return { success: false, data: null, code: 'REMOTE_FEATURE_UNAVAILABLE', message: '远端暂未开放此功能，请联系平台升级服务' }
+}
+
+export async function request(options: any): Promise<any> {
+  if (MATCHMAKER_REMOTE_MODE && USE_MOCK) return remoteMatchmakerUnavailable()
+  const path = options.url != null ? String(options.url) : ''
+  const method = options.method != null ? String(options.method).toUpperCase() : 'GET'
+  if ((path.indexOf('/matchmaker') == 0 || path.indexOf('/finance/') == 0) && !hasRemoteMatchmakerEndpoint(method, path)) return remoteMatchmakerUnavailable()
+  // Global Mock switches must never turn a remote financial/CRM mutation into a local success.
+  if (MATCHMAKER_REMOTE_MODE && getAccessToken() == '' && options.skipAuth != true && path.indexOf('/matchmakers') != 0 && !(path == '/matchmaker/service-products' && method == 'GET')) {
+    return { success: false, data: null, code: 401, message: '请重新登录远端账号' }
+  }
+  return await sharedRequest(options)
+}
+
+function positiveId(id: number): boolean { return Number.isInteger(id) && id > 0 }
+function invalidInput(message: string): any { return { success: false, data: null, code: 422, message: message } }
+
+export async function getRemoteMatchmakerApplications() { return request({ url: '/matchmaker/applications/mine', method: 'GET' }) }
+export async function getRemoteMatchmakerApplicationTypes() { return request({ url: '/matchmaker/application-types', method: 'GET' }) }
+export async function updateRemoteMatchmakerName(name: string) {
+  const value = name.trim()
+  if (value.length < 1 || value.length > 64) return invalidInput('昵称需为1–64个字符')
+  return request({ url: '/matchmaker/workbench/profile', method: 'PATCH', data: { display_name: value } })
+}
+export async function getRemoteServiceRequests(assigned: boolean = true, page: number = 1) {
+  return request({ url: assigned ? '/matchmaker/service-requests/assigned' : '/matchmaker/service-requests/mine', method: 'GET', data: { page: page, page_size: 20 } })
+}
+export async function getRemoteServiceRequest(id: number) {
+  if (!positiveId(id)) return invalidInput('服务单无效')
+  return request({ url: '/matchmaker/service-requests/' + id, method: 'GET' })
+}
+export async function updateRemoteServiceRequest(id: number, status: number, feedback: string = '') {
+  if (!positiveId(id) || [1, 2, 3].indexOf(status) < 0 || feedback.length > 2000) return invalidInput('请检查服务单状态和反馈')
+  return request({ url: '/matchmaker/service-requests/' + id, method: 'PATCH', data: { status: status, feedback: feedback.trim() != '' ? feedback.trim() : null } })
+}
+export async function deliverRemoteMatchmakerContact(id: number, wechat: string) {
+  const value = wechat.trim()
+  if (!positiveId(id) || value.length < 1 || value.length > 128) return invalidInput('请填写有效的微信联系方式')
+  return request({ url: '/matchmaker/service-requests/' + id + '/contact', method: 'PATCH', data: { wechat_contact: value } })
+}
+export async function getRemoteMatchmakerContact(id: number) {
+  if (!positiveId(id)) return invalidInput('服务单无效')
+  return request({ url: '/matchmaker/service-requests/' + id + '/contact', method: 'GET' })
+}
+export async function createRemoteServiceContactExchange(serviceId: number, targetUserId: number) {
+  if (!positiveId(serviceId) || !positiveId(targetUserId)) return invalidInput('请填写有效的目标会员编号')
+  return request({ url: '/matchmaker/service-requests/' + serviceId + '/contact-exchanges', method: 'POST', data: { target_user_id: targetUserId } })
+}
+export async function getRemoteServiceContactExchange(id: number) {
+  if (!positiveId(id)) return invalidInput('授权请求无效')
+  return request({ url: '/matchmaker/service-requests/contact-exchanges/' + id, method: 'GET' })
+}
+/** CONSENT/REVOKE are only for the participating member; a matchmaker cannot consent for them. */
+export async function respondRemoteServiceContactExchange(id: number, action: string) {
+  if (!positiveId(id) || ['CONSENT', 'REVOKE'].indexOf(action) < 0) return invalidInput('授权操作无效')
+  return request({ url: '/matchmaker/service-requests/contact-exchanges/' + id, method: 'PATCH', data: { action: action } })
+}
+export async function getRemoteServiceContactExchangeContacts(id: number) {
+  const state = await getRemoteServiceContactExchange(id)
+  if (!state.success || state.data == null) return state
+  if (['APPROVED', 'DELIVERED'].indexOf(String(state.data.status)) < 0) return { success: false, data: null, code: 403, message: '双方均同意后才能查看联系方式' }
+  return request({ url: '/matchmaker/service-requests/contact-exchanges/' + id + '/contacts', method: 'GET' })
+}
+export async function createRemoteMeetingFromService(serviceId: number, targetUserId: number, note: string) {
+  if (!positiveId(serviceId) || !positiveId(targetUserId) || note.trim().length < 1 || note.trim().length > 2000) return invalidInput('请填写目标会员编号及约见说明')
+  return request({ url: '/matchmaker/meetings/requests/from-service', method: 'POST', data: { service_id: serviceId, target_user_id: targetUserId, note: note.trim() } })
+}
+export async function getRemoteServiceProducts() { return request({ url: '/matchmaker/service-products', method: 'GET', skipAuth: true }) }
+export async function getRemoteServiceProduct(id: number) {
+  if (!positiveId(id)) return invalidInput('商品无效')
+  return request({ url: '/matchmaker/service-products/' + id, method: 'GET', skipAuth: true })
+}
+export async function getRemoteServiceOrders(page: number = 1) { return request({ url: '/matchmaker/service-requests/orders', method: 'GET', data: { page: page, page_size: 20 } }) }
+export async function getRemoteMatchmakerRatings(id: number, page: number = 1) {
+  if (!positiveId(id)) return invalidInput('红娘编号无效')
+  return request({ url: '/matchmakers/' + id + '/ratings', method: 'GET', data: { page: page, page_size: 20 }, skipAuth: true })
+}
+export async function getRemoteFinanceBalance() { return request({ url: '/finance/balance', method: 'GET' }) }
+export async function getRemoteCommissionEntries() { return request({ url: '/finance/commission-entries', method: 'GET' }) }
+export async function createRemoteWithdrawal(amount: string, payeeMasked: string) {
+  const value = amount.trim()
+  const payee = payeeMasked.trim()
+  if (!/^[0-9]+(\.[0-9]{1,2})?$/.test(value) || Number(value) <= 0 || Number(value) > 1000000 || payee.length < 1 || payee.length > 128) return invalidInput('请填写有效的提现金额和脱敏收款标识')
+  return request({ url: '/finance/withdrawals', method: 'POST', data: { amount: value, payee_masked: payee } })
+}

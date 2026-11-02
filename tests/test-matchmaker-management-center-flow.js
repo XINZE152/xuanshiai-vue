@@ -26,10 +26,10 @@ for (const legacy of [
   'MATCHMAKER_MANAGEMENT_CENTER_USE_MOCK',
   'PARTNER_CENTER_USE_MOCK',
   'PROMOTER_CENTER_USE_MOCK',
-  'mockMatchmakerManagementCenter',
-  'mockPartnerCenterSnapshot',
-  'mockPromoterCenterSnapshot'
+  'canUseWorkspaceDemoFallback'
 ]) expectAbsent(api, legacy, `${legacy} removed`)
+expect(api, "from './matchmaker-remote.uts'", 'workspace requests use remote endpoint guard')
+expect(api, 'const useDemoFallback = USE_MOCK', 'demo fallback requires explicit global mock mode')
 
 const accessPage = read('pagesSub/matchmaker/become-matchmaker.uvue')
 expect(accessPage, 'getMatchmakerManagementCenterAccess', 'entry loads access state')
@@ -42,11 +42,12 @@ for (const apiName of [
   'getMatchmakerReviewMembers',
   'updateMatchmakerReviewMember',
   'getMatchmakerMemberFollowUps',
-  'getMatchmakerMemberContact',
   'getMatchmakerMemberMatchCandidates',
   'getMatchmakerMemberMatchHistory'
 ]) expect(review, apiName, `pending review uses ${apiName}`)
-expect(review, '不会修改实名认证或学历认证', 'review boundary copy')
+expect(review, "emit('contact', member)", 'review delegates contact to parent authorization flow')
+expect(accessPage, 'getMatchmakerMemberContact', 'parent uses audited member contact endpoint')
+expect(review, '公开资料审核只对总店（SUPER）红娘开放', 'review role boundary')
 expectAbsent(review, 'pendingReviewProfiles', 'no local review fixture')
 
 const partner = read('pagesSub/matchmaker/partner-center.uvue')

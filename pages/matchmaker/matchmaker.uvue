@@ -456,7 +456,9 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 		}
 	}
 
+	let matchmakerPageMounted = false
 	onMounted(() => {
+		matchmakerPageMounted = true
 		reloadPage()
 		startHeroNet()
 	})
@@ -471,6 +473,7 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 	})
 
 	onShow(() => {
+		if (matchmakerPageMounted) reloadPage()
 		startHeroNet()
 	})
 

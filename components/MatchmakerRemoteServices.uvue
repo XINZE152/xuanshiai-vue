@@ -1,0 +1,92 @@
+<template>
+ <view class="remote-workbench">
+  <view class="tabs"><text v-for="item in tabs" :key="item" :class="{active: tab == item}" @click="selectTab(item)">{{ item }}</text></view>
+  <text v-if="busy" class="muted">正在处理，请稍候</text>
+  <view v-if="error != ''" class="card"><text>{{ error }}</text><button :disabled="busy" @click="load()">重试</button></view>
+  <template v-if="tab == '服务单'">
+   <view v-for="row in rows" :key="row.id" class="card" @click="selectService(row)"><text>服务单 #{{ row.id }} · {{ statusName(row.status) }}</text><text class="muted">会员 #{{ row.user_id }}</text><text>{{ row.requirement }}</text></view>
+   <button v-if="hasMore" :disabled="busy" @click="load(true)">加载更多</button>
+   <view v-if="selected != null" class="card">
+    <text>服务单 #{{ selected.id }} · {{ statusName(selected.status) }}</text>
+    <textarea v-model="feedback" placeholder="服务反馈 / 约见说明" maxlength="2000"/>
+    <button v-if="selected.status == 0" :disabled="busy" @click="changeStatus(1)">开始服务</button>
+    <button v-if="selected.status == 1" :disabled="busy" @click="changeStatus(2)">完成服务</button>
+    <button v-if="selected.status == 0 || selected.status == 1" :disabled="busy" @click="changeStatus(3)">关闭服务单</button>
+    <input v-model="wechat" placeholder="向客户交付的红娘微信" maxlength="128"/>
+    <button :disabled="busy" @click="deliverContact()">交付红娘联系方式</button>
+    <input v-model="targetId" type="number" placeholder="目标会员编号"/>
+    <button :disabled="busy" @click="createExchange()">申请双方交换联系方式</button>
+    <button :disabled="busy" @click="createMeeting()">发起服务约见</button>
+   </view>
+   <view class="card"><text>联系方式交换授权</text><input v-model="exchangeId" type="number" placeholder="授权请求编号"/><button :disabled="busy" @click="inspectExchange()">查询授权状态</button><text>{{ exchangeStatus }}</text><button v-if="exchangeApproved" :disabled="busy" @click="readContacts()">查看已授权联系方式</button><text selectable>{{ contacts }}</text></view>
+  </template>
+  <template v-else-if="tab == '账户资金'">
+   <view v-if="balance != null" class="card"><text>当前登录用户账户</text><text>可用余额：¥{{ balance.available_amount }}</text><text>待结算：¥{{ balance.pending_amount }}</text></view>
+   <view class="card"><text>申请提现</text><text class="muted">填写脱敏收款标识，例如张** / 尾号1234。是否允许提现、最低金额及处理结果以平台为准。</text><input v-model="amount" type="digit" placeholder="提现金额（元）"/><input v-model="payee" maxlength="128" placeholder="脱敏收款标识"/><button :disabled="busy || balance == null" @click="withdraw()">提交提现申请</button></view>
+   <view v-for="row in rows" :key="row.id" class="card"><text>订单 #{{ row.order_id }} · ¥{{ row.amount }}</text><text class="muted">{{ row.status }} · {{ row.created_at }}</text></view>
+  </template>
+  <template v-else-if="tab == '服务商品'"><view v-for="row in rows" :key="row.id" class="card"><text>{{ row.name }} · ¥{{ row.price }}</text><text>{{ row.description }}</text><text class="muted">{{ row.active ? '在售' : '已停用' }}</text></view></template>
+  <template v-else><view v-for="row in rows" :key="row.id" class="card"><text>申请 #{{ row.id }} · {{ row.status }}</text><text>{{ row.fail_reason || row.created_at }}</text></view></template>
+  <text v-if="!busy && error == '' && rows.length == 0" class="muted">暂无记录</text>
+  <button :disabled="busy" @click="load()">刷新</button>
+ </view>
+</template>
+<script setup lang="uts">
+import { ref, onMounted, onUnmounted } from 'vue'
+import { getAccessToken } from '@/api/config.uts'
+import { getRemoteServiceRequests, getRemoteServiceRequest, updateRemoteServiceRequest, deliverRemoteMatchmakerContact, createRemoteServiceContactExchange, getRemoteServiceContactExchange, getRemoteServiceContactExchangeContacts, createRemoteMeetingFromService, getRemoteServiceProducts, getRemoteMatchmakerApplications, getRemoteFinanceBalance, getRemoteCommissionEntries, createRemoteWithdrawal } from '@/api/matchmaker-remote.uts'
+const props = defineProps({ initialTab: { type: String, default: '服务单' }, financeOnly: { type: Boolean, default: false } })
+const tabs = props.financeOnly ? ['账户资金'] : ['服务单', '服务商品', '申请记录', '账户资金']
+const tab = ref(props.initialTab), rows = ref<any[]>([]), busy = ref(false), error = ref(''), page = ref(1), hasMore = ref(false), selected = ref<any>(null), balance = ref<any>(null)
+const feedback = ref(''), wechat = ref(''), targetId = ref(''), exchangeId = ref(''), exchangeStatus = ref(''), exchangeApproved = ref(false), contacts = ref(''), amount = ref(''), payee = ref('')
+let alive = true
+onUnmounted(() => { alive = false; contacts.value = ''; selected.value = null })
+const clearSensitive = () => { rows.value = []; selected.value = null; balance.value = null; contacts.value = ''; exchangeApproved.value = false; exchangeStatus.value = ''; wechat.value = ''; feedback.value = ''; targetId.value = ''; exchangeId.value = ''; amount.value = ''; payee.value = '' }
+async function execute(action: () => Promise<any>): Promise<any> {
+ if (busy.value) return null
+ const token = getAccessToken()
+ if (token == '') { clearSensitive(); error.value = '请重新登录远端账号'; return null }
+ busy.value = true; error.value = ''
+ try {
+  const result = await action()
+  if (!alive || token != getAccessToken()) { clearSensitive(); return null }
+  if (!result.success) { if (Number(result.code) == 401 || Number(result.code) == 403) clearSensitive(); error.value = result.message || '操作失败'; return null }
+  return result.data
+ } catch (e) { error.value = '网络请求失败，请重试'; return null } finally { busy.value = false }
+}
+async function load(more: boolean = false) {
+ const next = more ? page.value + 1 : 1
+ if (!more) clearSensitive()
+ const data = await execute(async () => {
+  if (tab.value == '服务单') return await getRemoteServiceRequests(true, next)
+  if (tab.value == '服务商品') return await getRemoteServiceProducts()
+  if (tab.value == '申请记录') return await getRemoteMatchmakerApplications()
+  const account = await getRemoteFinanceBalance()
+  if (!account.success) return account
+  const entries = await getRemoteCommissionEntries()
+  return entries.success ? { success: true, data: { balance: account.data, items: entries.data } } : entries
+ })
+ if (data == null) return
+ if (tab.value == '账户资金') balance.value = data.balance
+ const list = Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : [])
+ rows.value = more ? rows.value.concat(list) : list
+ page.value = next; hasMore.value = data.has_more == true
+}
+function selectTab(value: string) { if (busy.value) return; tab.value = value; load() }
+function statusName(status: number): string { return ['待处理', '服务中', '已完成', '已关闭'][status] || '未知状态' }
+async function selectService(row: any) { const data = await execute(async () => await getRemoteServiceRequest(Number(row.id))); if (data != null) { selected.value = data; feedback.value = data.feedback || ''; contacts.value = ''; wechat.value = ''; exchangeApproved.value = false } }
+async function changeStatus(status: number) { if (selected.value == null) return; uni.showModal({ title: '确认服务状态', content: '确定将该服务单设为' + statusName(status) + '？', success: async (result: any) => { if (!result.confirm) return; const data = await execute(async () => await updateRemoteServiceRequest(Number(selected.value.id), status, feedback.value)); if (data != null) { selected.value = data; const index = rows.value.findIndex((row: any) => row.id == data.id); if (index >= 0) rows.value[index] = data } } }) }
+async function deliverContact() { if (selected.value == null) return; const data = await execute(async () => await deliverRemoteMatchmakerContact(Number(selected.value.id), wechat.value)); if (data != null) uni.showToast({ title: '联系方式已交付', icon: 'none' }) }
+async function createExchange() { if (selected.value == null) return; contacts.value = ''; exchangeApproved.value = false; const data = await execute(async () => await createRemoteServiceContactExchange(Number(selected.value.id), Number(targetId.value))); if (data != null) { exchangeId.value = String(data.id); exchangeStatus.value = String(data.status) } }
+async function inspectExchange() { contacts.value = ''; exchangeApproved.value = false; const data = await execute(async () => await getRemoteServiceContactExchange(Number(exchangeId.value))); if (data != null) { exchangeStatus.value = String(data.status); exchangeApproved.value = ['APPROVED', 'DELIVERED'].indexOf(String(data.status)) >= 0 } }
+async function readContacts() { contacts.value = ''; const data = await execute(async () => await getRemoteServiceContactExchangeContacts(Number(exchangeId.value))); if (data != null) contacts.value = '发起方：' + String(data.source_phone || '未提供') + '\n接收方：' + String(data.target_phone || '未提供') }
+async function createMeeting() { if (selected.value == null) return; const data = await execute(async () => await createRemoteMeetingFromService(Number(selected.value.id), Number(targetId.value), feedback.value)); if (data != null) uni.showToast({ title: '约见申请已提交', icon: 'none' }) }
+function withdraw() { uni.showModal({ title: '确认提现申请', content: '金额：¥' + amount.value + '\n收款标识：' + payee.value, success: async (result: any) => { if (!result.confirm) return; const data = await execute(async () => await createRemoteWithdrawal(amount.value, payee.value)); if (data != null) { uni.showToast({ title: '提现申请已提交', icon: 'none' }); load() } } }) }
+onMounted(() => { load() })
+</script>
+<style scoped>
+.remote-workbench { display:flex; flex-direction:column; gap:24rpx; padding:24rpx; color:var(--ink); }
+.tabs { display:flex; flex-direction:row; flex-wrap:wrap; gap:24rpx; font-size:26rpx; }.tabs text { padding:16rpx 0; }.active { color:var(--accent2); font-weight:700; }
+.card { display:flex; flex-direction:column; gap:20rpx; padding:28rpx; border-radius:20rpx; background:var(--surface); box-shadow:var(--shadow-sm); font-size:28rpx; }
+.muted { color:var(--muted); font-size:24rpx; line-height:1.6; } input, textarea { width:100%; min-height:80rpx; background:var(--paper); color:var(--ink); font-size:26rpx; } button { width:100%; font-size:26rpx; color:var(--accent2); background:var(--accent-bg); border-radius:20rpx; } button:active { opacity:.8; }
+</style>

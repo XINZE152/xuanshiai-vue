@@ -76,7 +76,7 @@ for (const page of PAGES) {
 
 // 5) 关键 API 接线（源级断言）
 const accountSource = readPage('pagesSub/matchmaker/my-account.uvue')
-assert.match(accountSource, /import \{ getProfileOverview \} from '@\/api'/, 'my-account must load the account profile through the api barrel')
+assert.match(accountSource, /import \{[^}]*\bgetProfileOverview\b[^}]*\} from '@\/api'/, 'my-account must load the account profile through the api barrel')
 assert.match(accountSource, /await getProfileOverview\(\)/, 'my-account must call getProfileOverview on load')
 assert.match(accountSource, /resolveMediaUrl\(/, 'my-account avatars must go through resolveMediaUrl')
 assert.match(accountSource, /from '@\/api\/config\.uts'/, 'resolveMediaUrl must come from api/config.uts')

@@ -196,44 +196,6 @@
       </scroll-view>
     </view>
 
-    <!-- ============ 子页：录入会员 ============ -->
-    <view v-else-if="subview == 'entry'" class="subpage entry-page">
-      <view class="subpage-head">
-        <text class="subpage-title">录入会员</text>
-        <view class="subpage-close" @tap="closeSubpage"><text>✕</text></view>
-      </view>
-      <scroll-view scroll-y class="entry-scroll" :show-scrollbar="false">
-        <view class="entry-card">
-          <view class="entry-avatar" @tap="chooseEntryAvatar">
-            <image v-if="entryDraft.avatar" :src="entryDraft.avatar" mode="aspectFill" />
-            <view v-else class="entry-avatar-empty"><text class="entry-avatar-plus">＋</text><text>上传头像</text></view>
-          </view>
-
-          <view class="entry-row entry-code-row">
-            <text class="entry-label">编号</text>
-            <view class="entry-options"><view class="entry-option" :class="{ selected: entryDraft.codeMode == 'auto' }" @tap="entryDraft.codeMode = 'auto'"><text class="entry-radio"></text><text>系统自动</text></view><view class="entry-option" :class="{ selected: entryDraft.codeMode == 'custom' }" @tap="entryDraft.codeMode = 'custom'"><text class="entry-radio"></text><text>自定义</text></view></view>
-          </view>
-          <view v-if="entryDraft.codeMode == 'custom'" class="entry-row"><text class="entry-label">自定义编号</text><input class="entry-input" :value="entryDraft.memberCode" placeholder="请输入会员编号" @input="onEntryInput('memberCode', $event)" /></view>
-
-          <view v-for="field in entryTextFields" :key="field.key" class="entry-row">
-            <text class="entry-label">{{ field.label }}</text>
-            <input class="entry-input" :type="field.type || 'text'" :value="entryDraft[field.key]" :placeholder="field.placeholder" @input="onEntryInput(field.key, $event)" />
-          </view>
-
-          <view class="entry-row"><text class="entry-label">性别</text><view class="entry-options"><view class="entry-option" :class="{ selected: entryDraft.gender == 1 }" @tap="entryDraft.gender = 1"><text class="entry-radio"></text><text>男</text></view><view class="entry-option" :class="{ selected: entryDraft.gender == 2 }" @tap="entryDraft.gender = 2"><text class="entry-radio"></text><text>女</text></view></view></view>
-          <picker class="entry-row entry-picker" mode="date" :value="entryDraft.birthday" start="1940-01-01" end="2008-12-31" @change="onEntryBirthday"><text class="entry-label">生日</text><view class="entry-value"><text>{{ entryDraft.birthday || '请选择' }}</text><text class="entry-chevron">›</text></view></picker>
-          <view class="entry-row"><text class="entry-label">体重</text><input class="entry-input" type="digit" :value="entryDraft.weight" placeholder="例如 50" @input="onEntryInput('weight', $event)" /><text class="entry-unit">kg</text></view>
-          <view class="entry-row"><text class="entry-label">身高</text><input class="entry-input" type="number" :value="entryDraft.height" placeholder="例如 165" @input="onEntryInput('height', $event)" /><text class="entry-unit">cm</text></view>
-
-          <view class="entry-row entry-status-row"><text class="entry-label">状态</text><view class="entry-options"><view class="entry-option" :class="{ selected: entryDraft.status == 'PUBLIC' }" @tap="entryDraft.status = 'PUBLIC'"><text class="entry-radio"></text><text>公开相亲</text></view><view class="entry-option" :class="{ selected: entryDraft.status == 'PAUSED' }" @tap="entryDraft.status = 'PAUSED'"><text class="entry-radio"></text><text>暂停相亲</text></view></view></view>
-          <view class="entry-row entry-readonly"><text class="entry-label">审核</text><text>待审</text></view>
-          <view class="entry-row entry-readonly"><text class="entry-label">红娘</text><text>当前服务红娘</text></view>
-        </view>
-        <text class="entry-note">请确认本人已同意录入并完成必要的信息告知；提交后将进入公开资料审核。</text>
-      </scroll-view>
-      <view class="entry-footer"><view class="entry-submit" :class="{ disabled: entrySubmitting }" @tap="submitEntry"><text>{{ entrySubmitting ? '正在提交' : '完成' }}</text></view></view>
-    </view>
-
     <!-- ============ 红娘说 / 修改红娘 / 弃因 / 联系 / 跟进 面板 ============ -->
     <view v-if="sheet != ''" class="overlay" @tap="closeSheet">
       <view class="panel" @tap.stop>
@@ -344,9 +306,9 @@
 </template>
 
 <script setup lang="uts">
+import { watch } from 'vue'
 import {
   assignMatchmakerMemberMatchmaker,
-  createMatchmakerWorkspaceMember,
   createMatchmakerMemberFollowUp,
   getMatchmakerMemberFollowUps,
   getMatchmakerMemberMatchCandidates,
@@ -365,9 +327,10 @@ import { resolveMediaUrl } from '@/api/config.uts'
 interface Props {
   snapshot: any;
   initialTab?: string;
+  refreshToken?: number;
 }
 const props = defineProps<Props>()
-const emit = defineEmits<{ servedCount: [count: number], contact: [member: any] }>()
+const emit = defineEmits<{ servedCount: [count: number], contact: [member: any], entry: [] }>()
 
 const tabs = [
   { key: '', label: '全部' },
@@ -460,36 +423,6 @@ const menuMember = computed(() => {
   if (id == 0) return null
   return (members.value as any[]).find((item: any) => Number(item.user_id) == id) || null
 })
-
-const entrySubmitting = ref(false)
-const entryDraft = ref<any>({
-  avatar: '', codeMode: 'auto', memberCode: '', nickname: '', realName: '', gender: 1,
-  phone: '', wechat: '', birthday: '1990-01-01', zodiac: '', hometown: '', household: '', residence: '',
-  weight: '', height: '', education: '', maritalStatus: '', occupation: '', income: '', ethnicity: '',
-  housing: '', vehicle: '', smoking: '', drinking: '', religion: '', marriagePlan: '', tags: '', status: 'PUBLIC'
-})
-const entryTextFields = [
-  { key: 'realName', label: '姓名', placeholder: '请输入姓名' },
-  { key: 'nickname', label: '昵称', placeholder: '请输入昵称' },
-  { key: 'phone', label: '手机', placeholder: '请输入手机号', type: 'number' },
-  { key: 'wechat', label: '微信', placeholder: '请输入微信号' },
-  { key: 'zodiac', label: '属相', placeholder: '例如：属马' },
-  { key: 'hometown', label: '家乡', placeholder: '请输入家乡' },
-  { key: 'household', label: '户口', placeholder: '请输入户口所在地' },
-  { key: 'residence', label: '现居', placeholder: '请输入现居地' },
-  { key: 'education', label: '学历', placeholder: '请输入学历' },
-  { key: 'maritalStatus', label: '婚况', placeholder: '例如：未婚' },
-  { key: 'occupation', label: '职业', placeholder: '请输入职业' },
-  { key: 'income', label: '收入', placeholder: '请输入收入范围' },
-  { key: 'ethnicity', label: '民族', placeholder: '请输入民族' },
-  { key: 'housing', label: '购房', placeholder: '例如：已购房' },
-  { key: 'vehicle', label: '购车', placeholder: '例如：已购车' },
-  { key: 'smoking', label: '吸烟', placeholder: '例如：不吸烟' },
-  { key: 'drinking', label: '喝酒', placeholder: '例如：偶尔' },
-  { key: 'religion', label: '宗教', placeholder: '如无请填写无' },
-  { key: 'marriagePlan', label: '结婚', placeholder: '请输入结婚计划' },
-  { key: 'tags', label: '标签', placeholder: '多个标签用逗号分隔' }
-]
 
 const notify = (message: string) => uni.showToast({ title: message, icon: 'none' })
 
@@ -599,48 +532,6 @@ const onKeyword = (event: any) => { keyword.value = event.detail.value }
 const onNoteDraft = (event: any) => { noteDraft.value = event.detail.value }
 const onAbandonReason = (event: any) => { abandonReason.value = event.detail.value }
 const onFollowContent = (event: any) => { followContent.value = event.detail.value }
-const onEntryInput = (key: string, event: any) => { entryDraft.value[key] = event.detail.value }
-const onEntryBirthday = (event: any) => { entryDraft.value.birthday = event.detail.value }
-
-const chooseEntryAvatar = () => {
-  uni.chooseImage({
-    count: 1,
-    sizeType: ['compressed'],
-    success: (result: any) => {
-      if (result.tempFilePaths != null && result.tempFilePaths.length > 0) entryDraft.value.avatar = String(result.tempFilePaths[0])
-    },
-    fail: () => notify('头像选择已取消')
-  })
-}
-
-const resetEntryDraft = () => {
-  entryDraft.value = { avatar: '', codeMode: 'auto', memberCode: '', nickname: '', realName: '', gender: 1, phone: '', wechat: '', birthday: '1990-01-01', zodiac: '', hometown: '', household: '', residence: '', weight: '', height: '', education: '', maritalStatus: '', occupation: '', income: '', ethnicity: '', housing: '', vehicle: '', smoking: '', drinking: '', religion: '', marriagePlan: '', tags: '', status: 'PUBLIC' }
-}
-
-const submitEntry = async () => {
-  if (entrySubmitting.value) return
-  const draft = entryDraft.value
-  if (String(draft.nickname).trim().length == 0) { notify('请填写昵称'); return }
-  if (String(draft.realName).trim().length == 0) { notify('请填写姓名'); return }
-  if (!/^1[3-9]\d{9}$/.test(String(draft.phone).trim())) { notify('请填写正确的手机号'); return }
-  if (draft.codeMode == 'custom' && String(draft.memberCode).trim().length == 0) { notify('请填写自定义编号'); return }
-  if (String(draft.height).trim().length > 0 && (isNaN(Number(draft.height)) || Number(draft.height) < 100 || Number(draft.height) > 250)) { notify('请填写正确的身高'); return }
-  if (String(draft.weight).trim().length > 0 && (isNaN(Number(draft.weight)) || Number(draft.weight) < 30 || Number(draft.weight) > 150)) { notify('请填写正确的体重'); return }
-  entrySubmitting.value = true
-  try {
-    const result = await createMatchmakerWorkspaceMember({
-      codeMode: draft.codeMode, memberCode: String(draft.memberCode).trim(), nickname: String(draft.nickname).trim(), realName: String(draft.realName).trim(), gender: draft.gender,
-      phone: String(draft.phone).trim(), wechat: String(draft.wechat).trim(), birthday: draft.birthday, zodiac: String(draft.zodiac).trim(), hometown: String(draft.hometown).trim(), household: String(draft.household).trim(), residence: String(draft.residence).trim(), weight: draft.weight == '' ? null : Number(draft.weight), height: draft.height == '' ? null : Number(draft.height), education: String(draft.education).trim(), maritalStatus: String(draft.maritalStatus).trim(), occupation: String(draft.occupation).trim(), income: String(draft.income).trim(), ethnicity: String(draft.ethnicity).trim(), housing: String(draft.housing).trim(), vehicle: String(draft.vehicle).trim(), smoking: String(draft.smoking).trim(), drinking: String(draft.drinking).trim(), religion: String(draft.religion).trim(), marriagePlan: String(draft.marriagePlan).trim(), tags: String(draft.tags).trim(), status: draft.status
-    })
-    if (!result.success) { notify(result.message || '会员录入暂未开放'); return }
-    notify('会员资料已录入，等待审核')
-    resetEntryDraft()
-    subview.value = ''
-    activeTab.value = 'PENDING'
-    await loadMembers()
-  } finally { entrySubmitting.value = false }
-}
-
 /* ---------- 列表加载 ---------- */
 // 「我服务的」数量以列表真实数据为准，会员数据或本人身份每次刷新后回传给门店数据简报。
 const emitServedCount = () => {
@@ -1455,8 +1346,7 @@ const openMemberProfile = (member: any) => {
 }
 const onEnterMember = () => {
   closeMenu()
-  resetEntryDraft()
-  subview.value = 'entry'
+  emit('entry')
 }
 const onFilter = () => {
   closeMenu()
@@ -1467,6 +1357,8 @@ const closeSheet = () => {
   sheet.value = ''
   if (!pendingAbandon.value) selected.value = null
 }
+
+watch(() => props.refreshToken, () => { loadMembers() })
 
 onMounted(() => {
   loadMembers()
