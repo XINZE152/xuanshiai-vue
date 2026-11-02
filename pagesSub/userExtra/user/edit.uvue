@@ -33,6 +33,10 @@
 				<view class="progress-track"><view class="progress-fill" :style="{ width: completeness + '%' }"></view></view>
 				<text class="progress-hint">资料越完整，推荐权重越高，更容易遇见对的人</text>
 				<text v-if="missingCompletionSummary != ''" class="progress-missing">待完善：{{ missingCompletionSummary }}</text>
+				<!-- 100% 只代表 18 个加权项（见后端 COMPLETION_RULES）已满足，
+				     公司 / 12 项详细资料 / 深度问答 / 学历认证并不计分。
+				     不解释的话用户会认为「已经 100% 了却还有一堆空」。 -->
+				<text v-if="completeness >= 100 && missingDetailSummary != ''" class="progress-full-note">基础资料已完善，继续补充{{ missingDetailSummary }}可获得更多曝光</text>
 			</view>
 
 			<XsaProfileAiFirstAnalysis v-if="!isMemberEdit && aiFirstAnalysisVisible" :analyzing="aiAnalyzing" :error-message="aiError" @close="closeAiFirstAnalysis" @start="startAiFirstAnalysis" />
@@ -103,12 +107,12 @@
 					<text class="section-title">四重认证</text>
 					<text class="section-caption">已完成 {{ completedCertCount }}/4{{ completionSuffix('realname', 5, ' · 实名') }}{{ completionSuffix('single_pledge', 1, ' · 单身承诺') }}</text>
 				</view>
-				<view class="cert-row" v-for="cert in certifications" :key="cert.key">
+				<view class="cert-row" v-for="cert in certifications" :key="cert.key" @tap="goCertification(cert.key)">
 					<view class="cert-icon-wrap" :class="{ 'cert-icon-done': cert.passed }"><text class="cert-icon">{{ cert.icon }}</text></view>
 					<view class="cert-copy"><text class="cert-label">{{ cert.label }}</text><text class="cert-description">{{ cert.desc }}</text></view>
 					<view v-if="cert.passed" class="cert-done-pill"><text class="cert-done-text">已认证</text></view>
-					<view v-else-if="cert.reviewing" class="cert-reviewing-pill" @tap="goCertification(cert.key)"><text class="cert-reviewing-text">审核中 ›</text></view>
-					<view v-else class="cert-pending" @tap="goCertification(cert.key)"><text class="cert-pending-text">去认证</text></view>
+					<view v-else-if="cert.reviewing" class="cert-reviewing-pill" @tap.stop="goCertification(cert.key)"><text class="cert-reviewing-text">审核中 ›</text></view>
+					<view v-else class="cert-pending" @tap.stop="goCertification(cert.key)"><text class="cert-pending-text">去认证</text></view>
 				</view>
 			</view>
 
@@ -1024,6 +1028,29 @@
 		const names = missing.map((key: string) => labels[key] || key)
 		return names.length > 4 ? names.slice(0, 4).join('、') + '等' + names.length + '项' : names.join('、')
 	})
+	// 100% 之后仍可能有一堆空：公司、详细资料 12 项、深度问答、学历认证都不计入
+	// 后端的 COMPLETION_RULES（app/services/profile.py:62-81）。这里只统计**不计分**的
+	// 详细资料，用于解释「为什么我 100% 了还提示补充」。
+	const missingDetailSummary = computed(() => {
+		const f = formData.value as any
+		const items: any[] = [
+			{ label: '公司', value: f.company },
+			{ label: '毕业学校', value: f.graduateSchool },
+			{ label: '购房情况', value: f.house },
+			{ label: '购车情况', value: f.car },
+			{ label: '户口所在地', value: f.household },
+			{ label: '民族', value: f.ethnicity },
+			{ label: '宗教信仰', value: f.religion },
+			{ label: '吸烟习惯', value: f.smoking },
+			{ label: '饮酒习惯', value: f.drinking }
+		]
+		const missing: string[] = []
+		for (let i = 0; i < items.length; i++) {
+			if (textValue(items[i].value) == '') missing.push('' + items[i].label)
+		}
+		if (missing.length == 0) return ''
+		return missing.length > 3 ? missing.slice(0, 3).join('、') + '等' + missing.length + '项详细资料' : missing.join('、')
+	})
 	// 红娘代编允许修正性别与生日，因此不套用「实名通过后锁定」限制。
 	const isIdentityLocked = computed(() => !isMemberEdit.value && realNameStatus.value == 'passed')
 	const heightPickerIndex = computed(() => {
@@ -1743,6 +1770,7 @@
 .progress-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--sage), var(--accent)); }
 .progress-hint { font-size: 11px; color: var(--muted); }
 .progress-missing { font-size: 12px; line-height: 18px; color: var(--accent2); font-weight: 600; }
+.progress-full-note { font-size: 11px; line-height: 17px; color: var(--muted); }
 .completion-warning { display: block; margin-top: 8px; font-size: 12px; line-height: 18px; color: #D64545; font-weight: 600; }
 .preview-action { display: flex; flex-direction: row; align-items: center; gap: 4px; padding: 8px 12px; border-radius: 16px; background: var(--sage-soft); color: var(--sage); }
 .preview-action text { font-size: 13px; font-weight: 600; }

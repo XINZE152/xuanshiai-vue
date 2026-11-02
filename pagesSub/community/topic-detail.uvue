@@ -31,6 +31,8 @@
 					v-for="item in posts"
 					:key="item.id"
 					:dynamic="normalize(item)"
+					:is-self="isSelfAuthor(item)"
+					:show-follow="!isSelfAuthor(item)"
 					@user-click="goUser"
 					@like="onLike"
 					@comment="goPost"
@@ -81,6 +83,7 @@ import {
 			likeDynamic,
 			collectDynamic,
 			shareDynamic,
+			deleteDynamic,
 			followUserFromCommunity,
 			unfollowUserFromCommunity
 		} from '@/api'
@@ -89,6 +92,22 @@ import {
 		const topicId = ref(0)
 		const topic = ref(null)
 		const posts = ref([])
+		// 当前登录用户 id：与社区流同一口径（api/community.uvue 的 viewerId），
+		// 用于隐藏「关注/申请认识」并把 ⋯ 换成「删除动态」。
+		// 旧实现没有这个判定，话题页里看自己的动态也会出现他人的操作按钮。
+		const viewerId = ref(0)
+		try {
+			const storedViewerId = uni.getStorageSync('xsa_user_id')
+			if (storedViewerId != null && storedViewerId != '') {
+				const candidate = Number(storedViewerId)
+				if (!isNaN(candidate) && candidate > 0) viewerId.value = candidate
+			}
+		} catch (e) {}
+		const isSelfAuthor = (item: any): boolean => {
+			if (item == null || viewerId.value <= 0) return false
+			const authorId = Number(item.user != null && item.user.id != null ? item.user.id : (item.userId != null ? item.userId : 0))
+			return authorId > 0 && authorId == viewerId.value
+		}
 		const loading = ref(false)
 		const loadingMore = ref(false)
 		const topicError = ref(false)
@@ -430,7 +449,10 @@ const applyParticipation = (joined: boolean, participantCount: any) => {
 		})
 	}
 
-	const onApply = (userId: number, _dynamicId: number) => {
+	const onApply = async (userId: number, _dynamicId: number) => {
+		// 申请认识要求实名通过（与社区流 / 首页同口径）；旧实现直接弹面板，绕过了门槛。
+		const ok = await guardRealName('apply')
+		if (!ok) return
 		applyUserId.value = userId
 		applyVisible.value = true
 	}
@@ -438,9 +460,37 @@ const applyParticipation = (joined: boolean, participantCount: any) => {
 	const onApplyOk = () => {}
 
 	const onMore = (dynamicId: number, userId: number) => {
+		// 本人的动态只提供删除（举报自己没有意义），与社区流 / 动态详情页保持一致。
+		// 旧实现无论谁点都只弹举报面板，导致「自己的动态删不掉」。
+		if (viewerId.value > 0 && Number(userId) == viewerId.value) {
+			uni.showActionSheet({
+				itemList: ['删除动态'],
+				success: (res: any) => {
+					if (res.tapIndex == 0) confirmDeleteDynamic(dynamicId)
+				}
+			})
+			return
+		}
 		reportTargetId.value = dynamicId
 		reportUserId.value = userId
 		reportVisible.value = true
+	}
+
+	const confirmDeleteDynamic = (dynamicId: number) => {
+		uni.showModal({
+			title: '删除动态',
+			content: '删除后不可恢复，确定删除这条动态吗？',
+			success: async (modal: any) => {
+				if (modal.confirm != true) return
+				const res = await deleteDynamic(dynamicId)
+				if (!res.success) {
+					uni.showToast({ title: res.message != null && res.message != '' ? '' + res.message : '删除失败，请重试', icon: 'none' })
+					return
+				}
+				posts.value = posts.value.filter((p: any) => p != null && Number(p.id) != Number(dynamicId))
+				uni.showToast({ title: '已删除', icon: 'none' })
+			}
+		})
 	}
 
 	const onBlocked = (userId: number) => {

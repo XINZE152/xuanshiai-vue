@@ -428,12 +428,17 @@ const saveAndBack = async () => {
             return
         }
         saved.value = true
-        const eventChannel = getOpenerEventChannel()
-        if (eventChannel != null) eventChannel.emit('tagsSaved', { tags: values })
+        // 保存成功即成功：这里原先调用了从未声明的 getOpenerEventChannel()，
+        // 抛出的 ReferenceError 会被下面的 catch 兜成「网络异常」，
+        // 而 saved 已置 true 又让按钮失效——用户既看到报错又无法重试。
+        // 该 eventChannel 全仓没有消费方（没有页面在 navigateTo 的 events 里监听 tagsSaved），直接移除。
         uni.showToast({ title: '标签已保存', icon: 'success' })
         setTimeout(() => uni.navigateBack({ delta: 1 }), 500)
     } catch (error) {
-        uni.showToast({ title: '网络异常，已保留本次选择，请重试', icon: 'none' })
+        // 走到这里时 PATCH 通常已经成功（saved 已置位），不能再谎报网络故障。
+        console.error('[Tags] post-save step failed', error)
+        uni.showToast({ title: '标签已保存，返回后请刷新确认', icon: 'none' })
+        setTimeout(() => uni.navigateBack({ delta: 1 }), 600)
     } finally {
         saving.value = false
     }

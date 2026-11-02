@@ -1,0 +1,105 @@
+import { request } from './request.uts'
+import { USE_MOCK } from './config.uts'
+
+/** 微信小程序 requestPayment 参数；由后端预支付响应映射而来。 */
+export type WechatPayParams = {
+	appId: string
+	timeStamp: string
+	nonceStr: string
+	package: string
+	signType: string
+	paySign: string
+}
+
+function sleep(ms: number): Promise<any> {
+	return new Promise((resolve) => {
+		setTimeout(() => { resolve(null) }, ms)
+	})
+}
+
+/**
+ * 为当前用户的待支付订单创建微信预支付单。
+ * 后端返回 snake_case，前端在此统一映射为 requestPayment 的驼峰字段。
+ */
+export async function createPrepay(orderNo: string) {
+	if (orderNo == '') {
+		return { success: false, data: null, code: 400, message: '订单号缺失' }
+	}
+	const res = await request({
+		url: '/payments/orders/' + encodeURIComponent(orderNo) + '/prepay',
+		method: 'POST',
+		mockData: {
+			app_id: 'wx_mock_appid',
+			time_stamp: '0',
+			nonce_str: 'mocknonce',
+			package: 'prepay_id=mock',
+			sign_type: 'RSA',
+			pay_sign: 'mock'
+		}
+	})
+	if (!res.success) return res
+	const raw: any = res.data
+	const params: WechatPayParams = {
+		appId: raw.app_id != null ? '' + raw.app_id : '',
+		timeStamp: raw.time_stamp != null ? '' + raw.time_stamp : '',
+		nonceStr: raw.nonce_str != null ? '' + raw.nonce_str : '',
+		package: raw.package != null ? '' + raw.package : '',
+		signType: raw.sign_type != null ? '' + raw.sign_type : 'RSA',
+		paySign: raw.pay_sign != null ? '' + raw.pay_sign : ''
+	}
+	if (params.appId == '' || params.timeStamp == '' || params.nonceStr == '' || params.package == '' || params.paySign == '') {
+		return { success: false, data: raw, code: 502, message: '支付参数不完整' }
+	}
+	return { success: true, data: params, code: 0, message: 'success' }
+}
+
+/** 调起微信支付。success 只代表用户在微信侧完成支付，不代表服务端已履约。 */
+export function requestWechatPayment(params: WechatPayParams): Promise<any> {
+	if (USE_MOCK) {
+		return new Promise((resolve) => {
+			setTimeout(() => {
+				resolve({ success: true, data: null, code: 0, message: 'mock payment success' })
+			}, 300)
+		})
+	}
+	return new Promise((resolve) => {
+		const options: any = {
+			provider: 'wxpay',
+			appId: params.appId,
+			timeStamp: params.timeStamp,
+			nonceStr: params.nonceStr,
+			package: params.package,
+			signType: params.signType,
+			paySign: params.paySign,
+			success: (res: any) => {
+				resolve({ success: true, data: res, code: 0, message: 'success' })
+			},
+			fail: (err: any) => {
+				const msg = err != null && err.errMsg != null ? '' + err.errMsg : '支付未完成'
+				const cancelled = msg.indexOf('cancel') >= 0
+				resolve({ success: false, data: err, code: -1, message: cancelled ? '支付已取消' : msg })
+			}
+		}
+		try {
+			uni.requestPayment(options)
+		} catch (e) {
+			resolve({ success: false, data: null, code: -1, message: '当前环境不支持微信支付' })
+		}
+	})
+}
+
+/**
+ * 轮询直到 predicate 为真或超时。
+ * 用于等待服务端回调把订单置为已支付，以及等待权益真正生效。
+ */
+export async function pollUntil(fetcher: any, predicate: any, timeoutMs: number = 15000, intervalMs: number = 1500): Promise<any> {
+	const start = Date.now()
+	while (Date.now() - start < timeoutMs) {
+		const res = await fetcher()
+		if (res != null && res.success && predicate(res.data)) {
+			return { success: true, data: res.data, code: 0, message: 'success' }
+		}
+		await sleep(intervalMs)
+	}
+	return { success: false, data: null, code: -1, message: '支付结果确认超时' }
+}

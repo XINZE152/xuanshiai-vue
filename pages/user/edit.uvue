@@ -552,7 +552,7 @@
 
 	// 认证跳转
 	const goCertification = (key: string) => {
-		uni.navigateTo({ url: '/pages/profile/certification?type=' + key })
+		uni.navigateTo({ url: '/pagesSub/profileExtra/certification?type=' + key })
 	}
 
 	const onPreview = () => {

@@ -1,7 +1,23 @@
 ﻿/** API configuration for the deployed FastAPI service. */
 
+const TEST_API_BASE_URL = 'https://xhztest.xyz'
+// release 版本指向生产域名。生产未部署前不要上传 release 版本。
+const PROD_API_BASE_URL = 'https://www.xuanshiai.com'
+
+function resolveApiBaseUrl(): string {
+	try {
+		const info: any = (uni as any).getAccountInfoSync()
+		const miniProgram: any = info != null ? info.miniProgram : null
+		const envVersion = miniProgram != null && miniProgram.envVersion != null ? '' + miniProgram.envVersion : ''
+		if (envVersion == 'release') return PROD_API_BASE_URL
+	} catch (e) {
+		// H5 / 本地环境没有小程序账号信息，回退测试服。
+	}
+	return TEST_API_BASE_URL
+}
+
 export const USE_MOCK = false
-export const API_BASE_URL = 'https://xhztest.xyz'
+export const API_BASE_URL = resolveApiBaseUrl()
 export const ROLE_APPLICATION_USE_MOCK = false
 
 // 情感实验室（MBTI）开关集中在此管理。
@@ -10,7 +26,7 @@ export const ROLE_APPLICATION_USE_MOCK = false
 // 除非后端补齐 summary/sessions/answers/submit/profile-source/discard/matches，
 // 否则必须保持 true。tests/test-emotion-lab-offline.js 会守住这一行。
 export const EMOTION_LAB_USE_MOCK = true
-export const LAN_API_BASE_URL = 'https://xhztest.xyz'
+export const LAN_API_BASE_URL = API_BASE_URL
 
 // FastAPI mounts its router directly at /api/v1.
 export const API_PREFIX = '/api/v1'

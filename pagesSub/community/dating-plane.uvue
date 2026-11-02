@@ -14,15 +14,24 @@
 			<text class="page-title">有人把心意扔向了你</text>
 			<text class="page-desc">先看看这份自我介绍，再决定要不要回复。</text>
 
-			<view class="plane-card">
+			<!-- 后端 PaperPlaneResponse 不含作者身份字段（昵称/性别/年龄/头像），
+			     旧实现在这里写死了一个示例人物（昵称 + 性别 + 26 岁 + 城市），
+			     接口取不到就回落到假人。现改为匿名展示，只保留内容、城市与时间。 -->
+			<view v-if="!loaded" class="plane-card plane-card-empty">
+				<text class="plane-label">{{ loadError != '' ? loadError : '正在接住这份心意…' }}</text>
+			</view>
+			<view v-else-if="receivedPlane.id <= 0" class="plane-card plane-card-empty">
+				<text class="plane-label">暂时没有落下的脱单纸飞机</text>
+				<text class="plane-content">稍后回来看看，或者先扔一架出去。</text>
+			</view>
+			<view v-else class="plane-card">
 				<view class="plane-profile">
-					<image v-if="receivedPlane.avatar != ''" class="avatar" :src="receivedPlane.avatar" mode="aspectFill"></image>
-					<view v-else class="avatar avatar-fallback"><text>♡</text></view>
+					<view class="avatar avatar-fallback"><text>♡</text></view>
 					<view class="profile-copy">
-						<text class="nickname">{{ receivedPlane.name }}</text>
-						<text class="profile-meta">{{ receivedPlane.gender }} · {{ receivedPlane.age }}岁 · {{ receivedPlane.timeText }}</text>
+						<text class="nickname">一位匿名的人</text>
+						<text class="profile-meta">{{ receivedPlane.timeText }}</text>
 						<view class="profile-tags">
-							<text class="profile-tag">IP 属地 {{ receivedPlane.city }}</text>
+							<text v-if="receivedPlane.city != ''" class="profile-tag">IP 属地 {{ receivedPlane.city }}</text>
 							<text class="profile-tag">脱单纸飞机</text>
 						</view>
 					</view>
@@ -46,7 +55,8 @@
 			</view>
 		</view>
 
-		<view class="reply-area">
+		<!-- 没有可回复的纸飞机时隐藏回复栏，避免把 id=0 发出去 -->
+		<view v-if="receivedPlane.id > 0" class="reply-area">
 			<view class="reply-bar">
 				<input class="reply-input" :value="replyDraft" @input="onReplyInput" placeholder="写一句想对 TA 说的话" maxlength="120" />
 				<button class="reply-send" :disabled="sending" @click="sendReply">发送</button>
@@ -58,7 +68,7 @@
 			:visible="reportVisible"
 			target-type="paperPlane"
 			:target-id="receivedPlane.id"
-			:user-id="7"
+			:user-id="0"
 			@close="reportVisible = false"
 			@reported="reportVisible = false"
 		/>
@@ -74,40 +84,36 @@
 	const replyDraft = ref('')
 	const sending = ref(false)
 	const reportVisible = ref(false)
-	const receivedPlane = ref({
-		id: 2,
-		avatar: '/static/portraits/profile-woman-alt.webp',
-		name: '林雨桐',
-		gender: '女',
-		age: 26,
-		city: '南京',
-		timeText: '刚刚',
-		content: '想认识一个愿意认真聊天的人，一起去看展、散步，也分享生活里那些值得被记住的小事。'
-	})
+	const receivedPlane = ref<any>({ id: 0, city: '', timeText: '', content: '', voiceUrl: '' })
+	const loaded = ref(false)
+	const loadError = ref('')
 
 	onMounted(() => {
 		loadReceivedPlane()
 	})
 
 	const loadReceivedPlane = async () => {
+		loadError.value = ''
 		try {
 			const res = await getPaperPlanes()
 			const list = res != null && res.data != null ? res.data as any[] : []
-			if (res != null && res.success && Array.isArray(list) && list.length > 0) {
-				const item: any = list[0]
-				receivedPlane.value = {
-					id: item.id != null ? item.id : 2,
-					avatar: '/static/portraits/profile-woman-alt.webp',
-					name: item.name != null ? item.name : '林雨桐',
-					gender: item.gender != null ? item.gender : '女',
-					age: item.age != null ? item.age : 26,
-					city: item.city != null ? item.city : '南京',
-					timeText: item.timeText != null ? item.timeText : '刚刚',
-					content: item.content != null ? item.content : receivedPlane.value.content
-				}
+			const item: any = res != null && res.success && Array.isArray(list) && list.length > 0 ? list[0] : null
+			if (item == null || Number(item.id) <= 0) {
+				receivedPlane.value = { id: 0, city: '', timeText: '', content: '', voiceUrl: '' }
+				return
+			}
+			receivedPlane.value = {
+				id: Number(item.id),
+				city: item.city != null ? '' + item.city : '',
+				timeText: item.timeText != null ? '' + item.timeText : '',
+				content: item.content != null ? '' + item.content : '',
+				voiceUrl: item.voiceUrl != null ? '' + item.voiceUrl : ''
 			}
 		} catch (e) {
 			console.error(e)
+			loadError.value = '网络异常，暂时没能接住纸飞机'
+		} finally {
+			loaded.value = true
 		}
 	}
 
@@ -126,6 +132,11 @@
 	const sendReply = async () => {
 		const text = replyDraft.value.trim()
 		if (text.length == 0 || sending.value) return
+		// id 必须来自服务端：为 0 表示当前没有可回复的纸飞机，不能把 0 当记录 id 发出去。
+		if (Number(receivedPlane.value.id) <= 0) {
+			uni.showToast({ title: '这条纸飞机已失效，请重新捡取', icon: 'none' })
+			return
+		}
 		sending.value = true
 		try {
 			const res = await replyPaperPlane(receivedPlane.value.id, text)
@@ -165,6 +176,7 @@
 	.page-title { margin-top: 5px; font-size: 24px; line-height: 1.25; font-family: var(--serif); font-weight: 700; color: #21153A; }
 	.page-desc { margin-top: 6px; font-size: 12px; color: #8B8298; }
 	.plane-card { margin-top: 18px; padding: 17px; border-radius: 22px; background: rgba(255, 255, 255, 0.94); border: 1px solid #E6D8FF; box-shadow: 0 8px 24px rgba(116, 80, 200, 0.12); }
+	.plane-card-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 160px; text-align: center; }
 	.plane-profile { display: flex; flex-direction: row; align-items: center; gap: 12px; }
 	.avatar { width: 58px; height: 58px; border-radius: 20px; flex-shrink: 0; }
 	.avatar-fallback { display: flex; align-items: center; justify-content: center; background: #FFE1EC; color: #E86C9A; font-size: 26px; }
