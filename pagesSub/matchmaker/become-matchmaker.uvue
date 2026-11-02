@@ -164,7 +164,7 @@
 				</view>
 
 				<view v-else-if="workspaceKind == 'match'">
-					<view class="workspace-filter-note"><text>未回应或对方拒绝均待牵线；查看双方电话后进入牵线中，确认已联系后再根据被牵线方态度判断结果。</text></view>
+					<view class="workspace-filter-note"><text>未回应或对方拒绝均待牵线；查看双方电话并确认已获得联系方式后进入牵线中，再确认已联系并记录结果。</text></view>
 					<view v-if="!workspaceMatchesLoading && workspaceMatchesError.length == 0 && workspaceIntroductionWorkflowVersion != 2" class="workspace-filter-note"><text>服务端牵线流程尚未升级，请部署新版后端后再操作。</text></view>
 					<view v-if="workspaceMatchesUsingDemoData" class="workspace-demo-notice"><text>当前显示本地测试数据；服务端产生记录后将自动切换为真实数据。</text></view>
 					<view v-if="workspaceMatchesLoading" class="workspace-state"><text>正在加载牵线记录…</text></view>
@@ -240,6 +240,7 @@
 							<text v-if="row.status == 'PENDING' || row.status == 'IN_PROGRESS'" class="workspace-match-owner">电话查看：申请人{{ row.fromPhoneViewed ? '已查看' : '未查看' }} · 被牵线方{{ row.toPhoneViewed ? '已查看' : '未查看' }}</text>
 							<text v-if="row.status == 'FAILED' && row.failureReason.length > 0" class="workspace-match-reason">失败原因：{{ row.failureReason }}</text>
 							<view v-if="row.status == 'IN_PROGRESS'" class="workspace-actions"><text @tap="openMatchStatusSheet(row)">确认已联系并记录对方态度</text></view>
+							<view v-if="row.status == 'PENDING' && row.fromPhoneViewed && row.toPhoneViewed" class="workspace-actions"><text @tap="confirmMatchContactsObtained(row)">确认已获得双方联系方式</text></view>
 							<text class="workspace-match-owner">服务红娘：{{ row.owner }}</text>
 						</view>
 					</view>
@@ -959,7 +960,7 @@
 				<view class="workspace-match-add-row" @click="openMatchAddPicker('from')"><text class="workspace-match-add-label">牵线会员</text><view class="workspace-match-add-picker"><text :class="{ placeholder: matchAddFromName == '' }">{{ matchAddFromName == '' ? '请选择' : matchAddFromName }}</text><i></i></view></view>
 				<view class="workspace-match-add-row" @click="openMatchAddPicker('to')"><text class="workspace-match-add-label">被牵线会员</text><view class="workspace-match-add-picker"><text :class="{ placeholder: matchAddToName == '' }">{{ matchAddToName == '' ? '请选择' : matchAddToName }}</text><i></i></view></view>
 				<picker mode="date" :value="matchAddAppliedAt" start="2020-01-01" end="2030-12-31" @change="matchAddAppliedAt = $event.detail.value"><view class="workspace-match-add-row"><text class="workspace-match-add-label">牵线申请时间</text><view class="workspace-match-add-picker"><text :class="{ placeholder: matchAddAppliedAt == '' }">{{ matchAddAppliedAt == '' ? '请选择' : matchAddAppliedAt }}</text><i></i></view></view></picker>
-				<view class="workspace-match-add-note"><text class="workspace-match-add-note-mark">T</text><text>新记录进入待牵线。查看双方电话后进入牵线中，再确认已联系并记录结果。</text></view>
+				<view class="workspace-match-add-note"><text class="workspace-match-add-note-mark">T</text><text>新记录进入待牵线。查看双方电话并确认已获得联系方式后进入牵线中，再确认已联系并记录结果。</text></view>
 				<view v-if="matchAddError.length > 0" class="workspace-form-error"><text>{{ matchAddError }}</text></view>
 				<view class="workspace-match-add-submit" :class="{ disabled: matchAddSubmitting }" @click="submitMatchAdd"><text>{{ matchAddSubmitting ? '提交中…' : '提交' }}</text></view>
 			</view>
@@ -2805,12 +2806,35 @@ const revealMatchContact = async (row: any, side: string) => {
 			row.statusLabel = labels[next]
 		}
 		if (slot.phone.length == 0) showToast('该会员未留电话，不能推进牵线状态')
+		if (row.status == 'PENDING' && row.fromPhoneViewed && row.toPhoneViewed && slot.phone.length > 0) confirmMatchContactsObtained(row)
 		await reloadManagementCenterSnapshot()
 	} catch (e) {
 		slot.error = '网络异常，请稍后重试'
 	} finally {
 		slot.loading = false
 	}
+}
+
+const confirmMatchContactsObtained = (row: any) => {
+	if (row.contactsConfirming === true || row.status != 'PENDING') return
+	row.contactsConfirming = true
+	uni.showModal({
+		title: '确认已获得双方联系方式',
+		content: '请确认红娘已获得申请人和被牵线方的联系方式。确认后进入牵线中。',
+		confirmText: '确认已获得',
+		cancelText: '暂不确认',
+		success: async (res: any) => {
+			if (!res.confirm) { row.contactsConfirming = false; return }
+			try {
+				const result = await viewMatchmakerIntroductionContact(String(row.id), 'to', true)
+				if (!result.success) { showToast(result.message || '确认失败，请重试'); return }
+				await loadWorkspaceMatches()
+				await reloadManagementCenterSnapshot()
+			} catch (e) { showToast('网络异常，请重试') }
+			finally { row.contactsConfirming = false }
+		},
+		fail: () => { row.contactsConfirming = false }
+	})
 }
 
 const openWorkspaceContact = async (person: any, row: any = null) => {

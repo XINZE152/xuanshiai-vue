@@ -1083,9 +1083,9 @@ export async function updateMatchmakerIntroductionStatus(id: string, status: str
 }
 
 /** 查看这一条牵线的指定一方电话；后端审计并在双方电话已查看时推进状态。 */
-export async function viewMatchmakerIntroductionContact(id: string, side: string) {
+export async function viewMatchmakerIntroductionContact(id: string, side: string, contactsObtained: boolean = false) {
   if (!Number.isInteger(Number(id)) || Number(id) < 1 || (side != 'from' && side != 'to')) return { success: false, data: null, code: 422, message: '无效的牵线记录或查看方' }
-  return request({ url: '/matchmaker/workbench/introductions/' + encodeURIComponent(id) + '/contact-views', method: 'POST', data: { side: side } })
+  return request({ url: '/matchmaker/workbench/introductions/' + encodeURIComponent(id) + '/contact-views', method: 'POST', data: { side: side, contacts_obtained: contactsObtained } })
 }
 
 /** 更新约见申请处理状态：待处理 SUBMITTED / 已处理 ACCEPTED、DECLINED、CLOSED。 */

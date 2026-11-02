@@ -20,14 +20,16 @@ const api = extract(read('api/matchmaker.uts'), ['normalizeWorkspaceIntroduction
 const page = read('pagesSub/matchmaker/become-matchmaker.uvue')
 const source = page.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1]
 const ref = value=>({value})
+let contactModal = null
 const context = {
+ uni:{showModal:options=>{contactModal=options}},
  workspaceIntroductionWorkflowVersion:ref(2), matchStatusSheetVisible:ref(false), matchStatusRow:ref(null),
  matchStatusChoice:ref('SUCCEEDED'), matchContactConfirmed:ref(false), matchFailureReason:ref(''),matchStatusSubmitting:ref(false),
  showToast:()=>{}, reloadManagementCenterSnapshot:async()=>{}, loadWorkspaceMatches:async()=>{},
  updateMatchmakerIntroductionStatus:api.updateMatchmakerIntroductionStatus,
  viewMatchmakerIntroductionContact:api.viewMatchmakerIntroductionContact,
 }
-const ui = extract(source,['parseMemberId','revealMatchContact','openMatchStatusSheet','submitMatchStatus'],context)
+const ui = extract(source,['parseMemberId','revealMatchContact','confirmMatchContactsObtained','openMatchStatusSheet','submitMatchStatus'],context)
 const slot=()=>({loading:false,error:'',revealed:false,phone:'',wechat:''})
 const row=()=>({id:'12',status:'PENDING',fromUser:{id:'1'},toUser:{id:'2'},fromContact:slot(),toContact:slot(),fromPhoneViewed:false,toPhoneViewed:false})
 async function run() {
@@ -46,8 +48,15 @@ async function run() {
  assert.equal(calls.at(-1).url,'/matchmaker/workbench/introductions/12/contact-views')
  response={success:false,message:'拒绝访问'}; await ui.revealMatchContact(item,'to')
  assert.equal(item.status,'PENDING'); assert.equal(item.toContact.revealed,false)
- response={success:true,data:{introduction_id:12,status:'IN_PROGRESS',from_phone_viewed:true,to_phone_viewed:true,contact:{phone:'13800000002'}}}
- await ui.revealMatchContact(item,'to'); assert.equal(item.status,'IN_PROGRESS')
+ response={success:true,data:{introduction_id:12,status:'PENDING',from_phone_viewed:true,to_phone_viewed:true,contact:{phone:'13800000002'}}}
+ await ui.revealMatchContact(item,'to'); assert.equal(item.status,'PENDING')
+ assert.equal(contactModal.title,'确认已获得双方联系方式')
+ before=calls.length; await contactModal.success({confirm:false}); assert.equal(calls.length,before)
+ assert.equal(item.status,'PENDING'); assert.equal(item.contactsConfirming,false)
+ ui.confirmMatchContactsObtained(item)
+ await contactModal.success({confirm:true})
+ assert.equal(calls.at(-1).data.contacts_obtained,true)
+ item.status='IN_PROGRESS'
  ui.openMatchStatusSheet(item); assert.equal(context.matchStatusSheetVisible.value,true); assert.equal(context.matchContactConfirmed.value,false)
  before=calls.length; await ui.submitMatchStatus(); assert.equal(calls.length,before,'must explicitly confirm contact')
  context.matchContactConfirmed.value=true; context.matchStatusChoice.value='SUCCEEDED'; context.matchFailureReason.value='旧的失败原因'
