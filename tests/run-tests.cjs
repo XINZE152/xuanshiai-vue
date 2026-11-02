@@ -56,6 +56,9 @@ const core = [
   'test-personal-tags.js',
   'test-moxiang-continuous-crosspage.js',
   'test-ci-gates.js',
+  // 支付链路：预支付/requestPayment/权益轮询契约。
+  'test-payment-flow-contract.js',
+  'test-top-placement-payment-flow.js',
 ]
 
 // artifact 模式禁止 SKIP；源码组仍允许有理由的跳过，二者不能混作发布通过。

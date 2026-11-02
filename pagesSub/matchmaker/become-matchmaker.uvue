@@ -3771,7 +3771,10 @@ const guideToRequiredVerification = (message: string) => {
 		confirmText: '去完成',
 		success: (modal: any) => {
 			if (modal.confirm) {
-				uni.navigateTo({ url: '/pages/profile/certification?focus=' + (needsPhone ? 'phone' : 'realname') + '&returnTo=matchmaker' })
+				uni.navigateTo({
+					url: '/pagesSub/profileExtra/certification?type=' + (needsPhone ? 'phone' : 'realname') + '&returnTo=matchmaker',
+					fail: () => { uni.showToast({ title: '认证页打开失败，请稍后重试', icon: 'none' }) }
+				})
 			}
 		}
 	})

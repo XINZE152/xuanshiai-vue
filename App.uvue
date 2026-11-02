@@ -17,7 +17,7 @@
 		const route = currentPage != null && currentPage.route != null ? String(currentPage.route) : ''
 		if (
 			route == '' || route == 'pages/parent/parent' || route == 'pages/parent/user-detail' ||
-			route == 'pages/profile/certification' || route == 'pagesSub/chat/detail' ||
+			route == 'pagesSub/profileExtra/certification' || route == 'pagesSub/chat/detail' ||
 			route == 'pages/auth/login' || route == 'pages/auth/register' ||
 			route == 'pagesSub/userExtra/onboarding/profile'
 		) return

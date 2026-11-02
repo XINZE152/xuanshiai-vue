@@ -185,8 +185,6 @@
 
 						<view class="divider" v-if="feedDynamics.length > 0"></view>
 
-<view class="divider" v-if="feedDynamics.length > 0"></view>
-
 <!-- Ta的动态 -->
 
 <view class="feed-section" v-if="feedDynamics.length > 0">

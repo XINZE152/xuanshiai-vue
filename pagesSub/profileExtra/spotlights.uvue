@@ -1,5 +1,5 @@
 <template>
-	<view class="empty-page"><view class="empty-nav"><text class="ic ic-sys ic-fanhui back" @tap="back"></text><text>我的爆灯</text><view class="placeholder"></view></view><view class="tabs"><view class="tab" :class="{ active: activeTab === 0 }" @tap="activeTab = 0"><text>我给谁爆灯({{ sentSuperlikes.length }})</text><view></view></view><view class="tab" :class="{ active: activeTab === 1 }" @tap="activeTab = 1"><text>谁给我爆灯({{ receivedSuperlikes.length }})</text><view></view></view></view><scroll-view v-if="activeTab === 0 && sentSuperlikes.length > 0" class="spotlight-list" scroll-y><view v-for="item in sentSuperlikes" :key="item.id" class="spotlight-row" @tap="openUser(item.userId)"><image :src="item.avatar" class="spotlight-avatar" mode="aspectFill"></image><view class="spotlight-info"><text class="spotlight-name">{{ item.name }}</text><text class="spotlight-meta">{{ item.createdAt }}</text></view><text class="spotlight-status">{{ item.matched ? '已匹配' : item.status }}</text></view></scroll-view><scroll-view v-else-if="activeTab === 1 && receivedSuperlikes.length > 0" class="spotlight-list" scroll-y><view v-for="item in receivedSuperlikes" :key="item.id" class="spotlight-row" @tap="openUser(item.userId)"><image :src="item.avatar" class="spotlight-avatar" mode="aspectFill"></image><view class="spotlight-info"><text class="spotlight-name">{{ item.name }}</text><text class="spotlight-meta">{{ item.createdAt }}</text></view><text class="spotlight-status">{{ item.matched ? '已匹配' : item.status }}</text></view></scroll-view><view v-else class="empty-content"><text class="ic ic-home ic-search empty-icon"></text><text class="empty-copy">什么都还没有哦</text></view></view>
+	<view class="empty-page"><view class="empty-nav"><text class="ic ic-sys ic-fanhui back" @tap="back"></text><text>我的爆灯</text><view class="placeholder"></view></view><view class="tabs"><view class="tab" :class="{ active: activeTab === 0 }" @tap="activeTab = 0"><text>我给谁爆灯({{ sentSuperlikes.length }})</text><view></view></view><view class="tab" :class="{ active: activeTab === 1 }" @tap="activeTab = 1"><text>谁给我爆灯({{ receivedSuperlikes.length }})</text><view></view></view></view><scroll-view v-if="activeTab === 0 && sentSuperlikes.length > 0" class="spotlight-list" scroll-y><view v-for="item in sentSuperlikes" :key="item.id" class="spotlight-row" @tap="openUser(item.userId)"><image :src="item.avatar" class="spotlight-avatar" mode="aspectFill"></image><view class="spotlight-info"><text class="spotlight-name">{{ item.name }}</text><text class="spotlight-meta">{{ item.createdAt }}</text></view><text class="spotlight-status">{{ item.matched ? '已匹配' : item.status }}</text></view></scroll-view><scroll-view v-else-if="activeTab === 1 && receivedSuperlikes.length > 0" class="spotlight-list" scroll-y><view v-for="item in receivedSuperlikes" :key="item.id" class="spotlight-row" @tap="openUser(item.userId)"><image :src="item.avatar" class="spotlight-avatar" mode="aspectFill"></image><view class="spotlight-info"><text class="spotlight-name">{{ item.name }}</text><text class="spotlight-meta">{{ item.createdAt }}</text></view><text class="spotlight-status">{{ item.matched ? '已匹配' : item.status }}</text></view></scroll-view><view v-else-if="loadError != ''" class="empty-content"><text class="ic ic-home ic-search empty-icon"></text><text class="empty-copy">{{ loadError }}</text><text class="retry-link" @tap="load">点击重试</text></view><view v-else class="empty-content"><text class="ic ic-home ic-search empty-icon"></text><text class="empty-copy">{{ loading ? '加载中…' : '什么都还没有哦' }}</text></view></view>
 </template>
 <script setup lang="uts">
 import { getSentSuperlikes, getReceivedSuperlikes } from '@/api'
@@ -8,16 +8,35 @@ const activeTab = ref(0)
 const sentSuperlikes = ref<any[]>([])
 const receivedSuperlikes = ref<any[]>([])
 const openUser = (userId: number) => { if (userId > 0) uni.navigateTo({ url: '/pagesSub/userExtra/user/detail?userId=' + userId }) }
-onMounted(async () => {
-	const sent = await getSentSuperlikes(1, 20)
-	const received = await getReceivedSuperlikes(1, 20)
-	if (sent.success && sent.data != null) sentSuperlikes.value = (sent.data as any).items as any[]
-	if (received.success && received.data != null) receivedSuperlikes.value = (received.data as any).items as any[]
-})
+// 请求失败必须与「真的没有爆灯记录」区分开：
+// 旧实现把两者都渲染成「什么都还没有哦」，用户会误以为数据丢了。
+const loading = ref(false)
+const loadError = ref('')
+const load = async () => {
+	if (loading.value) return
+	loading.value = true
+	loadError.value = ''
+	try {
+		const sent = await getSentSuperlikes(1, 20)
+		const received = await getReceivedSuperlikes(1, 20)
+		if (!sent.success || sent.data == null || !received.success || received.data == null) {
+			loadError.value = '爆灯记录加载失败，请稍后重试'
+			return
+		}
+		sentSuperlikes.value = (sent.data as any).items as any[]
+		receivedSuperlikes.value = (received.data as any).items as any[]
+	} catch (e) {
+		loadError.value = '网络异常，请稍后重试'
+	} finally {
+		loading.value = false
+	}
+}
+onMounted(() => { load() })
 </script>
 <style scoped>
 .empty-page { min-height: 100vh; background: #F7F4F0; color: #2C2C2C; }.empty-nav { height: 100px; padding: 44px 18px 0; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: space-between; background: #FFFFFF; font-size: 20px; font-weight: 800; }.back,.placeholder { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }.back { font-size: 38px; font-weight: 300; }.tabs { height: 56px; display: flex; flex-direction: row; background: #FFFFFF; }.tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 8px; color: #8E8E8A; font-size: 16px; }.tab view { width: 28px; height: 5px; border-radius: 3px; background: transparent; }.tab.active { color: #2C2C2C; font-weight: 700; }.tab.active view { background: #8FA88A; }.empty-content { display: flex; flex-direction: column; align-items: center; padding-top: 45px; color: #C5C3BE; }.empty-icon { width: 100px; height: 100px; display: flex; align-items: center; justify-content: center; background: #FFFFFF; font-size: 64px; color: #D8D2CB; }.empty-copy { margin-top: 10px; font-size: 14px; color: #B8B2AB; }
 .spotlight-list { height: calc(100vh - 156px); padding: 16px; box-sizing: border-box; }.spotlight-row { display: flex; flex-direction: row; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid #E7E3DD; }.spotlight-avatar { width: 52px; height: 52px; border-radius: 26px; background: #F1ECE6; }.spotlight-info { flex: 1; display: flex; flex-direction: column; gap: 5px; }.spotlight-name { font-size: 15px; font-weight: 700; }.spotlight-meta,.spotlight-status { color: #8E8E8A; font-size: 12px; }.spotlight-status { color: #B08577; }
+.retry-link { margin-top: 14px; font-size: 13px; color: #8FA88A; text-decoration: underline; }
 @font-face { font-family: "iconfont-home"; src: url('/static/婚恋小程序图标/首页推荐与匹配/iconfont.woff2') format('woff2'); }
 @font-face { font-family: "iconfont-sys"; src: url('/static/婚恋小程序图标/系统通用/iconfont.woff2') format('woff2'); }
 .ic { font-style: normal; }.ic-home { font-family: "iconfont-home" !important; }.ic-sys { font-family: "iconfont-sys" !important; }.ic-fanhui:before { content: "\e606"; }.ic-search:before { content: "\e600"; }

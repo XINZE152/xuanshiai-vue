@@ -14,7 +14,12 @@ assert.ok(item.includes('@error="onAvatarError"'), 'avatar image should handle l
 assert.ok(item.includes('const displayAvatar = computed('), 'avatar source should be derived before rendering')
 assert.ok(item.includes('avatar-fallback'), 'empty avatars should render a fallback block')
 assert.ok(!/gender/i.test(item), 'the session list has no gender field, so avatars must not be guessed by gender')
-assert.ok(messageApi.includes('avatar: resolveMediaUrl(target.avatar)'), 'list avatars should resolve bare storage paths')
+assert.ok(messageApi.includes('avatar: resolvePeerAvatar(target)'), 'list avatars should resolve bare storage paths through the shared resolver')
+assert.ok(messageApi.includes('const thumb = resolveMediaUrl(t.avatar_thumb'), 'list avatars should prefer avatar_thumb when the server sends one')
+assert.ok(
+  messageApi.includes('function resolvePeerAvatar(target: any): string {'),
+  'list and chat must share one peer-avatar resolver so both surfaces stay identical',
+)
 assert.ok(!messageApi.includes("target.avatar != null ? resolveMediaUrl(target.avatar) : ''"), 'list avatars should not hand an unfiltered value to the image')
 
 // F-M3 置顶视觉：底色必须与页面底色可辨，并给出「置顶」标识。

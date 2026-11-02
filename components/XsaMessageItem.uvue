@@ -177,6 +177,16 @@ const handleLongPress = () => {
 	background: var(--warm);
 }
 
+/* 置顶会话的摘要弱化（对齐微信：置顶后对话内容变浅，让未读会话更突出）。
+   .unread 的权重更高，所以有未读时摘要仍然清晰。 */
+.xsa-message-item.pinned .last-message {
+	color: var(--muted);
+}
+
+.xsa-message-item.pinned .last-message.unread {
+	color: var(--ink2);
+}
+
 .xsa-message-item:active {
 	background: var(--canvas);
 }

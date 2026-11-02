@@ -77,9 +77,9 @@ export async function sendSuperlike(targetUserId: number, idempotencyKey: string
 
 /**
  * 付费爆灯（方案 B，本轮未启用）。
- * ⚠️ 现状只创建订单、不履约：后端要再调 `POST /payments/test/pay` 才会写 user_boost
- * 并通知对方（参考 api/top-placement.uts 的 payTopPlacement 两步式实现）。
- * 另需先把后端写死的 5.00 与前端 9.9 的价格口径统一，否则用户看到的金额与实际订单不符。
+ * ⚠️ 现状只创建订单、不履约：启用真实支付时应走
+ * `createPrepay -> requestWechatPayment -> 轮询订单/权益`，不要再调旧测试支付。
+ * 另需先把后端运行期价格与前端展示价格统一，否则用户看到的金额与实际订单不符。
  */
 export async function paySpotlight(target: SpotlightTarget) {
   if (target == null || target.id <= 0 || target.name == '') {

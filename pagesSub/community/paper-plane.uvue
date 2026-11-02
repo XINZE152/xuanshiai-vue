@@ -114,11 +114,13 @@
 		<view v-if="normalCatchVisible" class="normal-catch-overlay" @click="closeNormalCatch">
 			<view class="normal-catch-modal" @click.stop>
 				<view class="normal-catch-header">
+					<!-- 普通纸飞机在服务端是匿名的（PaperPlaneResponse 无作者字段），
+					     原实现展示的是本地写死的假人昵称/年龄/地区，已移除。 -->
 					<view class="normal-plane-profile">
-						<image class="normal-plane-avatar" :src="normalPlane.avatar" mode="aspectFill"></image>
+						<view class="normal-plane-anon"><text>✦</text></view>
 						<view class="normal-plane-copy">
-							<text class="normal-plane-name">{{ normalPlane.name }}</text>
-							<text class="normal-plane-meta">{{ normalPlane.birthYear }} · {{ normalPlane.ip }}</text>
+							<text class="normal-plane-name">一位匿名的人</text>
+							<text class="normal-plane-meta">{{ normalPlane.city != '' ? normalPlane.city : '未知城市' }}</text>
 						</view>
 					</view>
 					<button class="normal-report-button" @click="openNormalReport">举报</button>
@@ -126,7 +128,7 @@
 
 				<view class="normal-catch-kicker-row">
 					<text class="normal-catch-kicker">{{ normalPlane.type == 'voice' ? '语音纸飞机' : '文字纸飞机' }}</text>
-					<text class="normal-catch-time">刚刚落下</text>
+					<text class="normal-catch-time">{{ normalPlane.timeText != '' ? normalPlane.timeText : '刚刚落下' }}</text>
 				</view>
 
 				<view v-if="normalPlane.type == 'voice'" class="normal-voice-card">
@@ -162,7 +164,7 @@
 			:visible="normalReportVisible"
 			target-type="paperPlane"
 			:target-id="normalPlane.id"
-			:user-id="normalPlane.userId"
+			:user-id="0"
 			@close="normalReportVisible = false"
 			@reported="normalReportVisible = false"
 		/>
@@ -306,7 +308,7 @@
 
 <script setup lang="uts">
 	import XsaSheet from '@/components/XsaSheet.uvue'
-	import { sendPaperPlane, getCommunityQuotas, purchasePaperPlaneChance, replyPaperPlane, getPaperPlaneUnreadCount, createCommunityCreateKey, discardCommunityCreateKey, uploadCommunityMedia, deleteCommunityMedia, getPointProducts } from '@/api'
+	import { sendPaperPlane, getPaperPlanes, getCommunityQuotas, purchasePaperPlaneChance, replyPaperPlane, getPaperPlaneUnreadCount, createCommunityCreateKey, discardCommunityCreateKey, uploadCommunityMedia, deleteCommunityMedia, getPointProducts } from '@/api'
 	import { guardRealName } from '@/utils/realNameGate.uts'
 
 	// 纸飞机身份必须按账号分键：旧版用全局 key，切换账号后会串出上一个账号的
@@ -357,31 +359,21 @@
 	const normalReplyDraft = ref('')
 	const normalSending = ref(false)
 	const normalVoicePlaying = ref(false)
-	const normalPlanePool: any[] = [
-		{
-			id: 1,
-			userId: 1,
-			avatar: '/static/portraits/profile-woman-alt.webp',
-			name: '林雨桐',
-			birthYear: '1998年',
-			ip: '杭州',
-			type: 'text',
-			content: '今天路过一间很小的书店，想把遇见的好天气分享给同样认真生活的人。',
-			duration: '00:16'
-		},
-		{
-			id: 2,
-			userId: 7,
-					avatar: '/static/portraits/profile-woman-alt.webp',
-			name: '周予安',
-			birthYear: '1997年',
-			ip: '南京',
-			type: 'voice',
-			content: '',
-			duration: '00:18'
-		}
-	]
-	const normalPlane = ref(normalPlanePool[0])
+	const normalCatchLoading = ref(false)
+	// 普通纸飞机在服务端是匿名的（PaperPlaneResponse 没有作者字段），
+	// 因此不再保留本地写死的示例人物：旧实现固定两条假数据（id=1/2），
+	// 回复时又拿这两个 id 去调真实接口，会写到别人的纸飞机上。
+	const normalPlane = ref<any>({
+		id: 0,
+		type: 'text',
+		content: '',
+		city: '',
+		timeText: '',
+		duration: '',
+		voiceUrl: '',
+		voiceDurationSec: 0,
+		images: [] as string[]
+	})
 	const voiceBars = [8, 14, 22, 12, 18, 9, 25, 15, 20, 11, 17, 8]
 	const composerVisible = ref(false)
 	const composerTab = ref('text')
@@ -536,6 +528,7 @@
 	onUnload(() => {
 		if (recording.value) stopRecording()
 		clearRecordTimer()
+		stopNormalVoice()
 		cleanupPaperPlaneMedia()
 		discardPendingSendKey()
 		discardPendingReplyKey()
@@ -673,20 +666,49 @@
 		}
 	}
 
-	const openNormalCatch = () => {
+	// 普通纸飞机：从服务端真实列表里随机取一条，不再使用本地写死的示例。
+	// 没有可捡的纸飞机时如实提示空态——宁可"今天没有"，也不展示假人。
+	const openNormalCatch = async () => {
 		if (!ensurePaperPlaneProfile()) return
+		if (normalCatchLoading.value) return
 		catchMenuVisible.value = false
-		recordCatch()
-		normalReportVisible.value = false
-		normalReplyDraft.value = ''
-		normalVoicePlaying.value = false
-		const index = Math.floor(Math.random() * normalPlanePool.length)
-		normalPlane.value = normalPlanePool[index]
-		normalCatchVisible.value = true
+		normalCatchLoading.value = true
+		try {
+			const res = await getPaperPlanes()
+			const rows = res != null && res.success && Array.isArray(res.data) ? res.data as any[] : []
+			const pool = rows.filter((row: any) => row != null && Number(row.id) > 0)
+			if (pool.length == 0) {
+				uni.showToast({ title: '暂时没有落下的纸飞机，晚点再来', icon: 'none' })
+				return
+			}
+			const picked = pool[Math.floor(Math.random() * pool.length)]
+			const voiceUrl = picked.voiceUrl != null ? '' + picked.voiceUrl : ''
+			const voiceSec = Number(picked.voiceDurationSec != null ? picked.voiceDurationSec : 0)
+			normalPlane.value = {
+				id: Number(picked.id),
+				type: voiceUrl != '' ? 'voice' : 'text',
+				content: picked.content != null ? '' + picked.content : '',
+				city: picked.city != null ? '' + picked.city : '',
+				timeText: picked.timeText != null ? '' + picked.timeText : '',
+				duration: voiceSec > 0 ? '00:' + (voiceSec < 10 ? '0' + voiceSec : '' + voiceSec) : '',
+				voiceUrl: voiceUrl,
+				voiceDurationSec: voiceSec,
+				images: picked.images != null && Array.isArray(picked.images) ? picked.images as string[] : []
+			}
+			recordCatch()
+			normalReportVisible.value = false
+			normalReplyDraft.value = ''
+			stopNormalVoice()
+			normalCatchVisible.value = true
+		} catch (e) {
+			uni.showToast({ title: '网络异常，请稍后再试', icon: 'none' })
+		} finally {
+			normalCatchLoading.value = false
+		}
 	}
 
 	const closeNormalCatch = () => {
-		normalVoicePlaying.value = false
+		stopNormalVoice()
 		normalCatchVisible.value = false
 	}
 
@@ -694,8 +716,45 @@
 		normalReportVisible.value = true
 	}
 
+	// 语音纸飞机的播放：此前只翻转 normalVoicePlaying 布尔值，按钮点了没有任何声音。
+	// 现在按需创建 InnerAudioContext，结束/出错/关闭弹层都会销毁，避免多个实例叠加。
+	let normalVoiceAudio: any = null
+	const stopNormalVoice = () => {
+		normalVoicePlaying.value = false
+		if (normalVoiceAudio != null) {
+			try {
+				normalVoiceAudio.stop()
+				normalVoiceAudio.destroy()
+			} catch (e) {}
+			normalVoiceAudio = null
+		}
+	}
+
 	const toggleNormalVoice = () => {
-		normalVoicePlaying.value = !normalVoicePlaying.value
+		if (normalVoicePlaying.value) {
+			stopNormalVoice()
+			return
+		}
+		const url = normalPlane.value != null && normalPlane.value.voiceUrl != null ? '' + normalPlane.value.voiceUrl : ''
+		if (url == '') {
+			uni.showToast({ title: '这条语音暂时无法播放', icon: 'none' })
+			return
+		}
+		stopNormalVoice()
+		try {
+			normalVoiceAudio = uni.createInnerAudioContext()
+			normalVoiceAudio.src = url
+			normalVoiceAudio.onEnded(() => { stopNormalVoice() })
+			normalVoiceAudio.onError(() => {
+				stopNormalVoice()
+				uni.showToast({ title: '语音播放失败，请稍后再试', icon: 'none' })
+			})
+			normalVoicePlaying.value = true
+			normalVoiceAudio.play()
+		} catch (e) {
+			stopNormalVoice()
+			uni.showToast({ title: '语音播放失败，请稍后再试', icon: 'none' })
+		}
 	}
 
 	const onNormalReplyInput = (e: any) => {
@@ -707,6 +766,11 @@
 		const text = normalReplyDraft.value.trim()
 		if (text.length == 0 || normalSending.value) return
 		const p = normalPlane.value
+		// 防御：id 必须来自服务端。旧实现用的是本地写死的 1/2，会把回复写到别人的纸飞机上。
+		if (p == null || Number(p.id) <= 0) {
+			uni.showToast({ title: '这条纸飞机已失效，请重新捡取', icon: 'none' })
+			return
+		}
 		const content = text
 		const fingerprint = p.id + '|' + content
 		if (pendingReplyKey.value == '' || pendingReplyFingerprint.value != fingerprint) {
@@ -1234,6 +1298,9 @@
 	.normal-catch-header { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
 	.normal-plane-profile { flex: 1; min-width: 0; display: flex; flex-direction: row; align-items: center; gap: 11px; }
 	.normal-plane-avatar { width: 48px; height: 48px; border-radius: 16px; flex-shrink: 0; background: #EEE8FF; }
+	/* 匿名标识：普通纸飞机不展示作者身份，用占位圆角块替代头像 */
+	.normal-plane-anon { width: 48px; height: 48px; border-radius: 16px; flex-shrink: 0; background: #EEE8FF; display: flex; align-items: center; justify-content: center; }
+	.normal-plane-anon text { font-size: 20px; color: var(--plane-purple); }
 	.normal-plane-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 	.normal-plane-name { font-size: 16px; font-weight: 800; color: #21153A; }
 	.normal-plane-meta { font-size: 11px; color: #8B8298; }
