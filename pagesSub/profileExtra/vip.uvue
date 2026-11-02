@@ -56,14 +56,14 @@
 					<view class="payment-check" :class="{ checked: paymentSelected }"><text v-if="paymentSelected" class="ic ic-sys ic-tijiaoqueren payment-check-icon"></text></view>
 				</view>
 				<view class="payment-total"><text>合计</text><text class="payment-total-price">¥{{ selectedPlanPrice }}</text></view>
-				<button class="payment-confirm" :disabled="paymentLoading" @tap="confirmPayment">{{ paymentLoading ? '处理中...' : '确认支付' }}</button>
+				<button class="payment-confirm" :disabled="paymentLoading" @tap="confirmPayment">{{ paymentLoading ? paymentStageText : '确认支付' }}</button>
 			</view>
 		</view>
 	</view>
 </template>
 
 <script setup lang="uts">
-import { getMembershipStatus, getMembershipPackages, createMembershipOrder, testPayOrder } from '@/api'
+import { getMembershipStatus, getMembershipPackages, createMembershipOrder, getMembershipOrder, createPrepay, requestWechatPayment, pollUntil } from '@/api'
 import { setCurrentUserVipStatus } from '@/utils/quota.uts'
 
 const isVip = ref(false)
@@ -74,6 +74,8 @@ const redirectUrl = ref('/pages/index/index')
 const loadingPlans = ref(true)
 const loadError = ref('')
 const paymentLoading = ref(false)
+const paymentStage = ref('')
+const membershipPending = ref(false)
 const plans = ref<any[]>([])
 const benefits = [
 	{ iconClass: 'ic ic-vip ic-renwu', title: '申请次数' },
@@ -84,10 +86,19 @@ const benefits = [
 ]
 const selectedPlanData = computed(() => plans.value.length > selectedPlan.value ? plans.value[selectedPlan.value] : null)
 const selectedPlanPrice = computed(() => selectedPlanData.value != null ? selectedPlanData.value.price : 0)
+const paymentStageText = computed(() => {
+	if (paymentStage.value == 'paying') return '支付中...'
+	if (paymentStage.value == 'verifying') return '确认到账中...'
+	return '处理中...'
+})
 const selectPlan = (index: number) => { if (index >= 0 && index < plans.value.length) selectedPlan.value = index }
 const goBack = () => { uni.navigateBack({}) }
 const noop = () => {}
 const handleBuy = () => {
+	if (membershipPending.value) {
+		uni.showToast({ title: '支付成功，会员权益开通中，请稍后刷新', icon: 'none' })
+		return
+	}
 	if (plans.value.length === 0) {
 		uni.showToast({ title: loadError.value != '' ? loadError.value : '暂无可购买套餐', icon: 'none' })
 		return
@@ -112,6 +123,7 @@ const loadMembership = async () => {
 		const statusRes = await getMembershipStatus()
 		if (statusRes.success && statusRes.data != null) {
 			isVip.value = (statusRes.data as any).is_vip == true
+			if (isVip.value) membershipPending.value = false
 			// 以服务端为准回写本地，避免本地缓存与真实会员态长期分叉。
 			setCurrentUserVipStatus(isVip.value)
 		}
@@ -155,6 +167,30 @@ onMounted(() => {
 	loadMembership()
 })
 
+const handlePaymentError = (res: any) => {
+	if (res == null) {
+		uni.showToast({ title: '支付未完成，请稍后重试', icon: 'none' })
+		return
+	}
+	if (res.businessCode == 'WECHAT_OPENID_REQUIRED') {
+		uni.showToast({ title: '请重新微信登录后再支付', icon: 'none' })
+		return
+	}
+	if (res.code == 401) {
+		uni.showToast({ title: '登录已失效，请重新登录', icon: 'none' })
+		return
+	}
+	if (res.code == 503) {
+		uni.showToast({ title: '支付暂不可用，请稍后重试', icon: 'none' })
+		return
+	}
+	if (res.code == 409) {
+		uni.showToast({ title: res.message != null ? '' + res.message : '订单状态已变化，请刷新后重试', icon: 'none' })
+		return
+	}
+	uni.showToast({ title: res.message != null ? '' + res.message : '支付未完成', icon: 'none' })
+}
+
 const confirmPayment = async () => {
 	if (!paymentSelected.value) {
 		uni.showToast({ title: '请选择支付方式', icon: 'none' })
@@ -165,7 +201,9 @@ const confirmPayment = async () => {
 		uni.showToast({ title: '请选择有效会员套餐', icon: 'none' })
 		return
 	}
+	if (paymentLoading.value) return
 	paymentLoading.value = true
+	paymentStage.value = 'prepay'
 	try {
 		const orderRes = await createMembershipOrder(selected.code, 'membership-' + Date.now() + '-' + selected.code)
 		if (!orderRes.success || orderRes.data == null) {
@@ -178,17 +216,59 @@ const confirmPayment = async () => {
 			uni.showToast({ title: '订单号缺失，暂不能支付', icon: 'none' })
 			return
 		}
-		const payRes = await testPayOrder(orderNo)
-		if (!payRes.success) {
-			uni.showToast({ title: payRes.message != null ? '' + payRes.message : '支付未完成', icon: 'none' })
+
+		const prepay = await createPrepay(orderNo)
+		if (!prepay.success) {
+			handlePaymentError(prepay)
 			return
 		}
+		paymentStage.value = 'paying'
+		const pay = await requestWechatPayment(prepay.data as any)
+		if (!pay.success) {
+			if (pay.message != null && ('' + pay.message).indexOf('支付已取消') >= 0) {
+				paymentVisible.value = false
+				uni.showToast({ title: '支付已取消，可稍后重试', icon: 'none' })
+				return
+			}
+			handlePaymentError(pay)
+			return
+		}
+
+		// 微信侧成功不代表服务端已到账；先等订单 status=1。
+		paymentStage.value = 'verifying'
+		const paid = await pollUntil(
+			() => getMembershipOrder(orderNo),
+			(o: any) => o != null && Number(o.status) == 1,
+			15000,
+			1500
+		)
+		if (!paid.success) {
+			paymentVisible.value = false
+			membershipPending.value = true
+			uni.showToast({ title: '支付结果确认中，请稍后刷新', icon: 'none' })
+			setTimeout(() => { loadMembership() }, 3000)
+			return
+		}
+
+		// 订单已支付后，再等权益真正生效；避免 worker 延迟时谎称开通成功。
+		const active = await pollUntil(
+			() => getMembershipStatus(),
+			(s: any) => s != null && (s.is_vip == true || s.isVip == true),
+			15000,
+			1500
+		)
+		if (!active.success) {
+			paymentVisible.value = false
+			membershipPending.value = true
+			uni.showToast({ title: '支付成功，会员权益开通中', icon: 'none' })
+			setTimeout(() => { loadMembership() }, 2000)
+			return
+		}
+
 		paymentVisible.value = false
+		membershipPending.value = false
 		isVip.value = true
-		// 服务端测试支付已履约：把 VIP 态回写本地（按用户分键）。
-		// 不回写的话，首页本地额度仍按普通用户 8 人判定。
-		// 注意：不清理当日已浏览用户集合——升级只是把上限从 8 提到 20，
-		// 已看过的人应保持"已看过"，否则会被当成新人重复计数、反向多给额度。
+		// 以服务端确认后的会员态回写本地；不清理已浏览集合。
 		setCurrentUserVipStatus(true)
 		uni.showToast({ title: '开通成功', icon: 'success' })
 		setTimeout(() => { returnAfterPayment() }, 600)
@@ -196,6 +276,7 @@ const confirmPayment = async () => {
 		uni.showToast({ title: '支付失败，请稍后重试', icon: 'none' })
 	} finally {
 		paymentLoading.value = false
+		paymentStage.value = ''
 	}
 }
 </script>

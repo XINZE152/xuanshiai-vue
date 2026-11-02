@@ -19,7 +19,10 @@ import {
   respondMockContactExchange
 } from '@/mock/message.uts'
 
-const DEFAULT_PEER_AVATAR = '/static/portraits/profile-woman-main.webp'
+// 兜底头像必须按性别区分：旧实现无条件回退一张女性图，
+// 导致男性会话对象在聊天页显示女性头像，且与会话列表（不回退）不一致。
+const DEFAULT_PEER_AVATAR_MALE = '/static/portraits/profile-man-light.webp'
+const DEFAULT_PEER_AVATAR_FEMALE = '/static/portraits/profile-woman-main.webp'
 const DEFAULT_ME_AVATAR = '/static/portraits/profile-man-light.webp'
 /** 消息切片独立使用可变 Mock，避免受全局联调开关影响。 */
 /** 普通用户消息中心与普通文字聊天使用 FastAPI；父母端仍由 subject fail-closed 保护。 */
@@ -511,7 +514,7 @@ function mapConversationItem(item: any): any {
     sessionId: sessionId,
     userId: Number(target.user_id != null ? target.user_id : 0),
     name: target.nickname != null && target.nickname != '' ? '' + target.nickname : '用户',
-    avatar: resolveMediaUrl(target.avatar),
+    avatar: resolvePeerAvatar(target),
     lastMessage: item != null && item.last_message != null ? '' + item.last_message : '',
     time: item != null && item.last_message_time != null ? '' + item.last_message_time : '',
     unreadCount: Number(item != null && item.unread_count != null ? item.unread_count : 0),
@@ -966,6 +969,25 @@ function resolveAvatarUrl(raw: any, fallback: string): string {
   return resolved != '' ? resolved : fallback
 }
 
+/**
+ * 会话对象头像的唯一解析入口（会话列表 / 聊天记录 / 消息中心共用）。
+ *
+ * 优先级：avatar_thumb → avatar → 按性别兜底。
+ * 后端 `SocialUser` 同时下发 `avatar`/`avatar_thumb`/`gender`
+ * （app/schemas/social.py:11-17），所以缺头像时可以按性别选兜底图，
+ * 不必再退回一张写死的女性照片（那会让男性会话对象显示成女性）。
+ */
+function resolvePeerAvatar(target: any): string {
+  const t = target != null ? target : {}
+  const thumb = resolveMediaUrl(t.avatar_thumb != null ? '' + t.avatar_thumb : '')
+  if (thumb != '') return thumb
+  const full = resolveMediaUrl(t.avatar != null ? '' + t.avatar : '')
+  if (full != '') return full
+  const gender = Number(t.gender != null ? t.gender : 0)
+  if (gender == 2) return DEFAULT_PEER_AVATAR_FEMALE
+  return DEFAULT_PEER_AVATAR_MALE
+}
+
 let cachedMyAvatarUrl = ''
 
 /**
@@ -1021,7 +1043,7 @@ export async function getChatMessages(
   const currentUserId = currentChatUserId()
   if (!isPositiveInteger(currentUserId)) return protectSubjectResponse(failResponse('登录用户信息已失效，请重新登录', 'AUTH_REQUIRED'), subjectContext)
   const myAvatar = await getMyAvatarUrl()
-  const peerAvatar = resolveAvatarUrl(sessionRes.data.target?.avatar, DEFAULT_PEER_AVATAR)
+  const peerAvatar = resolvePeerAvatar(sessionRes.data.target)
   const messages = rows.map((row: any) => {
     const isMine = Number(row?.from_user_id ?? 0) == currentUserId
     const type = chatMessageTypeFromBackend(row?.type)

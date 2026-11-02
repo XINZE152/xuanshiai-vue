@@ -5,9 +5,10 @@
 
 			<view v-else-if="paymentSuccess && successOrder != null" class="success-panel">
 				<view class="success-mark"><text>✓</text></view>
-				<text class="success-title">置顶已开启</text>
-				<text class="success-copy">支付已确认，你的资料将进入广场置顶推荐。</text>
-				<view class="remaining-card"><text class="remaining-label">剩余置顶</text><text class="remaining-days">{{ successOrder.remainingDays }} 天</text><text class="remaining-copy">有效期至 {{ formatDate(successOrder.expiresAt) }}</text></view>
+				<text class="success-title">{{ paymentPending ? '支付成功，开通中' : '置顶已开启' }}</text>
+				<text class="success-copy">{{ successNotice }}</text>
+				<view v-if="!paymentPending" class="remaining-card"><text class="remaining-label">剩余置顶</text><text class="remaining-days">{{ successOrder.remainingDays }} 天</text><text class="remaining-copy">有效期至 {{ formatDate(successOrder.expiresAt) }}</text></view>
+				<view v-else class="remaining-card"><text class="remaining-label">置顶权益</text><text class="remaining-days">开通中</text><text class="remaining-copy">权益生效后自动刷新</text></view>
 				<view class="success-order"><text>套餐 · {{ successOrder.planName }}</text><text>¥{{ successOrder.amount }}</text></view>
 				<view class="success-order"><text>订单号</text><text>{{ successOrder.orderNo }}</text></view>
 				<view class="success-action" @tap="goBack"><text>返回广场</text></view>
@@ -103,6 +104,8 @@ const loading = ref(true)
 const paymentVisible = ref(false)
 const paying = ref(false)
 const paymentSuccess = ref(false)
+const paymentPending = ref(false)
+const successNotice = ref('支付已确认，你的资料将进入广场置顶推荐。')
 const successOrder = ref<TopPlacementOrder | null>(null)
 const recommendImages = ref<string[]>([])
 const selectedPlan = computed(() => plans.value.length > selectedPlanIndex.value ? plans.value[selectedPlanIndex.value] : { id: '', name: '', days: 0, price: 0, tag: '', recommended: false } as TopPlacementPlan)
@@ -139,8 +142,16 @@ const confirmPayment = async () => {
 	try {
 		paying.value = true
 		const result = await payTopPlacement(selectedPlan.value)
-		if (!result.success || result.data == null) { uni.showToast({ title: result.message, icon: 'none' }); return }
+		if (!result.success || result.data == null) {
+			if (result.message == '支付已取消') paymentVisible.value = false
+			uni.showToast({ title: result.message, icon: 'none' })
+			return
+		}
 		successOrder.value = result.data
+		paymentPending.value = result.message == '支付成功，置顶开通中'
+		successNotice.value = paymentPending.value
+			? '支付已确认，置顶权益正在开通，请稍后刷新或返回广场查看。'
+			: '支付已确认，你的资料将进入广场置顶推荐。'
 		paymentVisible.value = false
 		paymentSuccess.value = true
 	} catch (e) { uni.showToast({ title: '付款确认失败，请稍后重试', icon: 'none' }) } finally { paying.value = false }

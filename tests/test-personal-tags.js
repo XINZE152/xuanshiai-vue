@@ -215,7 +215,8 @@ async function main() {
   e.clearTags()
   await e.saveAndBack()
   assert.equal(e.writes[0].personal_tags.length, 0)
-  assert.equal(e.events[0][0], 'tagsSaved')
+  // 保存成功不再依赖未被消费的 tagsSaved eventChannel（edit.uvue 已移除）。
+  assert.equal(e.events.length, 0, 'success must not emit an unconsumed tagsSaved event')
   assert.equal(e.canSave.value, false, 'success cannot be submitted twice')
 
   e = editor({ loadFailure: true })
@@ -258,7 +259,8 @@ async function main() {
   assert.equal(e.writes.length, 1)
   release()
   await first
-  assert.equal(e.events.length, 1, 'server ordering is allowed to differ')
+  // 保存成功不再依赖未被消费的 tagsSaved eventChannel（edit.uvue 已移除）。
+  assert.equal(e.events.length, 0)
 
   const edit = fs.readFileSync(path.join(root, 'pagesSub/userExtra/user/edit.uvue'), 'utf8')
   assert.doesNotMatch(edit, /个人标签/, 'profile editor must use the user-facing name 兴趣标签')

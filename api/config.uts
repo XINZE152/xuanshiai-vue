@@ -1,7 +1,27 @@
 /** API configuration for the deployed FastAPI service. */
 
+const TEST_API_BASE_URL = 'https://xhztest.xyz'
+// 本地与远端联调只切此开关；release 继续遵循正式环境配置。
+const USE_LOCAL_BACKEND = true
+const LOCAL_API_BASE_URL = 'http://127.0.0.1:8000'
+const LOCAL_LAN_API_BASE_URL = 'http://10.5.120.165:8000'
+// release 版本指向生产域名。生产未部署前不要上传 release 版本。
+const PROD_API_BASE_URL = 'https://www.xuanshiai.com'
+
+function resolveApiBaseUrl(): string {
+	try {
+		const info: any = (uni as any).getAccountInfoSync()
+		const miniProgram: any = info != null ? info.miniProgram : null
+		const envVersion = miniProgram != null && miniProgram.envVersion != null ? '' + miniProgram.envVersion : ''
+		if (envVersion == 'release') return PROD_API_BASE_URL
+	} catch (e) {
+		// H5 / 本地环境没有小程序账号信息，回退测试服。
+	}
+	return USE_LOCAL_BACKEND ? LOCAL_API_BASE_URL : TEST_API_BASE_URL
+}
+
 export const USE_MOCK = false
-export const API_BASE_URL = 'http://127.0.0.1:8000'
+export const API_BASE_URL = resolveApiBaseUrl()
 export const ROLE_APPLICATION_USE_MOCK = false
 export const PAPER_PLANE_CHANCE_USE_MOCK = true
 
@@ -11,7 +31,7 @@ export const PAPER_PLANE_CHANCE_USE_MOCK = true
 // 除非后端补齐 summary/sessions/answers/submit/profile-source/discard/matches，
 // 否则必须保持 true。tests/test-emotion-lab-offline.js 会守住这一行。
 export const EMOTION_LAB_USE_MOCK = true
-export const LAN_API_BASE_URL = 'http://10.5.120.165:8000'
+export const LAN_API_BASE_URL = API_BASE_URL == LOCAL_API_BASE_URL ? LOCAL_LAN_API_BASE_URL : API_BASE_URL
 
 // FastAPI mounts its router directly at /api/v1.
 export const API_PREFIX = '/api/v1'

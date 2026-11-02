@@ -146,6 +146,8 @@ const handleWithdraw = () => {
 
 .list-label {
 	font-size: 30rpx;
+	line-height: 1.5;
+	letter-spacing: 0.5px;
 	color: #1A1A1A;
 	flex: 1;
 }
@@ -159,6 +161,8 @@ const handleWithdraw = () => {
 
 .list-value {
 	font-size: 26rpx;
+	line-height: 1.5;
+	letter-spacing: 0.3px;
 	color: #9CA3AF;
 }
 
@@ -179,12 +183,16 @@ const handleWithdraw = () => {
 
 .footer-tagline {
 	font-size: 26rpx;
+	line-height: 1.7;
+	letter-spacing: 0.5px;
 	color: #9CA3AF;
 	text-align: center;
 }
 
 .footer-icp {
 	font-size: 24rpx;
+	line-height: 1.7;
+	letter-spacing: 0.4px;
 	color: #B0B0B0;
 	text-align: center;
 }

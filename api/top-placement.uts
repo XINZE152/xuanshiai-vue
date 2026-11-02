@@ -1,4 +1,5 @@
 import { request } from './request.uts'
+import { createPrepay, requestWechatPayment, pollUntil, WechatPayParams } from './payment.uts'
 
 export type TopPlacementPlan = {
 	id: string
@@ -74,9 +75,34 @@ export async function getTopPlacementPackages() {
 }
 
 export async function getTopPlacementStatus() {
-	const res = await request({ url: '/users/me/boost/status', method: 'GET' })
+	const res = await request({
+		url: '/users/me/boost/status',
+		method: 'GET',
+		mockData: {
+			active: true,
+			remaining_days: 30,
+			expires_at: '2027-01-01',
+			order_no: 'MOCK-BOOST'
+		}
+	})
 	if (!res.success) return res
 	return { success: true, data: mapStatus(res.data), code: res.code, message: res.message }
+}
+
+export async function getTopPlacementOrder(orderNo: string) {
+	return request({
+		url: '/boost/orders/' + encodeURIComponent(orderNo),
+		method: 'GET',
+		mockData: {
+			order_no: orderNo,
+			product_code: 'MOCK',
+			product_name: '置顶套餐',
+			amount: 0,
+			status: 1,
+			expire_at: null,
+			payment_required: false
+		}
+	})
 }
 
 export async function payTopPlacement(plan: TopPlacementPlan) {
@@ -91,7 +117,36 @@ export async function payTopPlacement(plan: TopPlacementPlan) {
 	const order = orderRes.data as any
 	const orderNo = order.order_no != null ? '' + order.order_no : (order.orderNo != null ? '' + order.orderNo : '')
 	if (orderNo == '') return { success: false, data: null, code: 502, message: '置顶订单号缺失' }
-	const payRes = await request({ url: '/payments/test/pay', method: 'POST', data: { order_no: orderNo, success: true } })
-	if (!payRes.success) return payRes
-	return { success: true, data: mapOrder(payRes.data != null ? payRes.data : order, plan), code: payRes.code, message: payRes.message }
+
+	const prepay = await createPrepay(orderNo)
+	if (!prepay.success) return prepay
+	const pay = await requestWechatPayment(prepay.data as WechatPayParams)
+	if (!pay.success) return pay
+
+	// 支付 success 只代表微信侧完成；必须等回调把订单置为 status=1。
+	const paid = await pollUntil(
+		() => getTopPlacementOrder(orderNo),
+		(o: any) => o != null && Number(o.status) == 1,
+		15000,
+		1500
+	)
+	if (!paid.success) {
+		// 微信侧已扣款但服务端还没确认：按“开通中”处理，避免用户重复支付。
+		return { success: true, data: mapOrder(order, plan), code: 0, message: '支付成功，置顶开通中' }
+	}
+
+	const mapped = mapOrder(paid.data != null ? paid.data : order, plan)
+	const active = await pollUntil(
+		() => getTopPlacementStatus(),
+		(s: any) => s != null && s.active == true,
+		15000,
+		1500
+	)
+	if (active.success && active.data != null) {
+		mapped.remainingDays = Number(active.data.remainingDays)
+		mapped.expiresAt = Number(active.data.expiresAt)
+		return { success: true, data: mapped, code: 0, message: 'success' }
+	}
+	// 已支付但 Worker 尚未履约：不要提示失败，也不要谎称已生效。
+	return { success: true, data: mapped, code: 0, message: '支付成功，置顶开通中' }
 }

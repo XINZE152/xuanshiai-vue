@@ -72,9 +72,15 @@ export { summarizeProfileCard, getProfileCardDraft, applyProfileCardDraft, waitF
 export {
   getMembershipStatus,
   createMembershipOrder,
-  getMembershipOrder,
-  testPayOrder
+  getMembershipOrder
 } from './membership.uts'
+
+// 微信支付（预支付 / requestPayment / 轮询）
+export {
+  createPrepay,
+  requestWechatPayment,
+  pollUntil
+} from './payment.uts'
 
 // 消息相关
 export {

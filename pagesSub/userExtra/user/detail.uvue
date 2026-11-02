@@ -948,7 +948,15 @@ onMounted(async () => {
 
 onShow(async () => {
 	if (redirectParentRoute()) return
+	const vipBefore = viewerIsVip.value
 	await loadViewerMembership()
+	// 从会员页开通成功返回：detailLocked 是上一次 load() 时的服务端快照，
+	// 不重拉就会出现「付完钱仍让我开通会员」（R4-4）。这也是唯一需要主动刷新的场景。
+	const vipUpgraded = !vipBefore && viewerIsVip.value
+	if (vipUpgraded && detailLoadedOnce && Number(user.value.id) > 0) {
+		// 不 return：下面的 refreshLockedView() 还要按新会员态重算锁定区。
+		await load()
+	}
 	// 红娘代编返回后重新拉取会员资料，保证主页立即反映刚保存的内容
 	if (detailLoadedOnce && fromMatchmaker.value) await load()
 	// 额度用完态下从会员页返回：上限可能已从 8 提到 20，重新判定一次再加载，

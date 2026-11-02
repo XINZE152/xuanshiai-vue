@@ -26,7 +26,8 @@ export async function createMembershipOrder(packageCode: string, idempotencyKey:
 			success: true,
 			order_no: 'MOCK' + (Date.now()),
 			package_code: packageCode,
-			status: 'pending',
+			status: 0,
+			payment_required: true,
 			amount: 68
 		}
 	})
@@ -39,18 +40,10 @@ export async function getMembershipOrder(orderNo: string) {
 		mockData: {
 			order_no: orderNo,
 			package_code: 'yearly',
-			status: 'paid',
+			status: 1,
+			payment_required: false,
 			amount: 498,
 			paid_at: '2026-09-10 17:00:00'
 		}
-	})
-}
-
-export async function testPayOrder(orderNo: string) {
-	return request({
-		url: '/payments/test/pay',
-		method: 'POST',
-		data: { order_no: orderNo, success: true },
-		mockData: { success: true, paid: true, order_no: orderNo }
 	})
 }

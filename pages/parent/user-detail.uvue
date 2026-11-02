@@ -325,7 +325,7 @@
 
 		const handleGateAction = (gate: any) => {
 			if (gate != null && gate.code == 'PARENT_REALNAME_REQUIRED') {
-				uni.navigateTo({ url: '/pages/profile/certification' })
+				uni.navigateTo({ url: '/pagesSub/profileExtra/certification' })
 				return
 			}
 			if (

@@ -245,7 +245,7 @@ const guideToRequiredVerification = (message: string) => {
 		content: needsPhone ? '绑定手机号后，还需要完成实名认证才可提交申请。' : '实名认证审核通过后即可提交申请。',
 		confirmText: '去完成',
 		success: (modal: any) => {
-			if (modal.confirm) uni.navigateTo({ url: '/pages/profile/certification?focus=' + (needsPhone ? 'phone' : 'realname') + '&returnTo=partner' })
+			if (modal.confirm) uni.navigateTo({ url: '/pagesSub/profileExtra/certification?type=' + (needsPhone ? 'phone' : 'realname') + '&returnTo=partner', fail: () => { uni.showToast({ title: '认证页打开失败，请稍后重试', icon: 'none' }) } })
 		}
 	})
 }
