@@ -112,7 +112,7 @@
 					<view v-else>
 					<view class="workspace-notice"><text>超级红娘可查看全部客源线索，普通红娘仅查看已分派的客源。</text></view>
 					<view v-if="workspaceLeadsLoading" class="workspace-state"><text>正在加载客源数据…</text></view>
-					<view v-else-if="workspaceLeadsError.length > 0" class="workspace-state"><text>{{ workspaceLeadsError }}</text><text class="workspace-state-action" @click="loadWorkspaceLeads">重新加载</text></view>
+					<view v-else-if="workspaceLeadsError.length > 0" class="workspace-state"><text>{{ workspaceLeadsError }}</text><text class="workspace-state-action" @click="loadWorkspaceLeads">重新加载</text><text v-if="workspaceLeadsDiagnostic.length > 0" class="workspace-state-action" @tap="copyLeadDiagnostic">复制故障信息</text></view>
 					<view v-else-if="workspaceVisibleLeads.length == 0" class="workspace-state"><text>没有符合条件的客源</text></view>
 					<view v-else>
 						<view v-for="row in workspaceVisibleLeads" :key="row.id" class="workspace-lead-card">
@@ -138,7 +138,7 @@
 										<text>状态</text>
 										<view class="workspace-lead-chip" :class="'workspace-lead-status-' + row.statusTone"><text>{{ row.statusLabel }}</text><text class="workspace-lead-chevron">›</text></view>
 									</view>
-									<view v-if="row.status == 'LOST'" class="workspace-lead-remark"><text>放弃原因</text><view class="workspace-lead-remark-box abandon"><text>{{ row.abandonReason.length > 0 ? row.abandonReason : '未填写原因' }}</text></view></view>
+									<view v-if="row.status == 'LOST'" class="workspace-lead-remark"><text>弃海原因</text><view class="workspace-lead-remark-box abandon"><text>{{ row.abandonReason.length > 0 ? row.abandonReason : '未填写原因' }}</text></view></view>
 									<view class="workspace-lead-row" @click="openLeadAssignSheet(row)">
 										<text>分派跟进</text>
 										<view class="workspace-lead-value"><text>{{ row.owner }}</text><text class="workspace-lead-chevron">›</text></view>
@@ -153,7 +153,7 @@
 							<view class="workspace-actions">
 								<text @click="openLeadEditSheet(row)">编辑</text>
 								<text @click="copyLeadProfile(row)">复制资料</text>
-								<text v-if="row.status != 'LOST'" @click="confirmAbandonLead(row)">放弃线索</text>
+								<text v-if="row.status != 'LOST'" @click="confirmAbandonLead(row)">移入弃海</text>
 								<text v-else @click="confirmRestoreLead(row)">恢复客源</text>
 								<text v-if="row.status != 'CONVERTED' && row.status != 'CLOSED' && row.status != 'LOST'" @click="confirmConvertLead(row)">一键入库</text>
 								<text v-else-if="row.status == 'CONVERTED'" @click="showToast('已入库，编号 ' + row.convertedUserId)">已入库</text>
@@ -246,13 +246,31 @@
 					</view>
 				</view>
 				<view v-else-if="workspaceKind == 'meeting'">
-					<view class="workspace-meeting-intro"><view class="workspace-meeting-intro-head"><text class="workspace-meeting-intro-mark">T</text><text class="workspace-meeting-intro-title">须知</text></view><text class="workspace-meeting-intro-text">在这里您可以看到所有会员在平台上点击"申请安排见面"提交的记录，平台和红娘可以通过该信息进行精准销售或牵线服务，利用本功能可大大提升将会员引导到线下门店面谈的成功率。</text></view>
-					<view v-if="workspaceMeetingsUsingDemoData" class="workspace-demo-notice"><text>当前显示本地测试数据；服务端产生记录后将自动切换为真实数据。</text></view>
-					<view v-if="workspaceMeetingsLoading" class="workspace-state"><text>正在加载约见申请…</text></view>
+					<view class="workspace-filter-note"><text>接受申请后安排时间地点；已联系双方且双方均同意时，也可直接添加约会。约会完成后须填写跟进记录。</text></view>
+					<view v-if="workspaceMeetingsLoaded && workspaceMeetingWorkflowVersion != 2" class="workspace-filter-note"><text>服务端约会流程尚未升级，请部署新版后端后再安排或完成约会。</text></view>
+					<view v-if="workspaceMeetingsLoading" class="workspace-state"><text>正在加载约会记录…</text></view>
 					<view v-else-if="workspaceMeetingsError.length > 0" class="workspace-state"><text>{{ workspaceMeetingsError }}</text><text class="workspace-state-action" @click="loadWorkspaceMeetings">重新加载</text></view>
-					<view v-else-if="workspaceVisibleMeetings.length == 0" class="workspace-state"><text>没有符合条件的约见申请</text></view>
-					<view v-else><view v-for="row in workspaceVisibleMeetings" :key="row.id" class="workspace-meeting-card"><view class="workspace-meeting-pair"><view class="workspace-meeting-person"><view class="workspace-meeting-avatar-wrap" @click="openWorkspaceMemberProfile(row.applicant)"><image :src="row.applicant.avatar" mode="aspectFill"/><text class="workspace-meeting-gender" :class="row.applicant.gender == '女' ? 'female' : 'male'">{{ row.applicant.gender == '女' ? '♀' : '♂' }}</text></view><view class="workspace-meeting-name-row" @click="openWorkspaceMemberProfile(row.applicant)"><text class="workspace-meeting-name">{{ row.applicant.name }}</text><text v-if="isVipPerson(row.applicant)" class="workspace-meeting-vip">VIP</text></view><text class="workspace-meeting-person-code">编号：{{ row.applicant.id }}</text></view><view class="workspace-meeting-wish"><text>想约见</text></view><view class="workspace-meeting-person"><view class="workspace-meeting-avatar-wrap" @click="openWorkspaceMemberProfile(row.target)"><image :src="row.target.avatar" mode="aspectFill"/><text class="workspace-meeting-gender" :class="row.target.gender == '女' ? 'female' : 'male'">{{ row.target.gender == '女' ? '♀' : '♂' }}</text></view><view class="workspace-meeting-name-row" @click="openWorkspaceMemberProfile(row.target)"><text class="workspace-meeting-name">{{ row.target.name }}</text><text v-if="isVipPerson(row.target)" class="workspace-meeting-vip">VIP</text></view><text class="workspace-meeting-person-code">编号：{{ row.target.id }}</text></view></view><view class="workspace-meeting-meta"><view class="workspace-meeting-meta-line"><text class="workspace-meeting-meta-glyph">🕐</text><text>提交时间：{{ row.createdAt }}</text></view><view class="workspace-meeting-meta-line"><text class="workspace-meeting-meta-glyph">👤</text><text>服务红娘：{{ row.owner }}</text></view></view><view v-if="row.meeting != null" class="workspace-meeting-arrangement"><text>约见安排</text><view><text>{{ row.meeting.scheduledAt }}</text></view></view><view class="workspace-meeting-foot"><view v-if="row.phase == 'PROCESSING'" class="workspace-meeting-status-btn pending" @click="openMeetingStatusSheet(row)"><text>处理状态</text><view class="workspace-meeting-status-arrow"><i></i></view></view><view v-if="row.phase == 'PROCESSING' && row.requestStatus == 'ACCEPTED'" class="workspace-meeting-status-btn done" @click="openMeetingScheduleSheet(row)"><text>安排约见</text><view class="workspace-meeting-status-arrow"><i></i></view></view><view v-if="row.phase == 'UPCOMING'" class="workspace-meeting-status-btn pending" @click="openMeetingRecordSheet(row)"><text>约见管理</text><view class="workspace-meeting-status-arrow"><i></i></view></view><view class="workspace-meeting-delete" @click="openMeetingDeleteSheet(row)"><text>删除记录</text></view></view></view></view>
-					<view v-if="workspaceKind == 'meeting' && workspaceMeetingsLoaded && workspaceVisibleMeetings.length > 0" class="workspace-scroll-top" @click="scrollWorkspaceTop"><text class="workspace-scroll-top-arrow">↑</text></view>
+					<view v-else-if="workspaceVisibleMeetings.length == 0" class="workspace-state"><text>没有符合条件的约会记录</text></view>
+					<view v-else>
+						<view v-for="row in workspaceVisibleMeetings" :key="row.id" class="workspace-match-card">
+							<view class="workspace-match-card-top"><text>申请时间：{{ row.createdAt }}</text><view class="workspace-match-status-btn" :class="row.phase == 'FAILED' ? 't-FAILED' : (row.phase == 'COMPLETED' ? 't-SUCCEEDED' : 't-PENDING')"><text>{{ row.statusLabel }}</text></view></view>
+							<view class="workspace-match-pair">
+								<view class="workspace-match-col is-left"><view class="workspace-match-photo" @tap="openWorkspaceMemberProfile(row.applicant)"><image :src="row.applicant.avatar" mode="aspectFill" class="workspace-match-photo-image" /></view><view class="workspace-match-caption"><text class="workspace-match-role role-applicant">申请人</text><text class="workspace-match-caption-name">{{ row.applicant.name }}</text></view><text class="workspace-match-caption-code">编号：{{ row.applicant.id }}</text></view>
+								<view class="workspace-match-col is-right"><view class="workspace-match-photo" @tap="openWorkspaceMemberProfile(row.target)"><image :src="row.target.avatar" mode="aspectFill" class="workspace-match-photo-image" /></view><view class="workspace-match-caption"><text class="workspace-match-role role-target">被邀请方</text><text class="workspace-match-caption-name">{{ row.target.name }}</text></view><text class="workspace-match-caption-code">编号：{{ row.target.id }}</text></view>
+							</view>
+							<text class="workspace-match-owner">{{ row.detail }}</text>
+							<text v-if="row.note.length > 0" class="workspace-match-owner">申请说明：{{ row.note }}</text>
+							<view v-if="row.meeting != null" class="workspace-filter-note"><view><text>约会时间：{{ row.meeting.scheduledAt }}</text></view><view><text>约会地点：{{ row.meeting.location }}</text></view></view>
+							<view v-if="row.meeting != null && row.meeting.followUpContent.length > 0" class="workspace-filter-note"><text>跟进记录：{{ row.meeting.followUpContent }}</text></view>
+							<view class="workspace-actions">
+								<text v-if="row.phase == 'PROCESSING'" @tap="openMeetingStatusSheet(row)">联系双方并记录意愿</text>
+								<text v-if="row.phase == 'UPCOMING' && row.meeting == null" @tap="openMeetingScheduleSheet(row)">安排时间地点</text>
+								<text v-if="row.phase == 'UPCOMING' && row.meeting != null" @tap="openMeetingRecordSheet(row)">填写跟进 / 完成约会</text>
+							</view>
+							<text class="workspace-match-owner">服务红娘：{{ row.owner }}</text>
+						</view>
+					</view>
+					<view class="workspace-add" @tap="openMeetingCreateSheet"><text>+</text><text>添加约会</text></view>
 				</view>
 
 				<view v-else-if="workspaceKind == 'entry' && workspaceTitle == '录入会员'" class="workspace-entry-page">
@@ -971,7 +989,7 @@
 			<view class="mp-pick">
 				<view class="mp-pick-head">
 					<view class="mp-pick-back" @click="matchAddPickerVisible = false"><i class="mp-pick-back-glyph"></i></view>
-					<text class="mp-pick-title">{{ matchAddPickerKind == 'from' ? '选择牵线会员' : '选择被牵线会员' }}</text>
+					<text class="mp-pick-title">{{ matchAddContext == 'meeting' ? (matchAddPickerKind == 'from' ? '选择名下申请人' : '选择约会对象') : (matchAddPickerKind == 'from' ? '选择牵线会员' : '选择被牵线会员') }}</text>
 					<view v-if="!matchAddLoading && matchAddCandidates.length > 0" class="mp-pick-total"><text>{{ matchAddCandidates.length }}</text></view>
 				</view>
 				<view v-if="!matchAddLoading && matchAddCandidates.length > 0" class="mp-pick-search">
@@ -1003,12 +1021,19 @@
 			</view>
 		</XsaSheet>
 
-<XsaSheet :visible="meetingStatusSheetVisible" title="审核状态" @close="meetingStatusSheetVisible = false">
+<XsaSheet :visible="meetingStatusSheetVisible" title="确认双方约会意愿" @close="meetingStatusSheetVisible = false">
 			<view class="workspace-meeting-status-form">
 				<view class="workspace-meeting-status-pair">
-					<view class="workspace-meeting-status-pill" :class="{ active: meetingStatusChoice == 'SUBMITTED' }" @click="meetingStatusChoice = 'SUBMITTED'"><text>待处理</text></view>
-					<view class="workspace-meeting-status-pill" :class="{ active: meetingStatusChoice == 'ACCEPTED' }" @click="meetingStatusChoice = 'ACCEPTED'"><text>已处理</text></view>
+					<view class="workspace-filter-chip" :class="{ active: meetingStatusChoice == 'DECLINED' }" @click="meetingStatusChoice = 'DECLINED'"><text>约会失败</text></view>
+					<view class="workspace-filter-chip" :class="{ active: meetingStatusChoice == 'ACCEPTED' }" @click="meetingStatusChoice = 'ACCEPTED'"><text>双方同意</text></view>
 				</view>
+
+				<view v-if="meetingStatusChoice == 'ACCEPTED'" class="workspace-filter-chips">
+					<view class="workspace-filter-chip" :class="{ active: meetingContactsConfirmed }" @tap="meetingContactsConfirmed = !meetingContactsConfirmed"><text>{{ meetingContactsConfirmed ? '✓ ' : '○ ' }}已联系双方</text></view>
+					<view class="workspace-filter-chip" :class="{ active: meetingApplicantAgreed }" @tap="meetingApplicantAgreed = !meetingApplicantAgreed"><text>{{ meetingApplicantAgreed ? '✓ ' : '○ ' }}申请人同意</text></view>
+					<view class="workspace-filter-chip" :class="{ active: meetingTargetAgreed }" @tap="meetingTargetAgreed = !meetingTargetAgreed"><text>{{ meetingTargetAgreed ? '✓ ' : '○ ' }}被邀请方同意</text></view>
+				</view>
+				<textarea v-else class="workspace-follow-textarea" :value="meetingStatusReason" @input="meetingStatusReason = $event.detail.value" placeholder="请填写约会失败原因" :maxlength="200"/>
 				<view class="workspace-match-status-submit" :class="{ disabled: meetingStatusSubmitting }" @click="submitMeetingStatus"><text>{{ meetingStatusSubmitting ? '提交中…' : '提交' }}</text></view>
 			</view>
 		</XsaSheet>
@@ -1023,31 +1048,42 @@
 		</XsaSheet>
 
 		<!-- 约见：安排约见弹层（仅双方接受的申请） -->
-		<XsaSheet :visible="meetingScheduleSheetVisible" title="安排约见" @close="meetingScheduleSheetVisible = false">
+		<XsaSheet :visible="meetingScheduleSheetVisible && !matchAddPickerVisible" :title="meetingScheduleRow == null ? '添加约会' : '安排时间地点'" @close="meetingScheduleSheetVisible = false">
 			<view class="workspace-meeting-status-form">
-				<text v-if="meetingScheduleRow != null" class="workspace-confirm-tip">{{ meetingScheduleRow.applicant.name }} × {{ meetingScheduleRow.target.name }} 已同意约见，请协调双方时间后安排。</text>
+
+				<view v-if="meetingScheduleRow == null">
+					<view class="workspace-match-add-row" @tap="openMeetingMemberPicker('from')"><text class="workspace-match-add-label">名下会员</text><text>{{ meetingCreateApplicantName || '请选择申请人' }}</text></view>
+					<view class="workspace-match-add-row" @tap="openMeetingMemberPicker('to')"><text class="workspace-match-add-label">约会对象</text><text>{{ meetingCreateTargetName || '请选择被邀请方' }}</text></view>
+					<view class="workspace-filter-chips">
+						<view class="workspace-filter-chip" :class="{ active: meetingCreateContacted }" @tap="meetingCreateContacted = !meetingCreateContacted"><text>{{ meetingCreateContacted ? '✓ ' : '○ ' }}已联系双方</text></view>
+						<view class="workspace-filter-chip" :class="{ active: meetingCreateApplicantAgreed }" @tap="meetingCreateApplicantAgreed = !meetingCreateApplicantAgreed"><text>{{ meetingCreateApplicantAgreed ? '✓ ' : '○ ' }}申请人同意</text></view>
+						<view class="workspace-filter-chip" :class="{ active: meetingCreateTargetAgreed }" @tap="meetingCreateTargetAgreed = !meetingCreateTargetAgreed"><text>{{ meetingCreateTargetAgreed ? '✓ ' : '○ ' }}被邀请方同意</text></view>
+					</view>
+				</view>
+				<text v-if="meetingScheduleRow != null" class="workspace-confirm-tip">{{ meetingScheduleRow.applicant.name }} × {{ meetingScheduleRow.target.name }} 已同意约会，请协调双方时间后安排。</text>
 				<picker mode="date" :value="meetingScheduleDate" :start="meetingScheduleMinDate" end="2030-12-31" @change="onMeetingScheduleDate">
-					<view class="workspace-match-add-row"><text class="workspace-match-add-label">约见日期</text><view class="workspace-match-add-picker"><text :class="{ placeholder: meetingScheduleDate == '' }">{{ meetingScheduleDate == '' ? '请选择' : meetingScheduleDate }}</text><i></i></view></view>
+					<view class="workspace-match-add-row"><text class="workspace-match-add-label">约会日期</text><view class="workspace-match-add-picker"><text :class="{ placeholder: meetingScheduleDate == '' }">{{ meetingScheduleDate == '' ? '请选择' : meetingScheduleDate }}</text><i></i></view></view>
 				</picker>
 				<picker mode="time" :value="meetingScheduleTime" @change="onMeetingScheduleTime">
-					<view class="workspace-match-add-row"><text class="workspace-match-add-label">约见时间</text><view class="workspace-match-add-picker"><text :class="{ placeholder: meetingScheduleTime == '' }">{{ meetingScheduleTime == '' ? '请选择' : meetingScheduleTime }}</text><i></i></view></view>
+					<view class="workspace-match-add-row"><text class="workspace-match-add-label">约会时间</text><view class="workspace-match-add-picker"><text :class="{ placeholder: meetingScheduleTime == '' }">{{ meetingScheduleTime == '' ? '请选择' : meetingScheduleTime }}</text><i></i></view></view>
 				</picker>
-				<view class="workspace-form-row"><text>约见地点</text><input :value="meetingScheduleLocation" @input="meetingScheduleLocation = $event.detail.value" placeholder="请填写约见地点（必填）" :maxlength="128"/></view>
+				<view class="workspace-form-row"><text>约会地点</text><input :value="meetingScheduleLocation" @input="meetingScheduleLocation = $event.detail.value" placeholder="请填写约会地点（必填）" :maxlength="128"/></view>
 				<view v-if="meetingScheduleError.length > 0" class="workspace-form-error"><text>{{ meetingScheduleError }}</text></view>
 				<view class="workspace-match-status-submit" :class="{ disabled: meetingScheduleSubmitting }" @click="submitMeetingSchedule"><text>{{ meetingScheduleSubmitting ? '提交中…' : '确认安排' }}</text></view>
 			</view>
 		</XsaSheet>
 
 		<!-- 约见：约见安排状态弹层（完成 / 取消 / 爽约） -->
-		<XsaSheet :visible="meetingRecordSheetVisible" title="约见安排状态" @close="meetingRecordSheetVisible = false">
+		<XsaSheet :visible="meetingRecordSheetVisible" title="约会跟进与结果" @close="meetingRecordSheetVisible = false">
 			<view class="workspace-meeting-status-form">
 				<view class="workspace-filter-chips">
 					<view class="workspace-filter-chip" :class="{ active: meetingRecordChoice == 'REMINDED' }" @click="meetingRecordChoice = 'REMINDED'"><text>已提醒</text></view>
 					<view class="workspace-filter-chip" :class="{ active: meetingRecordChoice == 'CHECKED_IN' }" @click="meetingRecordChoice = 'CHECKED_IN'"><text>已到场</text></view>
-					<view class="workspace-filter-chip" :class="{ active: meetingRecordChoice == 'COMPLETED' }" @click="meetingRecordChoice = 'COMPLETED'"><text>已完成</text></view>
+					<view class="workspace-filter-chip" :class="{ active: meetingRecordChoice == 'COMPLETED' }" @click="meetingRecordChoice = 'COMPLETED'"><text>完成约会</text></view>
 					<view class="workspace-filter-chip" :class="{ active: meetingRecordChoice == 'CANCELLED' }" @click="meetingRecordChoice = 'CANCELLED'"><text>已取消</text></view>
 					<view class="workspace-filter-chip" :class="{ active: meetingRecordChoice == 'NO_SHOW' }" @click="meetingRecordChoice = 'NO_SHOW'"><text>爽约</text></view>
 				</view>
+				<textarea v-if="meetingRecordChoice == 'COMPLETED'" class="workspace-follow-textarea" :value="meetingRecordFollowUp" @input="meetingRecordFollowUp = $event.detail.value" placeholder="请填写约会经过、双方反馈与后续跟进（必填）" :maxlength="2000"/>
 				<textarea v-if="meetingRecordChoice == 'CANCELLED' || meetingRecordChoice == 'NO_SHOW'" class="workspace-follow-textarea" :value="meetingRecordReason" @input="meetingRecordReason = $event.detail.value" :placeholder="meetingRecordChoice == 'CANCELLED' ? '请填写取消原因（必填）' : '请填写爽约说明（必填）'" :maxlength="200"/>
 				<view class="workspace-sheet-actions">
 					<view class="workspace-sheet-btn ghost" @click="meetingRecordSheetVisible = false"><text>取消</text></view>
@@ -1056,8 +1092,8 @@
 			</view>
 		</XsaSheet>
 
-		<!-- 线索：放弃 / 入库确认 -->
-		<XsaSheet :visible="leadConfirmSheetVisible" :title="leadConfirmKind == 'abandon' ? '放弃线索' : (leadConfirmKind == 'restore' ? '恢复客源' : '一键入库')" @close="leadConfirmSheetVisible = false">
+		<!-- 线索：弃海 / 入库确认 -->
+		<XsaSheet :visible="leadConfirmSheetVisible" :title="leadConfirmKind == 'abandon' ? '移入弃海' : (leadConfirmKind == 'restore' ? '恢复客源' : '一键入库')" @close="leadConfirmSheetVisible = false">
 			<view class="workspace-lead-confirm">
 				<text class="workspace-confirm-tip">{{ leadConfirmTip }}</text>
 				<view v-if="leadConfirmKind == 'convert'" class="workspace-confirm-gender">
@@ -1067,7 +1103,7 @@
 						<view class="workspace-filter-chip" :class="{ active: leadConvertGender == 1 }" @click="leadConvertGender = 1"><text>男</text></view>
 					</view>
 				</view>
-				<textarea v-if="leadConfirmKind != 'convert'" class="workspace-follow-textarea" :value="leadConfirmReason" @input="leadConfirmReason = $event.detail.value" :placeholder="leadConfirmKind == 'abandon' ? '请填写放弃原因（必填）' : '恢复原因（选填）'" :maxlength="200"/>
+				<textarea v-if="leadConfirmKind != 'convert'" class="workspace-follow-textarea" :value="leadConfirmReason" @input="leadConfirmReason = $event.detail.value" :placeholder="leadConfirmKind == 'abandon' ? '请填写弃海原因（必填）' : '恢复原因（选填）'" :maxlength="200"/>
 				<view class="workspace-sheet-actions">
 					<view class="workspace-sheet-btn ghost" @click="leadConfirmSheetVisible = false"><text>取消</text></view>
 					<view class="workspace-sheet-btn" :class="{ disabled: leadConfirmSubmitting }" @click="submitLeadConfirm"><text>{{ leadConfirmSubmitting ? '处理中…' : '确认' }}</text></view>
@@ -1176,6 +1212,7 @@ import {
 	updateMatchmakerMeetingStatus,
 	updateMatchmakerMeetingRecordStatus,
 	scheduleMatchmakerMeeting,
+	createMatchmakerMeeting,
 	updateMatchmakerIntroductionStatus,
 	viewMatchmakerIntroductionContact,
 	createMatchmakerIntroduction,
@@ -1191,6 +1228,7 @@ import {
 	getMatchmakerMemberContact,
 	submitMatchmakerApplication
 } from '@/api'
+import { getWorkspaceMeetingPresentation } from '@/utils/meeting-workflow.uts'
 import { resolveMediaUrl } from '@/api/config.uts'
 import { getCurrentInstance, nextTick } from 'vue'
 import { drawPennant, renderPennant, type PennantContent } from '@/utils/pennant-drawer.uts'
@@ -1240,15 +1278,20 @@ const workspaceMembersLoading = ref(false)
 const workspaceMembersError = ref('')
 const workspaceLeadsLoading = ref(false)
 const workspaceLeadsError = ref('')
+const workspaceLeadsDiagnostic = ref('')
+const copyLeadDiagnostic = () => {
+	if (workspaceLeadsDiagnostic.value.length == 0) return
+	uni.setClipboardData({ data: workspaceLeadsDiagnostic.value })
+}
 const workspaceMatchesLoading = ref(false)
 const workspaceMatchesError = ref('')
 const workspaceMeetingsLoading = ref(false)
 const workspaceMeetingsError = ref('')
 const workspaceDefaultTabs = ['全部', '进行中', '已完成']
 const workspaceCommissionTabs = ['分成明细', '分成标准']
-const workspaceLeadTabs = ['客源线索', '已放弃线索']
+const workspaceLeadTabs = ['客源线索', '弃海客源']
 const workspaceMatchTabs = ['全部', '待牵线', '牵线中', '成功', '失败']
-const workspaceMeetingTabs = ['全部', '待处理', '待见面', '已完成', '已结束']
+const workspaceMeetingTabs = ['全部', '约会失败', '待见面', '完成约会']
 // 录入客源线索页的「轻档案卡」风格开关
 const isLeadEntryStudio = computed(() => workspaceVisible.value && workspaceKind.value == 'entry' && workspaceTitle.value == '录入客源线索')
 const workspaceTabs = computed(() => {
@@ -1265,7 +1308,7 @@ const workspaceTabs = computed(() => {
 const workspaceSearchPlaceholder = computed(() => {
 	if (workspaceKind.value == 'lead') return '请输入昵称、手机或微信'
 	if (workspaceKind.value == 'match') return '请输入申请人昵称、姓名或编号'
-	if (workspaceKind.value == 'meeting') return '请输入申请人、邀约对象或编号'
+	if (workspaceKind.value == 'meeting') return '请输入申请人昵称或编号'
 	return '请输入关键词'
 })
 // 分成明细与财务明细读服务端（会员名与事件名由订单/规则回带）；分成标准未开放时明确提示。
@@ -1376,6 +1419,7 @@ const leadIntentionDetails = ref<any>({})
 const workspaceMatches = ref<any[]>([])
 const workspaceMeetings = ref<any[]>([])
 const workspaceMeetingsLoaded = ref(false)
+const workspaceMeetingWorkflowVersion = ref(0)
 const workspaceMatchesUsingDemoData = ref(false)
 const workspaceMeetingsUsingDemoData = ref(false)
 
@@ -1398,7 +1442,7 @@ const applyBusinessMetricCounts = (meetingRequests: number, pendingMeeting: numb
 
 const syncBusinessMetricCountsFromWorkspace = () => {
 	if (!workspaceMeetingsLoaded.value) return
-	const meetingRequests = workspaceMeetings.value.filter((item: any): boolean => item.phase == 'PROCESSING').length
+	const meetingRequests = workspaceMeetings.value.length
 	const pendingMeeting = workspaceMeetings.value.filter((item: any): boolean => item.phase == 'UPCOMING').length
 	applyBusinessMetricCounts(meetingRequests, pendingMeeting)
 }
@@ -1408,7 +1452,7 @@ const refreshBusinessMetricCounts = async () => {
 		const meetingsResult = await getMatchmakerWorkspaceMeetingRequests()
 		if (!meetingsResult.success || meetingsResult.data == null) return
 		const meetings = Array.isArray(meetingsResult.data.items) ? meetingsResult.data.items : []
-		const meetingRequests = meetings.filter((item: any): boolean => getWorkspaceMeetingPresentation(String(item.status), item.meeting).phase == 'PROCESSING').length
+		const meetingRequests = meetings.length
 		const pendingMeeting = meetings.filter((item: any): boolean => getWorkspaceMeetingPresentation(String(item.status), item.meeting).phase == 'UPCOMING').length
 		applyBusinessMetricCounts(meetingRequests, pendingMeeting)
 	} catch (e) {
@@ -1482,10 +1526,10 @@ const workspaceVisibleMembers = computed(() => {
 })
 const workspaceVisibleLeads = computed(() => {
 	let rows = workspaceLeads.value
-	if (workspaceActiveTab.value == '已放弃线索') rows = rows.filter((item: any) => item.status == 'LOST')
+	if (workspaceActiveTab.value == '弃海客源') rows = rows.filter((item: any) => item.status == 'LOST')
 	if (workspaceActiveTab.value == '客源线索') rows = rows.filter((item: any) => item.status != 'LOST')
-	// 弃海池按弃海时点倒序（最新放弃在最上）：接口整体按客源 id 倒序，早录入晚放弃的会沉底。
-	if (workspaceActiveTab.value == '已放弃线索') {
+	// 弃海池按弃海时点倒序（最新弃海在最上）：接口整体按客源 id 倒序，早录入晚弃海的会沉底。
+	if (workspaceActiveTab.value == '弃海客源') {
 		rows = rows.slice().sort((a: any, b: any): number => {
 			const left = String(a.abandonedAt)
 			const right = String(b.abandonedAt)
@@ -1519,10 +1563,9 @@ const workspaceVisibleMatches = computed(() => {
 })
 const workspaceVisibleMeetings = computed(() => {
 	let rows = workspaceMeetings.value
-	if (workspaceActiveTab.value == '待处理') rows = rows.filter((item: any) => item.phase == 'PROCESSING')
 	if (workspaceActiveTab.value == '待见面') rows = rows.filter((item: any) => item.phase == 'UPCOMING')
-	if (workspaceActiveTab.value == '已完成') rows = rows.filter((item: any) => item.phase == 'COMPLETED')
-	if (workspaceActiveTab.value == '已结束') rows = rows.filter((item: any) => item.phase == 'ENDED')
+	if (workspaceActiveTab.value == '完成约会') rows = rows.filter((item: any) => item.phase == 'COMPLETED')
+	if (workspaceActiveTab.value == '约会失败') rows = rows.filter((item: any) => item.phase == 'FAILED')
 	const keyword = workspaceKeyword.value.trim().toLowerCase()
 	if (keyword.length == 0) return rows
 	return rows.filter((item: any) => {
@@ -1729,6 +1772,7 @@ const loadWorkspaceMembers = async () => {
 				gender: gender,
 				type: Number(item.profile_completion_score) >= 90 ? '资料完善' : '待完善',
 				owner: owner,
+				ownerId: Number(item.matchmaker_id || 0),
 				status: reviewStatus == 'PASSED' ? '已通过' : (reviewStatus == 'REJECTED' ? '需补充资料' : '资料待审'),
 				reviewStatus: reviewStatus
 			}
@@ -1736,7 +1780,7 @@ const loadWorkspaceMembers = async () => {
 		countServedMembers(items)
 	} catch (e) {
 		workspaceMembers.value = []
-		workspaceMembersError.value = '网络数据加载失败，请检查本地服务后重试'
+		workspaceMembersError.value = '网络数据加载失败，请稍后重试'
 	} finally {
 		workspaceMembersLoading.value = false
 	}
@@ -1748,7 +1792,7 @@ const leadStatusMeta: any[] = [
 	{ value: 'INTENDED', label: '恋爱中' },
 	{ value: 'CLOSED', label: '已结婚' },
 	{ value: 'CONVERTED', label: '已到门店' },
-	{ value: 'LOST', label: '已放弃', disabled: true }
+	{ value: 'LOST', label: '已弃海', disabled: true }
 ]
 const leadStatusTones: any = { NEW: 'new', CONTACTED: 'ok', INTENDED: 'warn', CONVERTED: 'ok', CLOSED: 'muted', LOST: 'muted' }
 const leadStatusOptions = leadStatusMeta.filter((item: any): boolean => item.value != 'LOST')
@@ -1762,7 +1806,7 @@ const leadIntentionOptions = [
 	{ value: 6, label: 'F类 毁约需二邀', level: 2 },
 	{ value: 7, label: 'G类 已到店未签约', level: 2 },
 	{ value: 8, label: 'I类 已签单', level: 3 },
-	{ value: 9, label: 'J类 放弃资源', level: 1 }
+	{ value: 9, label: 'J类 弃海资源', level: 1 }
 ]
 const followUpMethodLabels: any = { PHONE: '电话', WECHAT: '微信', VISIT: '到店', OTHER: '其他' }
 
@@ -1807,6 +1851,7 @@ const leadAgeFromBirthday = (value: any): number => {
 }
 
 const loadWorkspaceLeads = async () => {
+	workspaceLeadsDiagnostic.value = ''
 	workspaceLeadsLoading.value = true
 	workspaceLeadsError.value = ''
 	try {
@@ -1814,6 +1859,7 @@ const loadWorkspaceLeads = async () => {
 		if (!result.success || result.data == null) {
 			workspaceLeads.value = []
 			workspaceLeadsError.value = result.message != null ? String(result.message) : '客源数据加载失败'
+			workspaceLeadsDiagnostic.value = result.diagnostic != null ? String(result.diagnostic) : ''
 			return
 		}
 		const source = result.data
@@ -1866,7 +1912,7 @@ const loadWorkspaceLeads = async () => {
 		})
 	} catch (e) {
 		workspaceLeads.value = []
-		workspaceLeadsError.value = '网络数据加载失败，请检查本地服务后重试'
+		workspaceLeadsError.value = '网络数据加载失败，请稍后重试'
 	} finally {
 		workspaceLeadsLoading.value = false
 	}
@@ -2063,7 +2109,7 @@ const loadLeadFollowRecords = async () => {
 		}))
 	} catch (e) {
 		leadFollowRecords.value = []
-		leadFollowError.value = '网络数据加载失败，请检查本地服务后重试'
+		leadFollowError.value = '网络数据加载失败，请稍后重试'
 	} finally {
 		leadFollowLoading.value = false
 	}
@@ -2383,7 +2429,7 @@ const sendLeadForm = async (name: string, phone: string, wechat: string) => {
 	}
 }
 
-// ===== 客源线索：放弃 / 恢复 / 入库确认 =====
+// ===== 客源线索：弃海 / 恢复 / 入库确认 =====
 const leadConfirmSheetVisible = ref(false)
 const leadConfirmKind = ref('abandon')
 const leadConfirmLeadId = ref('')
@@ -2391,7 +2437,7 @@ const leadConfirmReason = ref('')
 const leadConfirmSubmitting = ref(false)
 const leadConvertGender = ref(2)
 const leadConfirmTip = computed(() => {
-	if (leadConfirmKind.value == 'abandon') return '放弃后该线索将进入「已放弃线索」列表，可随时恢复。'
+	if (leadConfirmKind.value == 'abandon') return '移入弃海后，该客源将进入「弃海客源」列表，可随时恢复。'
 	if (leadConfirmKind.value == 'restore') return '捞取后客源将回到「客源线索」列表，录入人与跟进红娘都改为您。'
 	return '入库后将创建正式用户并进入公开资料审核阶段，请确认信息真实有效。'
 })
@@ -2424,7 +2470,7 @@ const submitLeadConfirm = async () => {
 		let result: any = null
 		if (leadConfirmKind.value == 'abandon') {
 			if (leadConfirmReason.value.trim().length == 0) {
-				showToast('请填写放弃原因')
+				showToast('请填写弃海原因')
 				return
 			}
 			result = await abandonWorkspaceLead(leadConfirmLeadId.value, leadConfirmReason.value.trim())
@@ -2441,7 +2487,7 @@ const submitLeadConfirm = async () => {
 		if (leadConfirmKind.value == 'convert') {
 			showToast('已入库，该用户已进入资料待审')
 		} else if (leadConfirmKind.value == 'abandon') {
-			showToast('已放弃线索')
+			showToast('已移入弃海客源')
 		} else {
 			showToast('恭喜，本客源已经成功捞取到您名下，请至“客源线索”中进行维护跟进，加油！')
 		}
@@ -2622,7 +2668,7 @@ const loadWorkspaceMatches = async () => {
 	} catch (e) {
 		workspaceMatches.value = []
 		workspaceMatchesUsingDemoData.value = false
-		workspaceMatchesError.value = '网络数据加载失败，请检查本地服务后重试'
+		workspaceMatchesError.value = '网络数据加载失败，请稍后重试'
 	} finally {
 		workspaceMatchesLoading.value = false
 	}
@@ -2648,7 +2694,7 @@ const loadWorkspaceCommissionEntries = async () => {
 		workspaceCommissionRows.value = []
 		workspaceCommissionUsingDemoData.value = false
 		workspaceCommissionTotalAmount.value = ''
-		workspaceCommissionError.value = '网络数据加载失败，请检查本地服务后重试'
+		workspaceCommissionError.value = '网络数据加载失败，请稍后重试'
 	} finally {
 		workspaceCommissionLoading.value = false
 	}
@@ -2674,7 +2720,7 @@ const loadWorkspaceOfflineIncome = async () => {
 		workspaceFinanceRows.value = []
 		workspaceFinanceUsingDemoData.value = false
 		workspaceFinanceTotalAmount.value = ''
-		workspaceFinanceError.value = '网络数据加载失败，请检查本地服务后重试'
+		workspaceFinanceError.value = '网络数据加载失败，请稍后重试'
 	} finally {
 		workspaceFinanceLoading.value = false
 	}
@@ -2886,23 +2932,6 @@ const openWorkspaceMemberProfile = (person: any) => {
 	})
 }
 
-const getWorkspaceMeetingPresentation = (requestStatus: string, meeting: any) => {
-	if (meeting != null) {
-		const meetingStatus = meeting.status != null ? String(meeting.status) : ''
-		if (meetingStatus == 'SCHEDULED' || meetingStatus == 'REMINDED' || meetingStatus == 'CHECKED_IN') {
-			return { phase: 'UPCOMING', statusLabel: '待见面', statusTone: 'upcoming', detail: '已安排约见，请按计划完成服务跟进' }
-		}
-		if (meetingStatus == 'COMPLETED') {
-			return { phase: 'COMPLETED', statusLabel: '已完成', statusTone: 'completed', detail: '本次约见已完成，可继续记录后续服务进展' }
-		}
-		return { phase: 'ENDED', statusLabel: meetingStatus == 'NO_SHOW' ? '未按约到场' : '已结束', statusTone: 'ended', detail: meeting.cancelReason != null && String(meeting.cancelReason).length > 0 ? String(meeting.cancelReason) : '本次约见已结束' }
-	}
-	if (requestStatus == 'SUBMITTED') return { phase: 'PROCESSING', statusLabel: '待处理', statusTone: 'submitted', detail: '已收到约见申请，等待服务红娘跟进' }
-	if (requestStatus == 'CONTACTED') return { phase: 'PROCESSING', statusLabel: '跟进中', statusTone: 'processing', detail: '正在协调双方可约见时间' }
-	if (requestStatus == 'ACCEPTED') return { phase: 'PROCESSING', statusLabel: '待安排', statusTone: 'processing', detail: '双方已同意，等待安排具体约见' }
-	return { phase: 'ENDED', statusLabel: requestStatus == 'DECLINED' ? '未达成约见' : '已关闭', statusTone: 'ended', detail: '本次约见申请已结束' }
-}
-
 const loadWorkspaceMeetings = async () => {
 	workspaceMeetingsLoading.value = true
 	workspaceMeetingsError.value = ''
@@ -2918,6 +2947,7 @@ const loadWorkspaceMeetings = async () => {
 		const source = result.data
 		const items = Array.isArray(source.items) ? source.items : []
 		workspaceMeetingsUsingDemoData.value = source.isDemo == true
+		workspaceMeetingWorkflowVersion.value = Number(source.workflowVersion || 0)
 		introductionFallbackUsed = []
 		workspaceMeetings.value = items.map((item: any) => {
 			const applicant = item.applicant != null ? item.applicant : {}
@@ -2938,7 +2968,8 @@ const loadWorkspaceMeetings = async () => {
 					id: meeting.id != null ? String(meeting.id) : '',
 					status: meeting.status != null ? String(meeting.status) : '',
 					scheduledAt: meeting.scheduledAt != null ? String(meeting.scheduledAt).substring(0, 16) : '',
-					location: meeting.location != null ? String(meeting.location) : ''
+					location: meeting.location != null ? String(meeting.location) : '',
+					followUpContent: meeting.followUpContent != null ? String(meeting.followUpContent) : ''
 				} : null,
 				applicant: {
 					id: applicant.id != null ? String(applicant.id) : '',
@@ -2961,7 +2992,7 @@ const loadWorkspaceMeetings = async () => {
 	} catch (e) {
 		workspaceMeetings.value = []
 		workspaceMeetingsUsingDemoData.value = false
-		workspaceMeetingsError.value = '网络数据加载失败，请检查本地服务后重试'
+		workspaceMeetingsError.value = '网络数据加载失败，请稍后重试'
 	} finally {
 		workspaceMeetingsLoading.value = false
 	}
@@ -3016,7 +3047,7 @@ const loadWorkspaceNews = async () => {
 	} catch (e) {
 		workspaceNews.value = []
 		newsTotal.value = 0
-		newsError.value = '网络数据加载失败，请检查本地服务后重试'
+		newsError.value = '网络数据加载失败，请稍后重试'
 	} finally {
 		newsLoading.value = false
 	}
@@ -3046,7 +3077,7 @@ const loadWorkspacePennants = async () => {
 		pennantsLoaded.value = true
 	} catch (e) {
 		workspacePennants.value = []
-		pennantsError.value = '网络数据加载失败，请检查本地服务后重试'
+		pennantsError.value = '网络数据加载失败，请稍后重试'
 	} finally {
 		pennantsLoading.value = false
 	}
@@ -3271,11 +3302,12 @@ const matchAddLoading = ref(false)
 const matchAddCandidates = ref<any[]>([])
 // 会员选择弹层支持按名字 / 编号搜索（待我牵线 → 添加牵线记录）
 const matchAddSearch = ref('')
+const matchAddContext = ref('introduction')
 const onMatchAddSearchInput = (event: any) => {
 	matchAddSearch.value = event.detail.value
 }
 const matchAddFilteredCandidates = computed(() => {
-	const rows = matchAddCandidates.value
+	const rows = matchAddCandidates.value.filter((item: any) => matchAddContext.value != 'meeting' || matchAddPickerKind.value != 'from' || Number(item.ownerId) == selfMatchmakerUserId.value)
 	const keyword = matchAddSearch.value.trim().toLowerCase()
 	if (keyword.length == 0) return rows
 	return rows.filter((item: any): boolean => {
@@ -3288,6 +3320,7 @@ const matchAddResultsLabel = computed(() => {
 	return matchAddSearch.value.trim().length > 0 ? '搜索结果（' + count + '）' : '可选会员（' + count + '）'
 })
 const openMatchAddSheet = () => {
+	matchAddContext.value = 'introduction'
 	matchAddFromId.value = ''
 	matchAddFromName.value = ''
 	matchAddToId.value = ''
@@ -3310,6 +3343,7 @@ const openMatchAddPicker = async (kind: string) => {
 				const row = rows[i]
 				options.push({
 					id: String(row.id),
+					ownerId: Number(row.ownerId || 0),
 					name: String(row.name || '未命名会员'),
 					gender: String(row.gender || '未填写'),
 					avatar: String(row.avatar || '')
@@ -3324,9 +3358,20 @@ const openMatchAddPicker = async (kind: string) => {
 	}
 }
 const isMatchAddPicked = (id: string) => {
+	if (matchAddContext.value == 'meeting') return matchAddPickerKind.value == 'from' ? meetingCreateTargetId.value == id : meetingCreateApplicantId.value == id
 	return (matchAddPickerKind.value == 'from' && matchAddToId.value == id) || (matchAddPickerKind.value == 'to' && matchAddFromId.value == id)
 }
 const pickMatchAddMember = (m: any) => {
+	if (isMatchAddPicked(String(m.id))) return
+	if (matchAddContext.value == 'meeting') {
+		meetingCreateContacted.value = false
+		meetingCreateApplicantAgreed.value = false
+		meetingCreateTargetAgreed.value = false
+		if (matchAddPickerKind.value == 'from') { meetingCreateApplicantId.value = m.id; meetingCreateApplicantName.value = m.name }
+		else { meetingCreateTargetId.value = m.id; meetingCreateTargetName.value = m.name }
+		matchAddPickerVisible.value = false
+		return
+	}
 	if (matchAddPickerKind.value == 'from') {
 		matchAddFromId.value = m.id
 		matchAddFromName.value = m.name
@@ -3412,26 +3457,75 @@ const submitMatchStatus = async () => {
 	}
 }
 
-// ===== 约见申请：审核状态弹窗 / 删除确认 / 回顶部 =====
+
+const requireMeetingWorkflow = (): boolean => {
+	if (workspaceMeetingWorkflowVersion.value == 2) return true
+	showToast('服务端约会流程尚未升级，请先部署新版后端')
+	return false
+}
+const meetingCreateApplicantId = ref('')
+const meetingCreateApplicantName = ref('')
+const meetingCreateTargetId = ref('')
+const meetingCreateTargetName = ref('')
+const meetingCreateContacted = ref(false)
+const meetingCreateApplicantAgreed = ref(false)
+const meetingCreateTargetAgreed = ref(false)
+const openMeetingCreateSheet = () => {
+	if (!requireMeetingWorkflow()) return
+	meetingScheduleRow.value = null
+	meetingCreateApplicantId.value = ''
+	meetingCreateApplicantName.value = ''
+	meetingCreateTargetId.value = ''
+	meetingCreateTargetName.value = ''
+	meetingCreateContacted.value = false
+	meetingCreateApplicantAgreed.value = false
+	meetingCreateTargetAgreed.value = false
+	meetingScheduleDate.value = ''
+	meetingScheduleTime.value = ''
+	meetingScheduleLocation.value = ''
+	meetingScheduleError.value = ''
+	const now = new Date()
+	meetingScheduleMinDate.value = String(now.getFullYear()) + '-' + padMeetingNumber(now.getMonth() + 1) + '-' + padMeetingNumber(now.getDate())
+	matchAddCandidates.value = []
+	meetingScheduleSheetVisible.value = true
+}
+const openMeetingMemberPicker = async (kind: string) => {
+	matchAddContext.value = 'meeting'
+	await ensureSelfMatchmakerUserId()
+	await openMatchAddPicker(kind)
+}
+
+// ===== 约会申请：确认意愿 / 删除确认 =====
 const meetingStatusSheetVisible = ref(false)
 const meetingStatusRow = ref<any>(null)
 const meetingStatusChoice = ref('ACCEPTED')
 const meetingStatusSubmitting = ref(false)
+const meetingContactsConfirmed = ref(false)
+const meetingApplicantAgreed = ref(false)
+const meetingTargetAgreed = ref(false)
+const meetingStatusReason = ref('')
 const meetingDeleteSheetVisible = ref(false)
 const meetingDeleteRow = ref<any>(null)
 const meetingDeleteSubmitting = ref(false)
 // 已处理选项映射服务端状态；待处理回 SUBMITTED 用于误操作还原。
 const openMeetingStatusSheet = (row: any) => {
+	if (!requireMeetingWorkflow()) return
+	meetingContactsConfirmed.value = false
+	meetingApplicantAgreed.value = false
+	meetingTargetAgreed.value = false
+	meetingStatusReason.value = ''
 	meetingStatusRow.value = row
-	meetingStatusChoice.value = row.phase == 'PROCESSING' ? 'ACCEPTED' : 'SUBMITTED'
+	meetingStatusChoice.value = 'ACCEPTED'
 	meetingStatusSheetVisible.value = true
 }
 const submitMeetingStatus = async () => {
 	const row = meetingStatusRow.value
-	if (row == null || meetingStatusSubmitting.value) return
+	if (row == null || meetingStatusSubmitting.value || !requireMeetingWorkflow()) return
+	if (meetingStatusChoice.value == 'ACCEPTED' && !(meetingContactsConfirmed.value && meetingApplicantAgreed.value && meetingTargetAgreed.value)) { showToast('请先联系双方并确认双方均同意'); return }
+	if (meetingStatusChoice.value == 'DECLINED' && meetingStatusReason.value.trim().length == 0) { showToast('请填写约会失败原因'); return }
 	meetingStatusSubmitting.value = true
 	try {
-		const result = await updateMatchmakerMeetingStatus(String(row.id), meetingStatusChoice.value)
+		const result = await updateMatchmakerMeetingStatus(String(row.id), meetingStatusChoice.value, { contacts_confirmed: meetingContactsConfirmed.value, applicant_agreed: meetingApplicantAgreed.value, target_agreed: meetingTargetAgreed.value, reason: meetingStatusReason.value.trim() })
 		if (!result.success) {
 			showToast(result.message != null && String(result.message).length > 0 ? String(result.message) : '状态更新失败')
 			return
@@ -3483,10 +3577,12 @@ const meetingRecordRow = ref<any>(null)
 const meetingRecordChoice = ref('REMINDED')
 const meetingRecordReason = ref('')
 const meetingRecordSubmitting = ref(false)
+const meetingRecordFollowUp = ref('')
 
 const padMeetingNumber = (value: number): string => String(value).padStart(2, '0')
 
 const openMeetingScheduleSheet = (row: any) => {
+	if (!requireMeetingWorkflow()) return
 	const now = new Date()
 	meetingScheduleMinDate.value = String(now.getFullYear()) + '-' + padMeetingNumber(now.getMonth() + 1) + '-' + padMeetingNumber(now.getDate())
 	meetingScheduleRow.value = row
@@ -3500,19 +3596,22 @@ const onMeetingScheduleDate = (event: any) => { meetingScheduleDate.value = even
 const onMeetingScheduleTime = (event: any) => { meetingScheduleTime.value = event.detail.value }
 const submitMeetingSchedule = async () => {
 	const row = meetingScheduleRow.value
-	if (row == null || meetingScheduleSubmitting.value) return
+	if (meetingScheduleSubmitting.value || !requireMeetingWorkflow()) return
+	if (row == null && (meetingCreateApplicantId.value == '' || meetingCreateTargetId.value == '')) { meetingScheduleError.value = '请选择双方会员'; return }
+	if (row == null && !(meetingCreateContacted.value && meetingCreateApplicantAgreed.value && meetingCreateTargetAgreed.value)) { meetingScheduleError.value = '请先联系双方并确认双方均同意约会'; return }
 	if (meetingScheduleDate.value == '' || meetingScheduleTime.value == '') {
-		meetingScheduleError.value = '请选择约见日期和时间'
+		meetingScheduleError.value = '请选择约会日期和时间'
 		return
 	}
 	if (meetingScheduleLocation.value.trim().length == 0) {
-		meetingScheduleError.value = '请填写约见地点'
+		meetingScheduleError.value = '请填写约会地点'
 		return
 	}
 	meetingScheduleSubmitting.value = true
 	meetingScheduleError.value = ''
 	try {
-		const result = await scheduleMatchmakerMeeting(String(row.id), meetingScheduleDate.value + 'T' + meetingScheduleTime.value + ':00', meetingScheduleLocation.value)
+		const scheduledAt = meetingScheduleDate.value + 'T' + meetingScheduleTime.value + ':00+08:00'
+		const result = row == null ? await createMatchmakerMeeting({ applicant_user_id: Number(meetingCreateApplicantId.value), target_user_id: Number(meetingCreateTargetId.value), scheduled_at: scheduledAt, location: meetingScheduleLocation.value.trim(), contacts_confirmed: meetingCreateContacted.value, applicant_agreed: meetingCreateApplicantAgreed.value, target_agreed: meetingCreateTargetAgreed.value }) : await scheduleMatchmakerMeeting(String(row.id), scheduledAt, meetingScheduleLocation.value)
 		if (!result.success) {
 			meetingScheduleError.value = result.message != null && String(result.message).length > 0 ? String(result.message) : '约见安排失败'
 			return
@@ -3527,16 +3626,19 @@ const submitMeetingSchedule = async () => {
 	}
 }
 const openMeetingRecordSheet = (row: any) => {
+	if (!requireMeetingWorkflow()) return
+	meetingRecordFollowUp.value = ''
 	const meeting = row != null && row.meeting != null ? row.meeting : null
 	const currentStatus = meeting != null && meeting.status != null ? String(meeting.status) : 'SCHEDULED'
 	meetingRecordRow.value = row
-	meetingRecordChoice.value = currentStatus == 'SCHEDULED' ? 'REMINDED' : currentStatus
+	meetingRecordChoice.value = 'COMPLETED'
 	meetingRecordReason.value = ''
 	meetingRecordSheetVisible.value = true
 }
 const submitMeetingRecordStatus = async () => {
 	const row = meetingRecordRow.value
-	if (row == null || meetingRecordSubmitting.value) return
+	if (row == null || meetingRecordSubmitting.value || !requireMeetingWorkflow()) return
+	if (meetingRecordChoice.value == 'COMPLETED' && meetingRecordFollowUp.value.trim().length == 0) { showToast('完成约会前请填写跟进记录'); return }
 	if (row.meeting == null) {
 		showToast('该申请还没有约见安排')
 		return
@@ -3547,7 +3649,7 @@ const submitMeetingRecordStatus = async () => {
 	}
 	meetingRecordSubmitting.value = true
 	try {
-		const result = await updateMatchmakerMeetingRecordStatus(String(row.meeting.id), meetingRecordChoice.value, meetingRecordReason.value)
+		const result = await updateMatchmakerMeetingRecordStatus(String(row.meeting.id), meetingRecordChoice.value, meetingRecordReason.value, meetingRecordFollowUp.value)
 		if (!result.success) {
 			showToast(result.message != null && String(result.message).length > 0 ? String(result.message) : '状态更新失败')
 			return
@@ -3646,11 +3748,11 @@ const handleManagementCenterAction = (name: string) => {
 		return
 	}
 	if (name == 'metric:meeting_requests') {
-		openWorkspace('约见申请', 'meeting', '处理中')
+		openWorkspace('约会管理', 'meeting', '全部')
 		return
 	}
 	if (name == 'metric:pending_meeting') {
-		openWorkspace('待见面', 'meeting', '待见面')
+		openWorkspace('约会管理', 'meeting', '待见面')
 		return
 	}
 	if (name == '资料待审') {
@@ -3678,7 +3780,7 @@ const handleManagementCenterAction = (name: string) => {
 		return
 	}
 	if (name.indexOf('约见') >= 0 || name.indexOf('约会') >= 0 || name == '安排约见') {
-		openWorkspace(name.indexOf('约会') >= 0 ? '待见面' : '约见申请', 'meeting', name.indexOf('约会') >= 0 ? '待见面' : '')
+		openWorkspace('约会管理', 'meeting', '全部')
 		return
 	}
 	if (name.indexOf('牵线') >= 0 || name == '添加牵线') {
@@ -3736,7 +3838,7 @@ const onServiceNavSelect = (key: string) => {
 	// 「我的账号」「短视频」入口已从红娘中心的服务导航隐藏（服务导航不再展示这两项），
 	// 故此处不再处理 member_center / video；账号页由管理中心顶栏入口进入。
 	if (key == 'intro_outgoing' || key == 'intro_incoming') { openWorkspace('牵线管理', 'match'); return }
-	if (key == 'meeting') { openWorkspace('约会管理', 'meeting', '待见面'); return }
+	if (key == 'meeting') { openWorkspace('约会管理', 'meeting', '全部'); return }
 }
 
 onLoad((options: any) => {
@@ -3761,7 +3863,7 @@ onShow(async () => {
 		await loadManagementAccess()
 		await openManagementCenter()
 		if (managementCenterVisible.value) {
-			if (kind == 'meeting') openWorkspace('约见申请', 'meeting', '处理中')
+			if (kind == 'meeting') openWorkspace('约会管理', 'meeting', '全部')
 			else if (kind == 'match') openWorkspace('待我牵线', 'match', '待牵线')
 		}
 		return
@@ -5400,7 +5502,7 @@ const submitApplication = async () => {
 	line-height: 1.6;
 }
 
-/* 弃海原因：沿用资料待审「驳回说明」的提示色，和备注区分开。 */
+/* 弃海原因：沿用资料待审「弃海原因」的提示色，和备注区分开。 */
 .workspace-lead-remark-box.abandon {
 	background: var(--match-blush);
 }

@@ -214,6 +214,47 @@ function extractDetail(data: any): string {
   return '请求失败'
 }
 
+/** 代理错误页、数据库异常和调试堆栈只用于排查，不能作为业务提示上屏。 */
+function safeErrorMessage(data: any, status: number): string {
+  const message = extractDetail(data)
+  const text = message.toLowerCase()
+  const isDiagnostic = message.length > 500 || text.indexOf('traceback') >= 0 ||
+    text.indexOf('exceptiongroup') >= 0 || text.indexOf('sqlalchemy.') >= 0 ||
+    text.indexOf('operationalerror') >= 0 || text.indexOf('[sql:') >= 0 ||
+    text.indexOf('stack trace') >= 0 || text.indexOf('<!doctype') >= 0 ||
+    text.indexOf('<html') >= 0 || text.indexOf('file "') >= 0
+  if (isDiagnostic) return '服务暂时异常，请稍后重试'
+  if (status >= 500 && (message == '' || message == '请求失败')) return '服务暂时异常，请稍后重试'
+  return message
+}
+
+/** 只提取异常类型、数据库错误号及缺失标识符，不输出堆栈、SQL参数、电话或凭据。 */
+function serverDiagnostic(data: any): string {
+  const text = typeof data == 'string' ? data : extractDetail(data)
+  const parts: string[] = []
+  const errorType = text.match(/\b(OperationalError|ProgrammingError|IntegrityError|ValidationError|ResponseValidationError|AttributeError|TypeError|ValueError)\b/)
+  if (errorType != null) parts.push('类型=' + errorType[1])
+  const missingColumn = text.match(/Unknown column ['"`]([A-Za-z_][A-Za-z0-9_.]*)['"`]/i)
+  if (missingColumn != null) parts.push('缺少字段=' + missingColumn[1])
+  const missingTable = text.match(/Table ['"`]([A-Za-z_][A-Za-z0-9_.]*)['"`] doesn't exist/i)
+  if (missingTable != null) parts.push('缺少表=' + missingTable[1])
+  const databaseCode = text.match(/(?:OperationalError|ProgrammingError|IntegrityError)[^\n]{0,40}?\((\d{4}),/)
+  if (databaseCode != null) parts.push('数据库错误号=' + databaseCode[1])
+  return parts.length > 0 ? parts.join('，') : '未识别到异常类型，需查看远端服务日志'
+}
+
+function logServerDiagnostic(data: any, status: number, path: string, requestId: string): string {
+  if (status < 500) return ''
+  try {
+    const info: any = (uni as any).getAccountInfoSync()
+    if (info == null || info.miniProgram == null || info.miniProgram.envVersion != 'develop') return ''
+    const diagnostic = '[服务端故障] ' + path.split('?')[0] + '，HTTP=' + status + '，请求编号=' + requestId + '，' + serverDiagnostic(data)
+    console.warn(diagnostic)
+    return diagnostic
+  } catch (e) {}
+  return ''
+}
+
 async function httpRequest(options: any) {
   const methodRaw = options.method != null ? ('' + options.method).toUpperCase() : 'GET'
   const method = methodRaw
@@ -308,9 +349,10 @@ async function httpRequest(options: any) {
           clearAuthTokens()
           restoreOnboardingState(preserved)
         }
-        const message = extractDetail(raw)
+        const message = safeErrorMessage(raw, status)
         const biz = extractBusinessError(raw)
         const headerRequestId = extractHeaderRequestId(res)
+        const diagnostic = logServerDiagnostic(raw, status, urlPath, biz.requestId != '' ? biz.requestId : headerRequestId)
         resolve({
           success: false,
           data: raw,
@@ -318,6 +360,7 @@ async function httpRequest(options: any) {
           message: message,
           // 以下三个字段向后兼容新增：现有调用方只读 success/data/code/message。
           businessCode: biz.code,
+          diagnostic: diagnostic,
           requestId: biz.requestId != '' ? biz.requestId : headerRequestId,
           retryable: biz.retryable
         })

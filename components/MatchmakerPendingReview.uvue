@@ -61,7 +61,7 @@
             </view>
           </view>
 
-          <text v-if="member.review_status == 'REJECTED' && member.review_reason" class="mcard-reason">驳回说明：{{ member.review_reason }}</text>
+          <text v-if="member.review_status == 'REJECTED' && member.review_reason" class="mcard-reason">弃海原因：{{ member.review_reason }}</text>
 
           <view class="mcard-actions">
             <view :id="'more-trigger-' + member.user_id" class="act-more" @tap.stop="toggleMenu(member, $event)"><text>更多</text></view>
@@ -119,7 +119,7 @@
         <view class="more-item" @tap="openMatch(menuMember)"><text>匹配</text></view>
         <view class="more-item" @tap="openNote(menuMember)"><text>红娘说</text></view>
         <view class="more-item" :class="{ last: !canReview }" @tap="openAssign(menuMember)"><text>修改红娘</text></view>
-        <view v-if="canReview" class="more-item last" @tap="onAbandonEntry(menuMember)"><text>{{ menuMember.review_status == 'REJECTED' ? '已驳回' : '驳回资料' }}</text></view>
+        <view v-if="canReview" class="more-item last" @tap="onAbandonEntry(menuMember)"><text>{{ menuMember.review_status == 'REJECTED' ? '已弃海' : '移入弃海' }}</text></view>
       </view>
     </view>
 
@@ -223,7 +223,7 @@
         </view>
 
         <view v-else-if="sheet == 'abandonReason' && selected != null" class="panel-body">
-          <textarea class="panel-textarea" maxlength="100" placeholder="请输入" :value="abandonReason" @input="onAbandonReason" />
+          <textarea class="panel-textarea" maxlength="100" placeholder="请输入弃海原因" :value="abandonReason" @input="onAbandonReason" />
           <text class="panel-counter">已输入 {{ abandonReason.length }}/100字</text>
           <view class="panel-submit" @tap="submitAbandon"><text>确定提交</text></view>
         </view>
@@ -260,13 +260,13 @@
       </view>
     </view>
 
-    <!-- 驳回资料确认弹窗 -->
+    <!-- 移入弃海确认弹窗 -->
     <view v-if="modal == 'abandon' && selected != null" class="modal-mask" @tap="closeModal">
       <view class="modal-card" @tap.stop>
-        <text class="modal-copy">驳回后该会员的公开资料审核将标记为「审核不通过」，需修改资料后重新提交审核。</text>
+        <text class="modal-copy">移入弃海后，该会员将显示在「弃海」列表，公开资料审核将标记为「审核不通过」，需修改资料后重新提交审核。</text>
         <view class="modal-actions">
           <view class="modal-btn" @tap="closeModal"><text>取消</text></view>
-          <view class="modal-btn strong" @tap="confirmAbandon"><text>确定</text></view>
+          <view class="modal-btn strong" @tap="confirmAbandon"><text>确认弃海</text></view>
         </view>
       </view>
     </view>
@@ -336,7 +336,7 @@ const tabs = [
   { key: '', label: '全部' },
   { key: 'PENDING', label: '待审' },
   { key: 'mine', label: '我的' },
-  { key: 'REJECTED', label: '已驳回' },
+  { key: 'REJECTED', label: '弃海' },
   { key: 'vip_online', label: '线上VIP' },
   { key: 'vip_offline', label: '线下VIP' }
 ]
@@ -428,14 +428,14 @@ const notify = (message: string) => uni.showToast({ title: message, icon: 'none'
 
 const emptyText = computed(() => {
   if (activeTab.value == 'PENDING') return '暂无待审核的会员资料'
-  if (activeTab.value == 'REJECTED') return '暂无已驳回的会员资料'
+  if (activeTab.value == 'REJECTED') return '暂无弃海的会员资料'
   if (activeTab.value == 'vip_online' || activeTab.value == 'vip_offline') return 'VIP 标签服务端暂未开放，敬请期待'
   return '当前没有符合条件的会员资料'
 })
 
 const sheetTitle = computed(() => {
   if (sheet.value == 'note') return '红娘说'
-  if (sheet.value == 'abandonReason') return '驳回原因'
+  if (sheet.value == 'abandonReason') return '弃海原因'
   if (sheet.value == 'followups') return '服务跟进'
   if (sheet.value == 'review') return '审核状态'
   return ''
@@ -507,7 +507,7 @@ const memberMeta = (member: any): string => {
   if (member.height != null) parts.push(String(member.height) + 'cm')
   return parts.join(' · ')
 }
-const reviewLabel = (status: string): string => status == 'PASSED' ? '已通过' : (status == 'REJECTED' ? '已驳回' : '待审核')
+const reviewLabel = (status: string): string => status == 'PASSED' ? '已通过' : (status == 'REJECTED' ? '已弃海' : '待审核')
 const isVipMember = (member: any): boolean => {
   if (member == null) return false
   const value = member.is_vip
@@ -684,7 +684,7 @@ const loadMembers = async () => {
       await loadVipMembers(tab)
       return
     }
-    // 全部 / 待审 / 我的 / 已驳回：读服务端审核队列，录入的会员要在这里落地。
+    // 全部 / 待审 / 我的 / 弃海：读服务端审核队列，录入的会员要在这里落地。
     await loadWorkbenchMembers(tab)
   } catch (error) {
     rawMembers.value = []
@@ -1038,12 +1038,12 @@ const submitAssign = async () => {
   loadMembers()
 }
 
-/* ---------- 驳回资料 ---------- */
+/* ---------- 移入弃海 ---------- */
 const onAbandonEntry = (member: any) => {
   closeMenu()
   selected.value = member
   if (member.review_status == 'REJECTED') {
-    notify('该会员已驳回')
+    notify('该会员已在弃海列表中')
     return
   }
   pendingAbandon.value = false
@@ -1061,7 +1061,7 @@ const submitAbandon = async () => {
   if (selected.value == null) return
   const reason = abandonReason.value.trim()
   if (reason.length == 0) {
-    notify('请填写驳回原因')
+    notify('请填写弃海原因')
     return
   }
   if (!pendingAbandon.value) {
@@ -1070,11 +1070,11 @@ const submitAbandon = async () => {
   }
   const result = await updateMatchmakerReviewMember(String(selected.value.user_id), { status: 'REJECTED', reason: reason })
   if (!result.success) {
-    notify(result.message || '驳回失败')
+    notify(result.message || '移入弃海失败')
     return
   }
   pendingAbandon.value = false
-  notify('已驳回')
+  notify('已弃海')
   closeSheet()
   loadMembers()
 }

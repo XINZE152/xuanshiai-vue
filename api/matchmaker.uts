@@ -699,19 +699,34 @@ function normalizeWorkspaceMeetingRecord(value: any) {
     status: status,
     scheduledAt: formatWorkspaceTime(value.scheduled_at),
     location: value.location != null ? String(value.location) : '',
-    cancelReason: value.cancel_reason != null ? String(value.cancel_reason) : ''
+    cancelReason: value.cancel_reason != null ? String(value.cancel_reason) : '',
+    followUpContent: value.follow_up_content != null ? String(value.follow_up_content) : ''
   }
 }
 
 /** 查询当前服务红娘工作范围内的约见申请及最新约见安排；不返回双方联系方式。 */
 export async function getMatchmakerWorkspaceMeetingRequests() {
-  const result = await request({
+  let result = await request({
     url: '/matchmaker/workbench/meeting-requests',
     method: 'GET',
     data: { page: 1, page_size: 100 },
     mockData: USE_MOCK ? { items: mockMatchmakerWorkspaceMeetingRequests, total: mockMatchmakerWorkspaceMeetingRequests.length } : null
   })
-  const serverItems = result.success && result.data != null && Array.isArray(result.data.items) ? result.data.items : []
+  // 现有页面在本地切换分组和搜索，必须先取齐分页，不能只搜索前 100 条。
+  if (!USE_MOCK && result.success && result.data != null && Array.isArray(result.data.items)) {
+    const allItems: any[] = [...result.data.items]
+    let hasMore = result.data.has_more == true
+    let page = 1
+    while (hasMore && page < 1000) {
+      page += 1
+      const next = await request({ url: '/matchmaker/workbench/meeting-requests', method: 'GET', data: { page: page, page_size: 100 } })
+      if (!next.success || next.data == null || !Array.isArray(next.data.items)) return next
+      allItems.push(...next.data.items)
+      hasMore = next.data.has_more == true
+    }
+    if (hasMore) return { success: false, code: 422, message: '约会记录过多，请联系平台处理', data: null }
+    result = { ...result, data: { ...result.data, items: allItems } }
+  }
   const useDemoFallback = USE_MOCK
   if (!result.success && !useDemoFallback) return result
   const source = useDemoFallback ? { items: mockMatchmakerWorkspaceMeetingRequests, total: mockMatchmakerWorkspaceMeetingRequests.length } : result.data
@@ -732,7 +747,8 @@ export async function getMatchmakerWorkspaceMeetingRequests() {
         meeting: normalizeWorkspaceMeetingRecord(item.meeting)
       })),
       total: source.total != null ? Number(source.total) : items.length,
-      isDemo: useDemoFallback
+      isDemo: useDemoFallback,
+      workflowVersion: Number(source.workflow_version || 0)
     },
     code: useDemoFallback ? 0 : result.code,
     message: useDemoFallback ? '本地测试数据' : result.message
@@ -1089,8 +1105,12 @@ export async function viewMatchmakerIntroductionContact(id: string, side: string
 }
 
 /** 更新约见申请处理状态：待处理 SUBMITTED / 已处理 ACCEPTED、DECLINED、CLOSED。 */
-export async function updateMatchmakerMeetingStatus(id: string, status: string) {
-  return request({ url: '/matchmaker/workbench/meeting-requests/' + encodeURIComponent(id) + '/status', method: 'PATCH', data: { status: status } })
+export async function updateMatchmakerMeetingStatus(id: string, status: string, confirmation: any = null) {
+  return request({ url: '/matchmaker/workbench/meeting-requests/' + encodeURIComponent(id) + '/status', method: 'PATCH', data: { ...(confirmation || {}), status: status } })
+}
+
+export async function createMatchmakerMeeting(data: any) {
+  return request({ url: '/matchmaker/workbench/meetings', method: 'POST', data: data })
 }
 
 /** 删除约见申请记录（连同其约见安排），仅限服务范围内。 */
@@ -1108,9 +1128,10 @@ export async function scheduleMatchmakerMeeting(id: string, scheduledAt: string,
 }
 
 /** 流转约见安排状态：REMINDED/CHECKED_IN/COMPLETED/CANCELLED/NO_SHOW；取消或爽约须带原因。 */
-export async function updateMatchmakerMeetingRecordStatus(id: string, status: string, cancelReason: string) {
+export async function updateMatchmakerMeetingRecordStatus(id: string, status: string, cancelReason: string, followUpContent: string = '') {
   const data: any = { status: status }
   if (status == 'CANCELLED' || status == 'NO_SHOW') data.cancel_reason = cancelReason.trim()
+  if (status == 'COMPLETED') data.follow_up_content = followUpContent.trim()
   return request({ url: '/matchmaker/workbench/meetings/' + encodeURIComponent(id) + '/status', method: 'PATCH', data: data })
 }
 

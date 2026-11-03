@@ -2,7 +2,7 @@
 
 const TEST_API_BASE_URL = 'https://xhztest.xyz'
 // 本地与远端联调只切此开关；release 继续遵循正式环境配置。
-const USE_LOCAL_BACKEND = true
+const USE_LOCAL_BACKEND = false
 const LOCAL_API_BASE_URL = 'http://127.0.0.1:8000'
 const LOCAL_LAN_API_BASE_URL = 'http://10.5.120.165:8000'
 // release 版本指向生产域名。生产未部署前不要上传 release 版本。

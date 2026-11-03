@@ -57,6 +57,7 @@ const REMOTE_OPERATIONS: string[] = [
   "PATCH /matchmaker/workbench/meeting-requests/{request_id}/status",
   "DELETE /matchmaker/workbench/meeting-requests/{request_id}",
   "POST /matchmaker/workbench/meeting-requests/{request_id}/schedule",
+  "POST /matchmaker/workbench/meetings",
   "PATCH /matchmaker/workbench/meetings/{meeting_id}/status",
   "PATCH /matchmaker/workbench/introductions/{introduction_id}/status",
   // Workflow v2: only enabled by UI after the list returns workflow_version=2.
