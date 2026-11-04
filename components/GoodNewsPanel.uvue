@@ -1,0 +1,1380 @@
+<template>
+	<view class="gn-panel">
+		<view v-if="demo" class="gn-demo">
+			<text>演示数据 · 不代表真实会员，也不代表真实祝福人数</text>
+		</view>
+
+		<view class="gn-hero">
+			<view class="gn-hero-copy">
+				<text class="gn-kicker">红娘喜讯</text>
+				<text class="gn-title">{{ title }}</text>
+				<text class="gn-desc">只展示审核通过、双方同意公开的进展。祝福与报喜都需要登录后提交。</text>
+			</view>
+			<view class="gn-count">
+				<text class="gn-count-value">{{ total }}</text>
+				<text class="gn-count-label">条喜讯</text>
+			</view>
+		</view>
+
+		<view class="gn-stage-card">
+			<view class="gn-stage-grid">
+				<view
+					v-for="item in displayStages"
+					:key="item.value"
+					class="gn-stage"
+					:class="{ active: isStageActive(item) }"
+					@click="selectStage(item)"
+				>
+					<text class="gn-stage-icon" :class="'gn-tone-' + item.tone">{{ item.icon }}</text>
+					<text class="gn-stage-label">{{ item.label }}</text>
+				</view>
+			</view>
+		</view>
+
+		<view v-if="configFallback" class="gn-config-warning">
+			<text>栏目配置未加载，暂用默认分类；分类与祝福语以服务端配置为准。</text>
+		</view>
+
+		<view class="gn-feedback">
+			<view class="gn-feedback-copy">
+				<text class="gn-feedback-title">对红娘服务有回执或建议？</text>
+				<text class="gn-feedback-desc">反馈会进入服务改进，不会公开展示在喜讯里。</text>
+			</view>
+			<view class="gn-feedback-btn" @click="openFeedback"><text>去反馈</text></view>
+		</view>
+
+		<view v-if="myReports.length > 0" class="gn-my-reports">
+			<text class="gn-my-title">我的报喜</text>
+			<view v-for="report in myReports" :key="report.id" class="gn-my-row">
+				<view class="gn-my-main">
+					<text class="gn-my-stage">{{ report.stage }}</text>
+					<text class="gn-my-content">{{ report.content.length > 0 ? report.content : '已提交，等待审核' }}</text>
+					<text v-if="report.rejectReason.length > 0" class="gn-my-reject">原因：{{ report.rejectReason }}</text>
+				</view>
+				<text class="gn-my-status" :class="'status-' + report.status">{{ report.statusLabel }}</text>
+			</view>
+		</view>
+
+		<view v-if="isPennant" class="gn-state">
+			<XsaEmpty
+				text="锦旗墙暂未开放"
+				description="服务端锦旗墙接口接通后，这里会展示受赠红娘的锦旗；当前不展示演示锦旗。"
+				size="small"
+			/>
+		</view>
+
+		<view v-else>
+			<view v-if="loading" class="gn-state">
+				<text class="gn-state-text">正在加载喜讯…</text>
+			</view>
+			<view v-else-if="error.length > 0" class="gn-state">
+				<text class="gn-state-text">{{ error }}</text>
+				<view class="gn-retry" @click="loadList(true)"><text>重新加载</text></view>
+			</view>
+			<view v-else-if="items.length == 0" class="gn-state">
+				<XsaEmpty
+					text="还没有公开的喜讯"
+					description="只展示审核通过、双方同意公开的进展。你可以先提交自己的报喜。"
+					size="small"
+				/>
+			</view>
+			<view v-else class="gn-list">
+				<view v-for="item in items" :key="item.id" class="gn-card">
+					<view class="gn-card-head">
+						<view class="gn-stage-tag" :class="'gn-tone-' + stageTone(item.stage)">{{ item.stageLabel }}</view>
+						<text v-if="item.pendingReview" class="gn-pending">待审</text>
+						<text v-if="item.verificationLabel.length > 0" class="gn-verified">{{ item.verificationLabel }}</text>
+					</view>
+
+					<view class="gn-couple">
+						<view v-if="item.fromName.length > 0" class="gn-person">
+							<image class="gn-avatar" :src="item.fromAvatar" mode="aspectFill"></image>
+							<text class="gn-name">{{ item.fromName }}</text>
+						</view>
+						<text v-if="item.fromName.length > 0 && item.toName.length > 0" class="gn-dot">·</text>
+						<view v-if="item.toName.length > 0" class="gn-person">
+							<image class="gn-avatar" :src="item.toAvatar" mode="aspectFill"></image>
+							<text class="gn-name">{{ item.toName }}</text>
+						</view>
+					</view>
+
+					<view class="gn-meta">
+						<text class="gn-meta-item">服务红娘：{{ item.matchmakerName }}</text>
+						<text v-if="item.meetDurationText.length > 0" class="gn-meta-item">相识 {{ item.meetDurationText }}</text>
+					</view>
+
+					<view v-if="item.images.length > 0" class="gn-images">
+						<image
+							v-for="(img, idx) in item.images.slice(0, 3)"
+							:key="img"
+							class="gn-image"
+							:src="img"
+							mode="aspectFill"
+							@click="previewImage(item.images, idx)"
+						></image>
+						<view v-if="item.images.length > 3" class="gn-more-images">
+							<text>+{{ item.images.length - 3 }}</text>
+						</view>
+					</view>
+
+					<view v-if="detailId == item.id" class="gn-detail">
+						<text class="gn-content">{{ item.content.length > 0 ? item.content : '这条喜讯还没有填写正文' }}</text>
+						<text v-if="item.blessing.length > 0" class="gn-blessing">祝福语：{{ item.blessing }}</text>
+						<text v-if="item.publishedAt.length > 0" class="gn-date">发布于 {{ dateText(item.publishedAt) }}</text>
+					</view>
+
+					<view class="gn-card-foot">
+						<view class="gn-bless" :class="{ active: item.blessedByMe }" @click="bless(item)">
+							<text>{{ item.blessedByMe ? '已送祝福' : '送祝福' }}</text>
+							<text class="gn-bless-count">{{ item.blessingCount }}</text>
+						</view>
+						<view class="gn-detail-btn" @click="toggleDetail(item.id)">
+							<text>{{ detailId == item.id ? '收起' : '详情' }}</text>
+							<text class="gn-detail-arrow" :class="{ open: detailId == item.id }">›</text>
+						</view>
+					</view>
+				</view>
+
+				<view v-if="loadingMore" class="gn-more"><text>正在加载更多…</text></view>
+				<view v-else-if="hasMore" class="gn-more gn-more-btn" @click="loadMore"><text>加载更多</text></view>
+				<view v-else class="gn-more"><text>已经到底了</text></view>
+			</view>
+		</view>
+
+		<view v-if="!serviceUnavailable" class="gn-fab" @click="openReport">
+			<text class="gn-fab-plus">＋</text>
+			<text class="gn-fab-label">报喜</text>
+		</view>
+
+		<XsaSheet :visible="reportSheetVisible" title="报喜" :tall="true" @close="closeReport">
+			<view class="gn-form">
+				<text class="gn-form-note">提交后进入审核。审核通过且双方同意公开后，才会出现在喜讯流；未通过会显示原因。</text>
+
+				<view class="gn-form-row">
+					<text class="gn-form-label">当前状态</text>
+					<picker class="gn-picker-wrap" mode="selector" :range="reportStageLabels" :value="reportStageIndex" @change="onReportStageChange">
+						<view class="gn-picker">
+							<text :class="{ placeholder: reportStage.length == 0 }">{{ reportStage.length > 0 ? reportStage : '请选择' }}</text>
+							<text class="gn-picker-arrow">›</text>
+						</view>
+					</picker>
+				</view>
+
+				<view class="gn-form-row">
+					<text class="gn-form-label">对方称呼</text>
+					<input class="gn-input" :value="reportPartner" @input="reportPartner = $event.detail.value" placeholder="如：王先生 / 林女士" :maxlength="40" />
+				</view>
+
+				<view class="gn-form-row">
+					<text class="gn-form-label">相识时间</text>
+					<input class="gn-input" :value="reportDuration" @input="reportDuration = $event.detail.value" placeholder="请输入" type="number" :maxlength="4" />
+					<text class="gn-unit">个月</text>
+				</view>
+
+				<view class="gn-form-block">
+					<text class="gn-form-label">目前的进展</text>
+					<textarea class="gn-textarea" :value="reportContent" @input="reportContent = $event.detail.value" placeholder="写一句你们现在的状态，不需要写联系方式或住址" :maxlength="1000" auto-height></textarea>
+				</view>
+
+				<view class="gn-form-block">
+					<text class="gn-form-label">生活照（最多 9 张）</text>
+					<view class="gn-form-images">
+						<view v-for="(img, index) in reportImages" :key="img.url" class="gn-form-image-cell">
+							<image class="gn-form-image" :src="img.display" mode="aspectFill" @click="previewReportImage(index)"></image>
+							<view class="gn-form-image-remove" @click="removeReportImage(index)"><text>×</text></view>
+						</view>
+						<view v-if="reportImages.length < maxImages" class="gn-form-image-add" @click="chooseReportImage">
+							<text class="gn-form-image-plus">＋</text>
+							<text class="gn-form-image-label">选择图片</text>
+						</view>
+					</view>
+				</view>
+
+				<view class="gn-consent" @click="consentConfirmed = !consentConfirmed">
+					<view class="gn-check" :class="{ checked: consentConfirmed }"><text v-if="consentConfirmed">✓</text></view>
+					<text class="gn-consent-text">我确认双方已知情并同意在平台公开展示范围内的昵称、头像、生活照和进展；任何一方撤回同意后内容会下架。</text>
+				</view>
+
+				<text v-if="reportError.length > 0" class="gn-error">{{ reportError }}</text>
+				<XsaButton variant="primary" size="large" :loading="reportSubmitting" :disabled="reportSubmitting" @click="submitReport">
+					{{ reportSubmitting ? '提交中…' : '提交报喜' }}
+				</XsaButton>
+			</view>
+		</XsaSheet>
+
+		<XsaSheet :visible="feedbackSheetVisible" title="红娘服务反馈" @close="closeFeedback">
+			<view class="gn-form">
+				<text class="gn-form-note">反馈会进入平台服务改进流程，不会公开展示。请勿填写手机号、微信号或住址。</text>
+
+				<view class="gn-feedback-kinds">
+					<view class="gn-kind" :class="{ active: feedbackKind == '建议' }" @click="feedbackKind = '建议'"><text>服务建议</text></view>
+					<view class="gn-kind" :class="{ active: feedbackKind == '投诉' }" @click="feedbackKind = '投诉'"><text>投诉</text></view>
+				</view>
+
+				<view class="gn-form-block">
+					<text class="gn-form-label">服务评分（可选）</text>
+					<view class="gn-rating">
+						<view v-for="n in 5" :key="n" class="gn-rating-item" :class="{ active: feedbackRating >= n }" @click="feedbackRating = n"><text>★</text></view>
+					</view>
+				</view>
+
+				<view class="gn-form-block">
+					<text class="gn-form-label">想说的话</text>
+					<textarea class="gn-textarea" :value="feedbackContent" @input="feedbackContent = $event.detail.value" placeholder="如：希望红娘在约见后多跟进一次" :maxlength="1000" auto-height></textarea>
+				</view>
+
+				<text v-if="feedbackError.length > 0" class="gn-error">{{ feedbackError }}</text>
+				<XsaButton variant="primary" size="large" :loading="feedbackSubmitting" :disabled="feedbackSubmitting" @click="submitFeedback">
+					{{ feedbackSubmitting ? '提交中…' : '提交反馈' }}
+				</XsaButton>
+			</view>
+		</XsaSheet>
+	</view>
+</template>
+
+<script setup lang="uts">
+import { computed, onMounted, ref } from 'vue'
+import XsaEmpty from '@/components/XsaEmpty.uvue'
+import XsaSheet from '@/components/XsaSheet.uvue'
+import XsaButton from '@/components/XsaButton.uvue'
+import { resolveMediaUrl } from '@/api/config.uts'
+import {
+	GOOD_NEWS_MAX_IMAGES,
+	GOOD_NEWS_DEFAULT_STAGES,
+	normalizeGoodNewsConfig,
+	validateGoodNewsReport,
+	getGoodNewsConfig,
+	getGoodNewsList,
+	getMyGoodNewsReports,
+	blessGoodNews,
+	createGoodNewsReport,
+	submitGoodNewsFeedback,
+	uploadGoodNewsPhoto
+} from '@/api/good-news.uts'
+
+const PAGE_SIZE = 10
+const maxImages = GOOD_NEWS_MAX_IMAGES
+let listRequestSeq = 0
+
+const config = ref<any>(null)
+const configFallback = ref(false)
+const isDemo = ref(false)
+const loading = ref(false)
+const loadingMore = ref(false)
+const error = ref('')
+const serviceUnavailable = ref(false)
+const items = ref<any[]>([])
+const total = ref(0)
+const page = ref(1)
+const hasMore = ref(false)
+const activeStage = ref('')
+const isPennant = ref(false)
+const detailId = ref('')
+const blessingId = ref('')
+const myReports = ref<any[]>([])
+
+const reportSheetVisible = ref(false)
+const feedbackSheetVisible = ref(false)
+const reportStage = ref('')
+const reportStageIndex = ref(0)
+const reportPartner = ref('')
+const reportDuration = ref('')
+const reportContent = ref('')
+const reportImages = ref<any[]>([])
+const consentConfirmed = ref(false)
+const reportError = ref('')
+const reportSubmitting = ref(false)
+
+const feedbackKind = ref('建议')
+const feedbackRating = ref(0)
+const feedbackContent = ref('')
+const feedbackError = ref('')
+const feedbackSubmitting = ref(false)
+
+const displayStages = computed((): any[] => {
+	if (config.value != null && config.value.stages != null && config.value.stages.length > 0) return config.value.stages
+	return GOOD_NEWS_DEFAULT_STAGES
+})
+
+const reportStages = computed((): any[] => {
+	const source = displayStages.value
+	const result: any[] = []
+	for (let i = 0; i < source.length; i++) {
+		if (source[i].isPennant !== true) result.push(source[i])
+	}
+	return result
+})
+
+const reportStageLabels = computed((): string[] => {
+	const labels: string[] = []
+	const source = reportStages.value
+	for (let i = 0; i < source.length; i++) labels.push(String(source[i].label))
+	return labels
+})
+
+const title = computed((): string => {
+	return config.value != null && config.value.title != null ? String(config.value.title) : '脱单喜讯'
+})
+
+const demo = computed((): boolean => {
+	return isDemo.value || (config.value != null && config.value.isDemo === true)
+})
+
+function showToast(message: string) {
+	uni.showToast({ title: message, icon: 'none' })
+}
+
+function dateText(value: string): string {
+	return value.length >= 10 ? value.substring(0, 10) : value
+}
+
+function stageTone(stage: string): string {
+	const source = displayStages.value
+	for (let i = 0; i < source.length; i++) {
+		if (String(source[i].value) == stage || String(source[i].label) == stage) return String(source[i].tone)
+	}
+	return 'sage'
+}
+
+function isStageActive(item: any): boolean {
+	if (item.isPennant === true) return isPennant.value
+	return isPennant.value === false && activeStage.value == String(item.value)
+}
+
+async function loadConfig() {
+	try {
+		const result = await getGoodNewsConfig()
+		if (result.success && result.data != null) {
+			config.value = result.data
+			isDemo.value = result.data.isDemo === true
+			configFallback.value = false
+			return
+		}
+	} catch (e) {}
+	config.value = normalizeGoodNewsConfig({})
+	configFallback.value = true
+}
+
+async function loadList(reset: boolean) {
+	if (!reset && (loading.value || loadingMore.value)) return
+	listRequestSeq += 1
+	const seq = listRequestSeq
+	if (reset) {
+		loading.value = true
+		error.value = ''
+		items.value = []
+		page.value = 1
+		hasMore.value = false
+	} else {
+		loadingMore.value = true
+	}
+	try {
+		const result = await getGoodNewsList(activeStage.value, page.value, PAGE_SIZE)
+		if (seq != listRequestSeq) return
+		if (!result.success || result.data == null) {
+			if (reset) items.value = []
+			const code = result.code != null ? Number(result.code) : 0
+			if (code == 401) error.value = '登录后查看喜讯'
+			else if (code == 404 || String(result.code) == 'REMOTE_FEATURE_UNAVAILABLE') {
+				error.value = '喜讯服务尚未开放'
+				serviceUnavailable.value = true
+			} else {
+				error.value = result.message != null && String(result.message).length > 0 ? String(result.message) : '喜讯加载失败，请稍后重试'
+			}
+			return
+		}
+		serviceUnavailable.value = false
+		const source = result.data
+		const incoming = Array.isArray(source.items) ? source.items : []
+		items.value = reset ? incoming : items.value.concat(incoming)
+		total.value = source.total != null ? Number(source.total) : items.value.length
+		hasMore.value = source.hasMore === true
+		isDemo.value = isDemo.value || source.isDemo === true
+		page.value = page.value + 1
+	} catch (e) {
+		if (seq != listRequestSeq) return
+		if (reset) items.value = []
+		error.value = '网络数据加载失败，请检查网络后重试'
+	} finally {
+		if (seq == listRequestSeq) {
+			loading.value = false
+			loadingMore.value = false
+		}
+	}
+}
+
+async function loadMyReports() {
+	try {
+		const result = await getMyGoodNewsReports()
+		if (result.success && result.data != null && Array.isArray(result.data.items)) {
+			myReports.value = result.data.items
+			isDemo.value = isDemo.value || result.data.isDemo === true
+		}
+	} catch (e) {}
+}
+
+function selectStage(item: any) {
+	if (item.isPennant === true) {
+		isPennant.value = true
+		activeStage.value = ''
+		detailId.value = ''
+		return
+	}
+	isPennant.value = false
+	detailId.value = ''
+	activeStage.value = activeStage.value == String(item.value) ? '' : String(item.value)
+	void loadList(true)
+}
+
+function loadMore() {
+	if (!hasMore.value || loading.value || loadingMore.value) return
+	void loadList(false)
+}
+
+function toggleDetail(id: string) {
+	detailId.value = detailId.value == id ? '' : id
+}
+
+function previewImage(images: string[], index: number) {
+	if (images.length == 0) return
+	uni.previewImage({ urls: images, current: index })
+}
+
+async function bless(item: any) {
+	if (blessingId.value.length > 0) return
+	blessingId.value = item.id
+	try {
+		const result = await blessGoodNews(item.id)
+		if (!result.success || result.data == null) {
+			showToast(result.message != null ? String(result.message) : '送祝福失败，请稍后重试')
+			return
+		}
+		item.blessedByMe = true
+		const serverCount = result.data.blessingCount != null ? Number(result.data.blessingCount) : -1
+		item.blessingCount = serverCount >= 0 ? serverCount : item.blessingCount + 1
+		showToast('已送出祝福')
+	} catch (e) {
+		showToast('送祝福失败，请检查网络')
+	} finally {
+		blessingId.value = ''
+	}
+}
+
+function resetReportForm() {
+	reportStage.value = ''
+	reportStageIndex.value = 0
+	reportPartner.value = ''
+	reportDuration.value = ''
+	reportContent.value = ''
+	reportImages.value = []
+	consentConfirmed.value = false
+	reportError.value = ''
+	reportSubmitting.value = false
+}
+
+function openReport() {
+	resetReportForm()
+	reportSheetVisible.value = true
+}
+
+function closeReport() {
+	reportSheetVisible.value = false
+}
+
+function onReportStageChange(event: any) {
+	const index = Number(event.detail.value)
+	reportStageIndex.value = index
+	const source = reportStages.value
+	reportStage.value = index >= 0 && index < source.length ? String(source[index].value) : ''
+}
+
+function chooseReportImage() {
+	const remaining = maxImages - reportImages.value.length
+	if (remaining <= 0) {
+		showToast('一条喜讯最多上传 9 张图片')
+		return
+	}
+	uni.chooseImage({
+		count: remaining,
+		sizeType: ['compressed'],
+		sourceType: ['album', 'camera'],
+		success: async (res: any) => {
+			const paths: any[] = res.tempFilePaths != null ? res.tempFilePaths as any[] : []
+			if (paths.length == 0) return
+			for (let i = 0; i < paths.length; i++) {
+				const uploaded = await uploadGoodNewsPhoto(String(paths[i]))
+				if (uploaded.success && uploaded.data != null) {
+					const url = uploaded.data.url != null ? String(uploaded.data.url) : ''
+					if (url.length > 0) {
+						reportImages.value.push({ url: url, display: resolveMediaUrl(url) })
+					} else {
+						showToast('图片上传响应缺少地址')
+					}
+				} else {
+					showToast(uploaded.message != null ? String(uploaded.message) : '图片上传失败')
+				}
+			}
+		}
+	})
+}
+
+function removeReportImage(index: number) {
+	reportImages.value.splice(index, 1)
+}
+
+function previewReportImage(index: number) {
+	const urls: string[] = []
+	for (let i = 0; i < reportImages.value.length; i++) urls.push(String(reportImages.value[i].display))
+	if (urls.length == 0) return
+	uni.previewImage({ urls: urls, current: index })
+}
+
+async function submitReport() {
+	if (reportSubmitting.value) return
+	const payload = {
+		stage: reportStage.value,
+		partnerName: reportPartner.value,
+		meetDurationMonths: Number(reportDuration.value),
+		content: reportContent.value,
+		images: reportImages.value.map((item: any): string => String(item.url)),
+		consentConfirmed: consentConfirmed.value
+	}
+	const validation = validateGoodNewsReport(payload)
+	if (validation.length > 0) {
+		reportError.value = validation
+		return
+	}
+	reportError.value = ''
+	reportSubmitting.value = true
+	try {
+		const result = await createGoodNewsReport(payload)
+		if (!result.success) {
+			reportError.value = result.message != null ? String(result.message) : '提交失败，请稍后重试'
+			return
+		}
+		if (result.data != null && result.data.id != null) {
+			myReports.value = [result.data].concat(myReports.value)
+			isDemo.value = isDemo.value || result.data.isDemo === true
+		} else {
+			await loadMyReports()
+		}
+		reportSheetVisible.value = false
+		showToast('已提交，审核通过且双方同意后公开')
+	} catch (e) {
+		reportError.value = '提交失败，请检查网络后重试'
+	} finally {
+		reportSubmitting.value = false
+	}
+}
+
+function openFeedback() {
+	feedbackKind.value = '建议'
+	feedbackRating.value = 0
+	feedbackContent.value = ''
+	feedbackError.value = ''
+	feedbackSheetVisible.value = true
+}
+
+function closeFeedback() {
+	feedbackSheetVisible.value = false
+}
+
+async function submitFeedback() {
+	if (feedbackSubmitting.value) return
+	const content = feedbackContent.value.trim()
+	if (content.length == 0) {
+		feedbackError.value = '请填写反馈内容'
+		return
+	}
+	feedbackError.value = ''
+	feedbackSubmitting.value = true
+	try {
+		const result = await submitGoodNewsFeedback({
+			kind: feedbackKind.value,
+			rating: feedbackRating.value,
+			content: content
+		})
+		if (!result.success) {
+			feedbackError.value = result.message != null ? String(result.message) : '提交失败，请稍后重试'
+			return
+		}
+		feedbackSheetVisible.value = false
+		showToast('反馈已提交')
+	} catch (e) {
+		feedbackError.value = '提交失败，请检查网络后重试'
+	} finally {
+		feedbackSubmitting.value = false
+	}
+}
+
+onMounted(() => {
+	void loadConfig()
+	void loadList(true)
+	void loadMyReports()
+})
+</script>
+
+<style scoped>
+.gn-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 20rpx;
+	padding: 0 0 120rpx;
+}
+
+.gn-demo {
+	padding: 12rpx 18rpx;
+	border-radius: 14rpx;
+	background: var(--warm);
+	color: var(--ink2);
+	font-size: 20rpx;
+	line-height: 1.5;
+}
+
+.gn-hero {
+	padding: 26rpx;
+	border-radius: 24rpx;
+	background: var(--surface);
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 18rpx;
+	box-shadow: var(--shadow-sm);
+}
+
+.gn-hero-copy {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8rpx;
+}
+
+.gn-kicker {
+	color: var(--accent2);
+	font-size: 20rpx;
+	font-weight: 800;
+	letter-spacing: 2rpx;
+}
+
+.gn-title {
+	color: var(--ink);
+	font-family: var(--serif);
+	font-size: 36rpx;
+	font-weight: 800;
+	line-height: 1.3;
+}
+
+.gn-desc {
+	color: var(--muted);
+	font-size: 21rpx;
+	line-height: 1.55;
+}
+
+.gn-count {
+	flex: none;
+	min-width: 108rpx;
+	padding: 12rpx 14rpx;
+	border-radius: 18rpx;
+	background: var(--accent-bg);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+
+.gn-count-value {
+	color: var(--accent2);
+	font-size: 34rpx;
+	font-weight: 800;
+	line-height: 1.2;
+}
+
+.gn-count-label {
+	color: var(--accent2);
+	font-size: 18rpx;
+}
+
+.gn-stage-card {
+	padding: 16rpx 10rpx;
+	border-radius: 22rpx;
+	background: var(--surface);
+	box-shadow: var(--shadow-sm);
+}
+
+.gn-stage-grid {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+}
+
+.gn-stage {
+	width: 25%;
+	padding: 10rpx 4rpx 12rpx;
+	border-radius: 16rpx;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8rpx;
+}
+
+.gn-stage.active {
+	background: var(--accent-bg);
+}
+
+.gn-stage-icon {
+	width: 58rpx;
+	height: 58rpx;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 24rpx;
+	font-weight: 800;
+	background: var(--warm);
+	color: var(--accent2);
+}
+
+.gn-stage-label {
+	color: var(--ink2);
+	font-size: 22rpx;
+	text-align: center;
+	line-height: 1.3;
+}
+
+.gn-stage.active .gn-stage-label {
+	color: var(--accent2);
+	font-weight: 800;
+}
+
+.gn-tone-coral { background: var(--match-blush); color: var(--match-coral); }
+.gn-tone-sky { background: var(--match-sky); color: var(--match-deep); }
+.gn-tone-sage { background: var(--sage-soft); color: var(--sage); }
+.gn-tone-plum { background: var(--shortcut-lilac); color: var(--ink2); }
+.gn-tone-apricot { background: var(--shortcut-apricot); color: var(--match-coral); }
+.gn-tone-mint { background: var(--shortcut-mint); color: var(--accent2); }
+.gn-tone-lilac { background: var(--shortcut-lilac); color: var(--match-deep); }
+.gn-tone-blush { background: var(--match-blush); color: var(--match-coral); }
+
+.gn-config-warning {
+	padding: 14rpx 18rpx;
+	border-radius: 14rpx;
+	background: var(--warm);
+	color: var(--ink2);
+	font-size: 20rpx;
+	line-height: 1.5;
+}
+
+.gn-feedback {
+	padding: 18rpx;
+	border-radius: 18rpx;
+	background: var(--surface);
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 14rpx;
+	box-shadow: var(--shadow-sm);
+}
+
+.gn-feedback-copy {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4rpx;
+}
+
+.gn-feedback-title {
+	color: var(--ink);
+	font-size: 22rpx;
+	font-weight: 800;
+}
+
+.gn-feedback-desc {
+	color: var(--muted);
+	font-size: 19rpx;
+	line-height: 1.45;
+}
+
+.gn-feedback-btn {
+	flex: none;
+	padding: 10rpx 18rpx;
+	border-radius: 999rpx;
+	background: var(--accent-bg);
+	color: var(--accent2);
+	font-size: 20rpx;
+	font-weight: 800;
+}
+
+.gn-my-reports {
+	padding: 18rpx;
+	border-radius: 18rpx;
+	background: var(--paper);
+	border: 1rpx solid var(--line);
+	display: flex;
+	flex-direction: column;
+	gap: 12rpx;
+}
+
+.gn-my-title {
+	color: var(--ink);
+	font-size: 22rpx;
+	font-weight: 800;
+}
+
+.gn-my-row {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 12rpx;
+}
+
+.gn-my-main {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4rpx;
+}
+
+.gn-my-stage {
+	color: var(--ink2);
+	font-size: 20rpx;
+	font-weight: 800;
+}
+
+.gn-my-content {
+	color: var(--muted);
+	font-size: 19rpx;
+	line-height: 1.45;
+}
+
+.gn-my-reject {
+	color: var(--match-coral);
+	font-size: 19rpx;
+}
+
+.gn-my-status {
+	flex: none;
+	padding: 6rpx 12rpx;
+	border-radius: 999rpx;
+	background: var(--warm);
+	color: var(--ink2);
+	font-size: 18rpx;
+	font-weight: 800;
+}
+
+.gn-my-status.status-APPROVED { background: var(--sage-soft); color: var(--sage); }
+.gn-my-status.status-REJECTED { background: var(--match-blush); color: var(--match-coral); }
+
+.gn-state {
+	padding: 48rpx 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 16rpx;
+}
+
+.gn-state-text {
+	color: var(--muted);
+	font-size: 22rpx;
+	line-height: 1.5;
+	text-align: center;
+}
+
+.gn-retry {
+	padding: 12rpx 24rpx;
+	border-radius: 999rpx;
+	background: var(--accent-bg);
+	color: var(--accent2);
+	font-size: 21rpx;
+	font-weight: 800;
+}
+
+.gn-list {
+	display: flex;
+	flex-direction: column;
+	gap: 18rpx;
+}
+
+.gn-card {
+	padding: 22rpx;
+	border-radius: 22rpx;
+	background: var(--surface);
+	box-shadow: var(--shadow-sm);
+	display: flex;
+	flex-direction: column;
+	gap: 14rpx;
+}
+
+.gn-card-head {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 10rpx;
+}
+
+.gn-stage-tag {
+	padding: 8rpx 16rpx;
+	border-radius: 999rpx;
+	font-size: 20rpx;
+	font-weight: 800;
+	line-height: 1.2;
+}
+
+.gn-pending {
+	padding: 8rpx 12rpx;
+	border-radius: 999rpx;
+	background: var(--warm);
+	color: var(--muted);
+	font-size: 18rpx;
+	font-weight: 700;
+}
+
+.gn-verified {
+	margin-left: auto;
+	color: var(--muted);
+	font-size: 18rpx;
+}
+
+.gn-couple {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 10rpx;
+}
+
+.gn-person {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8rpx;
+	min-width: 0;
+}
+
+.gn-avatar {
+	width: 54rpx;
+	height: 54rpx;
+	border-radius: 50%;
+	background: var(--warm);
+}
+
+.gn-name {
+	color: var(--ink);
+	font-size: 23rpx;
+	font-weight: 700;
+	max-width: 220rpx;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.gn-dot {
+	color: var(--muted);
+	font-size: 24rpx;
+}
+
+.gn-meta {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: 18rpx;
+}
+
+.gn-meta-item {
+	color: var(--ink2);
+	font-size: 20rpx;
+	line-height: 1.4;
+}
+
+.gn-images {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: 12rpx;
+}
+
+.gn-image {
+	width: calc((100% - 24rpx) / 3);
+	height: 170rpx;
+	border-radius: 16rpx;
+	background: var(--warm);
+}
+
+.gn-more-images {
+	width: calc((100% - 24rpx) / 3);
+	height: 170rpx;
+	border-radius: 16rpx;
+	background: var(--warm);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--accent2);
+	font-size: 26rpx;
+	font-weight: 800;
+}
+
+.gn-detail {
+	padding: 16rpx;
+	border-radius: 16rpx;
+	background: var(--paper);
+	border: 1rpx solid var(--line);
+	display: flex;
+	flex-direction: column;
+	gap: 8rpx;
+}
+
+.gn-content {
+	color: var(--ink2);
+	font-size: 21rpx;
+	line-height: 1.65;
+}
+
+.gn-blessing {
+	color: var(--accent2);
+	font-size: 20rpx;
+	line-height: 1.55;
+}
+
+.gn-date {
+	color: var(--muted);
+	font-size: 18rpx;
+}
+
+.gn-card-foot {
+	padding-top: 12rpx;
+	border-top: 1rpx solid var(--line);
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.gn-bless {
+	padding: 10rpx 18rpx;
+	border-radius: 999rpx;
+	background: var(--sage-soft);
+	color: var(--accent2);
+	font-size: 20rpx;
+	font-weight: 800;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8rpx;
+}
+
+.gn-bless.active {
+	background: var(--accent2);
+	color: var(--text-invert);
+}
+
+.gn-bless-count {
+	font-size: 18rpx;
+	opacity: 0.85;
+}
+
+.gn-detail-btn {
+	padding: 10rpx 18rpx;
+	border-radius: 999rpx;
+	background: var(--warm);
+	color: var(--accent2);
+	font-size: 20rpx;
+	font-weight: 800;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 4rpx;
+}
+
+.gn-detail-arrow {
+	font-size: 24rpx;
+	line-height: 1;
+	transform: rotate(90deg);
+}
+
+.gn-detail-arrow.open {
+	transform: rotate(-90deg);
+}
+
+.gn-more {
+	padding: 16rpx 0;
+	text-align: center;
+	color: var(--muted);
+	font-size: 20rpx;
+}
+
+.gn-more-btn {
+	color: var(--accent2);
+	font-weight: 800;
+}
+
+.gn-fab {
+	position: fixed;
+	right: 28rpx;
+	bottom: calc(150rpx + env(safe-area-inset-bottom));
+	z-index: 20;
+	padding: 16rpx 24rpx;
+	border-radius: 999rpx;
+	background: var(--accent2);
+	color: var(--text-invert);
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6rpx;
+	box-shadow: var(--shadow-md);
+}
+
+.gn-fab-plus {
+	font-size: 28rpx;
+	font-weight: 800;
+	line-height: 1;
+}
+
+.gn-fab-label {
+	font-size: 22rpx;
+	font-weight: 800;
+}
+
+.gn-form {
+	display: flex;
+	flex-direction: column;
+	gap: 16rpx;
+	padding-bottom: calc(16rpx + env(safe-area-inset-bottom));
+}
+
+.gn-form-note {
+	padding: 14rpx 16rpx;
+	border-radius: 14rpx;
+	background: var(--warm);
+	color: var(--ink2);
+	font-size: 20rpx;
+	line-height: 1.55;
+}
+
+.gn-form-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 12rpx;
+}
+
+.gn-form-label {
+	flex: none;
+	width: 150rpx;
+	color: var(--ink2);
+	font-size: 21rpx;
+	font-weight: 700;
+}
+
+.gn-form-block {
+	display: flex;
+	flex-direction: column;
+	gap: 10rpx;
+}
+
+.gn-input {
+	flex: 1;
+	min-width: 0;
+	height: 82rpx;
+	padding: 0 16rpx;
+	border-radius: 14rpx;
+	border: 1rpx solid var(--line);
+	background: var(--surface);
+	color: var(--ink);
+	font-size: 22rpx;
+}
+
+.gn-unit {
+	flex: none;
+	color: var(--muted);
+	font-size: 20rpx;
+}
+
+.gn-picker-wrap {
+	flex: 1;
+}
+
+.gn-picker {
+	height: 82rpx;
+	padding: 0 16rpx;
+	border-radius: 14rpx;
+	border: 1rpx solid var(--line);
+	background: var(--surface);
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	color: var(--ink);
+	font-size: 22rpx;
+}
+
+.gn-picker .placeholder {
+	color: var(--muted);
+}
+
+.gn-picker-arrow {
+	color: var(--muted);
+	font-size: 24rpx;
+}
+
+.gn-textarea {
+	width: 100%;
+	min-height: 180rpx;
+	padding: 16rpx;
+	border-radius: 14rpx;
+	border: 1rpx solid var(--line);
+	background: var(--surface);
+	color: var(--ink);
+	font-size: 22rpx;
+	line-height: 1.6;
+	box-sizing: border-box;
+}
+
+.gn-form-images {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: 12rpx;
+}
+
+.gn-form-image-cell {
+	position: relative;
+	width: calc((100% - 24rpx) / 3);
+	height: 170rpx;
+}
+
+.gn-form-image {
+	width: 100%;
+	height: 100%;
+	border-radius: 14rpx;
+	background: var(--warm);
+}
+
+.gn-form-image-remove {
+	position: absolute;
+	top: -10rpx;
+	right: -10rpx;
+	width: 38rpx;
+	height: 38rpx;
+	border-radius: 50%;
+	background: var(--match-coral);
+	color: var(--text-invert);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 22rpx;
+}
+
+.gn-form-image-add {
+	width: calc((100% - 24rpx) / 3);
+	height: 170rpx;
+	border-radius: 14rpx;
+	border: 1rpx dashed var(--line);
+	background: var(--paper);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 4rpx;
+}
+
+.gn-form-image-plus {
+	color: var(--accent2);
+	font-size: 34rpx;
+	font-weight: 800;
+	line-height: 1;
+}
+
+.gn-form-image-label {
+	color: var(--muted);
+	font-size: 18rpx;
+}
+
+.gn-consent {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 12rpx;
+	padding: 14rpx;
+	border-radius: 14rpx;
+	background: var(--paper);
+	border: 1rpx solid var(--line);
+}
+
+.gn-check {
+	flex: none;
+	width: 34rpx;
+	height: 34rpx;
+	border-radius: 8rpx;
+	border: 1rpx solid var(--line);
+	background: var(--surface);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-invert);
+	font-size: 20rpx;
+	font-weight: 800;
+}
+
+.gn-check.checked {
+	background: var(--accent2);
+	border-color: var(--accent2);
+}
+
+.gn-consent-text {
+	flex: 1;
+	color: var(--ink2);
+	font-size: 19rpx;
+	line-height: 1.55;
+}
+
+.gn-error {
+	color: var(--match-coral);
+	font-size: 20rpx;
+	line-height: 1.45;
+}
+
+.gn-feedback-kinds {
+	display: flex;
+	flex-direction: row;
+	gap: 12rpx;
+}
+
+.gn-kind {
+	padding: 12rpx 20rpx;
+	border-radius: 999rpx;
+	background: var(--warm);
+	color: var(--ink2);
+	font-size: 20rpx;
+	font-weight: 700;
+}
+
+.gn-kind.active {
+	background: var(--accent-bg);
+	color: var(--accent2);
+	font-weight: 800;
+}
+
+.gn-rating {
+	display: flex;
+	flex-direction: row;
+	gap: 10rpx;
+}
+
+.gn-rating-item {
+	width: 52rpx;
+	height: 52rpx;
+	border-radius: 50%;
+	background: var(--warm);
+	color: var(--muted);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 24rpx;
+}
+
+.gn-rating-item.active {
+	background: var(--shortcut-apricot);
+	color: var(--match-coral);
+}
+</style>

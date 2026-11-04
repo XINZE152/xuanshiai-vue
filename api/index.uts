@@ -482,3 +482,32 @@ export type {
   MemoryRevokeGrantResponse,
   MemoryLiftSuppressionResponse
 } from './ai-memory.uts'
+
+// 红娘喜讯（会员端）
+export {
+  GOOD_NEWS_MAX_IMAGES,
+  GOOD_NEWS_DEFAULT_STAGES,
+  formatGoodNewsDuration,
+  goodNewsVerificationLabel,
+  goodNewsReportStatusLabel,
+  normalizeGoodNewsConfig,
+  normalizeGoodNewsItem,
+  normalizeGoodNewsReport,
+  buildGoodNewsReportPayload,
+  validateGoodNewsReport,
+  getGoodNewsConfig,
+  getGoodNewsList,
+  getGoodNewsDetail,
+  blessGoodNews,
+  createGoodNewsReport,
+  getMyGoodNewsReports,
+  submitGoodNewsFeedback,
+  uploadGoodNewsPhoto
+} from './good-news.uts'
+
+export type {
+  GoodNewsStage,
+  GoodNewsConfig,
+  GoodNewsItem,
+  GoodNewsReportItem
+} from './good-news.uts'

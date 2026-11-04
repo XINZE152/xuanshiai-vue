@@ -39,3 +39,19 @@ API 基址统一为 `https://xhztest.xyz/api/v1`，`USE_MOCK=false`。本地账�
 验证：新增远端请求行为测试覆盖路由拦截、登录、服务单参数、提现参数、授权状态及错误透传；运行既有红娘联系授权、头像、账号页及工作台契约测试。HBuilderX mp-weixin 编译成功。产物69页、分包和媒体检查通过；开发主包约5.55MiB，超过2MiB门槛，尚不能据此判定可发布。
 
 未取得远端红娘测试账号，未执行远端真实数据写入、提现或双方授权验收。需使用远端测试账号在微信开发者工具回归上述操作，并确认微信小程序 request/uploadFile 合法域名包含远端 HTTPS 域名。
+
+## 会员端红娘喜讯（2026-11-04）
+
+会员端喜讯面板已落在 `components/GoodNewsPanel.uvue`，并作为 `pages/matchmaker/matchmaker.uvue` 的第三个「喜讯」Tab；未修改受保护的 `pages.json`。前端调用以下消费端契约：
+
+- `GET /good-news/config`
+- `GET /good-news?stage=&page=&page_size=`
+- `GET /good-news/{id}`
+- `POST /good-news/{id}/blessings`
+- `POST /good-news/reports`
+- `GET /good-news/reports/mine`
+- `POST /good-news/photo`
+
+反馈复用现有 `POST /support/feedback`（建议/投诉），不写入喜讯正文。当前本仓库后端快照与远端 OpenAPI 都没有 `/good-news` 路径，`REMOTE_OPERATIONS` 也不含该能力；非 Mock 模式会显示“喜讯服务尚未开放/加载失败”，不使用演示数据伪装成功。`GOOD_NEWS_USE_MOCK` 默认 `false`，仅用于本地预览与自动化测试，演示数据会显著标注。
+
+后端落地前不得把该能力加入远端白名单；部署后需补充消费端接口、双方同意、审核状态、祝福明细与图片上传，并在微信开发者工具回归登录、筛选、祝福、报喜、审核中/驳回、无权限和 320/428 宽度。

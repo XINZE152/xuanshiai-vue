@@ -23,6 +23,7 @@ const core = [
   'test-contact-exchange-real.js',
   'test-matchmaker-remote.js',
   'test-matchmaker-homepage-edit.js',
+  'test-good-news-contract.js',
   'test-introduction-workflow.js',
   'test-matchmaker-account-pages.js',
   'test-master-ws-error-contract.js',
@@ -58,6 +59,7 @@ const core = [
   'test-moxiang-doc-consistency.js',
   'test-moxiang-role-identity.js',
   'test-personal-tags.js',
+  'test-profile-completion-model.js',
   'test-moxiang-continuous-crosspage.js',
   'test-ci-gates.js',
   // 支付链路：预支付/requestPayment/权益轮询契约。

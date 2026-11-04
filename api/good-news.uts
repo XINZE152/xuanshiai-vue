@@ -1,0 +1,501 @@
+/**
+ * 红娘喜讯 C 端 API。
+ *
+ * 服务端消费端接口尚未在本仓库后端快照中落地；非 Mock 模式调用失败时
+ * 页面展示“未开放/加载失败”，不得用演示数据伪装成功。
+ */
+
+import { request } from './request.uts'
+import {
+  USE_MOCK,
+  GOOD_NEWS_USE_MOCK,
+  buildApiUrl,
+  getAccessToken,
+  clearAuthTokens,
+  resolveMediaUrl
+} from './config.uts'
+import { mockGoodNewsConfig, mockGoodNewsList, mockGoodNewsReports } from '@/mock/good-news.uts'
+
+export const GOOD_NEWS_MAX_IMAGES = 9
+
+export interface GoodNewsStage {
+  label: string
+  value: string
+  icon: string
+  tone: string
+  isPennant: boolean
+}
+
+export interface GoodNewsConfig {
+  title: string
+  description: string
+  bannerUrl: string
+  shareCoverUrl: string
+  stages: GoodNewsStage[]
+  blessings: string[]
+  isDemo: boolean
+}
+
+export interface GoodNewsItem {
+  id: string
+  stage: string
+  stageLabel: string
+  fromName: string
+  toName: string
+  fromAvatar: string
+  toAvatar: string
+  matchmakerName: string
+  meetDurationMonths: number
+  meetDurationText: string
+  images: string[]
+  content: string
+  blessing: string
+  blessingCount: number
+  blessedByMe: boolean
+  pendingReview: boolean
+  verificationLevel: string
+  verificationLabel: string
+  displayMode: string
+  publishedAt: string
+  isDemo: boolean
+}
+
+export interface GoodNewsReportItem {
+  id: string
+  stage: string
+  partnerName: string
+  meetDurationMonths: number
+  content: string
+  images: string[]
+  status: string
+  statusLabel: string
+  rejectReason: string
+  createdAt: string
+  isDemo: boolean
+}
+
+const STAGE_ICONS: string[] = ['牵', '恋', '见', '订', '证', '婚', '家', '旗']
+const STAGE_TONES: string[] = ['coral', 'sky', 'sage', 'plum', 'apricot', 'mint', 'lilac', 'blush']
+
+/** 后端配置不可用时只用于占位；页面会显示“配置未加载”提示，不静默冒充已生效配置。 */
+export const GOOD_NEWS_DEFAULT_STAGES: GoodNewsStage[] = [
+  { label: '牵手成功', value: '牵手成功', icon: '牵', tone: 'coral', isPennant: false },
+  { label: '恋爱生活', value: '恋爱生活', icon: '恋', tone: 'sky', isPennant: false },
+  { label: '已见父母', value: '已见父母', icon: '见', tone: 'sage', isPennant: false },
+  { label: '已订婚', value: '已订婚', icon: '订', tone: 'plum', isPennant: false },
+  { label: '已领证', value: '已领证', icon: '证', tone: 'apricot', isPennant: false },
+  { label: '已办婚礼', value: '已办婚礼', icon: '婚', tone: 'mint', isPennant: false },
+  { label: '婚后生活', value: '婚后生活', icon: '家', tone: 'lilac', isPennant: false },
+  { label: '锦旗飘扬', value: '锦旗飘扬', icon: '旗', tone: 'blush', isPennant: true }
+]
+
+let goodNewsRequestSeq = 0
+
+function trimText(value: any): string {
+  return value != null ? String(value).trim() : ''
+}
+
+function numberValue(value: any, fallback: number): number {
+  if (value == null || String(value).trim() == '') return fallback
+  const parsed = Number(value)
+  return isNaN(parsed) ? fallback : parsed
+}
+
+function resolveMedia(value: any): string {
+  const text = trimText(value)
+  return text.length > 0 ? resolveMediaUrl(text) : ''
+}
+
+function idempotencyKey(prefix: string): string {
+  goodNewsRequestSeq += 1
+  return prefix + '-' + String(Date.now()) + '-' + String(goodNewsRequestSeq)
+}
+
+function isMockMode(): boolean {
+  return USE_MOCK || GOOD_NEWS_USE_MOCK
+}
+
+export function formatGoodNewsDuration(months: number): string {
+  const value = Number(months)
+  if (isNaN(value) || value <= 0) return ''
+  if (value < 12) return String(value) + ' 个月'
+  const years = Math.floor(value / 12)
+  const rest = value % 12
+  return rest == 0 ? String(years) + ' 年' : String(years) + ' 年 ' + String(rest) + ' 个月'
+}
+
+export function goodNewsVerificationLabel(level: string): string {
+  if (level == 'PLATFORM_VERIFIED') return '平台核验'
+  if (level == 'MATCHMAKER_FOLLOWUP' || level == 'MATCHMAKER_VERIFIED') return '红娘回访'
+  if (level == 'SELF_REPORTED') return '用户自述'
+  return ''
+}
+
+export function goodNewsReportStatusLabel(status: string): string {
+  if (status == 'PENDING') return '审核中'
+  if (status == 'APPROVED') return '已通过'
+  if (status == 'REJECTED') return '未通过'
+  if (status == 'WITHDRAWN') return '已撤回'
+  return '审核中'
+}
+
+export function normalizeGoodNewsConfig(raw: any): GoodNewsConfig {
+  const source = raw != null ? raw : {}
+  const rawStages = Array.isArray(source.categories) ? source.categories as any[] : []
+  const stages: GoodNewsStage[] = []
+  if (rawStages.length > 0) {
+    for (let i = 0; i < rawStages.length; i++) {
+      const item = rawStages[i] != null ? rawStages[i] : {}
+      const label = trimText(item.label != null ? item.label : item.value)
+      if (label.length == 0) continue
+      const isPennant = label.indexOf('锦旗') >= 0
+      stages.push({
+        label: label,
+        value: trimText(item.value != null ? item.value : label),
+        icon: isPennant ? '旗' : (i < STAGE_ICONS.length ? STAGE_ICONS[i] : '喜'),
+        tone: i < STAGE_TONES.length ? STAGE_TONES[i] : 'sage',
+        isPennant: isPennant
+      })
+    }
+  }
+  const finalStages = stages.length > 0 ? stages : GOOD_NEWS_DEFAULT_STAGES
+  const blessings: string[] = []
+  if (Array.isArray(source.blessings)) {
+    const rawBlessings = source.blessings as any[]
+    for (let i = 0; i < rawBlessings.length; i++) {
+      const text = trimText(rawBlessings[i])
+      if (text.length > 0) blessings.push(text)
+    }
+  }
+  return {
+    title: trimText(source.title).length > 0 ? trimText(source.title) : '脱单喜讯',
+    description: trimText(source.description).length > 0 ? trimText(source.description) : '会员回访里的每一步进展，都会记在这里',
+    bannerUrl: resolveMedia(source.banner_url),
+    shareCoverUrl: resolveMedia(source.share_cover_url),
+    stages: finalStages,
+    blessings: blessings,
+    isDemo: source.is_demo === true
+  }
+}
+
+export function normalizeGoodNewsItem(raw: any): GoodNewsItem {
+  const source = raw != null ? raw : {}
+  const from = source.from != null ? source.from : {}
+  const to = source.to != null ? source.to : {}
+  const matchmaker = source.matchmaker != null ? source.matchmaker : {}
+  const images: string[] = []
+  if (Array.isArray(source.images)) {
+    const rawImages = source.images as any[]
+    for (let i = 0; i < rawImages.length; i++) {
+      const item = rawImages[i]
+      const value = typeof item == 'string' ? item : (item != null && item.url != null ? item.url : '')
+      const image = resolveMedia(value)
+      if (image.length > 0) images.push(image)
+    }
+  }
+  const months = numberValue(source.meet_duration_months, 0)
+  const durationText = trimText(source.meet_duration_text)
+  const level = trimText(source.verification_level)
+  return {
+    id: trimText(source.id),
+    stage: trimText(source.stage),
+    stageLabel: trimText(source.stage_label).length > 0 ? trimText(source.stage_label) : trimText(source.stage),
+    fromName: trimText(source.from_name).length > 0 ? trimText(source.from_name) : trimText(from.display_name != null ? from.display_name : from.name),
+    toName: trimText(source.to_name).length > 0 ? trimText(source.to_name) : trimText(to.display_name != null ? to.display_name : to.name),
+    fromAvatar: resolveMedia(source.from_avatar != null ? source.from_avatar : from.avatar),
+    toAvatar: resolveMedia(source.to_avatar != null ? source.to_avatar : to.avatar),
+    matchmakerName: trimText(source.matchmaker_name).length > 0 ? trimText(source.matchmaker_name) : (trimText(matchmaker.name).length > 0 ? trimText(matchmaker.name) : '服务红娘'),
+    meetDurationMonths: months,
+    meetDurationText: durationText.length > 0 ? durationText : formatGoodNewsDuration(months),
+    images: images,
+    content: trimText(source.content),
+    blessing: trimText(source.blessing),
+    blessingCount: numberValue(source.blessing_count, 0),
+    blessedByMe: source.blessed_by_me === true,
+    pendingReview: source.pending_review === true || trimText(source.review_status) == 'PENDING',
+    verificationLevel: level,
+    verificationLabel: goodNewsVerificationLabel(level),
+    displayMode: trimText(source.display_mode),
+    publishedAt: trimText(source.published_at != null ? source.published_at : source.created_at),
+    isDemo: source.is_demo === true
+  }
+}
+
+export function normalizeGoodNewsReport(raw: any): GoodNewsReportItem {
+  const source = raw != null ? raw : {}
+  const status = trimText(source.status)
+  const images: string[] = []
+  if (Array.isArray(source.images)) {
+    const rawImages = source.images as any[]
+    for (let i = 0; i < rawImages.length; i++) {
+      const image = resolveMedia(rawImages[i])
+      if (image.length > 0) images.push(image)
+    }
+  }
+  return {
+    id: trimText(source.id),
+    stage: trimText(source.stage),
+    partnerName: trimText(source.partner_name != null ? source.partner_name : source.partnerName),
+    meetDurationMonths: numberValue(source.meet_duration_months, 0),
+    content: trimText(source.content),
+    images: images,
+    status: status,
+    statusLabel: goodNewsReportStatusLabel(status),
+    rejectReason: trimText(source.reject_reason),
+    createdAt: trimText(source.created_at),
+    isDemo: source.is_demo === true
+  }
+}
+
+export function buildGoodNewsReportPayload(data: any): any {
+  const source = data != null ? data : {}
+  const images: string[] = []
+  if (Array.isArray(source.images)) {
+    const rawImages = source.images as any[]
+    for (let i = 0; i < rawImages.length; i++) {
+      const image = trimText(rawImages[i])
+      if (image.length > 0) images.push(image)
+    }
+  }
+  const consentConfirmed = source.consentConfirmed === true
+  return {
+    stage: trimText(source.stage),
+    partner_name: trimText(source.partnerName),
+    meet_duration_months: numberValue(source.meetDurationMonths, 0),
+    content: trimText(source.content),
+    images: images,
+    // 新版后端字段；单个勾选按“会员代双方声明”记录，来源由服务端标记。
+    consent_from: consentConfirmed,
+    consent_to: consentConfirmed,
+    consent_version: 'v1',
+    consent_scopes: ['name', 'avatar', 'photos', 'content', 'matchmaker'],
+    // 兼容旧后端别名；新后端会忽略或映射为双方声明。
+    consent_confirmed: consentConfirmed
+  }
+}
+
+export function validateGoodNewsReport(data: any): string {
+  const payload = buildGoodNewsReportPayload(data)
+  if (payload.stage.length == 0) return '请选择当前状态'
+  if (payload.partner_name.length == 0) return '请填写对方称呼'
+  if (payload.partner_name.length > 40) return '对方称呼不能超过 40 个字'
+  if (payload.meet_duration_months <= 0) return '请填写相识时长'
+  if (payload.meet_duration_months > 600) return '相识时长请填写 600 个月以内'
+  if (payload.content.length < 5) return '请至少写一句目前的进展'
+  if (payload.content.length > 1000) return '正文不能超过 1000 个字'
+  if (payload.images.length > GOOD_NEWS_MAX_IMAGES) return '一条喜讯最多上传 9 张图片'
+  if (payload.consent_confirmed !== true) return '请先确认双方同意公开范围内的信息'
+  return ''
+}
+
+async function getMockConfigResult(): Promise<any> {
+  return {
+    success: true,
+    data: normalizeGoodNewsConfig(mockGoodNewsConfig),
+    code: 0,
+    message: '演示数据'
+  }
+}
+
+export async function getGoodNewsConfig(): Promise<any> {
+  if (isMockMode()) return getMockConfigResult()
+  const result = await request({ url: '/good-news/config', method: 'GET' })
+  if (!result.success || result.data == null) return result
+  return {
+    success: true,
+    data: normalizeGoodNewsConfig(result.data),
+    code: result.code,
+    message: result.message
+  }
+}
+
+export async function getGoodNewsList(stage: string, page: number, pageSize: number): Promise<any> {
+  const safePage = page > 0 ? page : 1
+  const safeSize = pageSize > 0 ? pageSize : 10
+  if (isMockMode()) {
+    let source = mockGoodNewsList
+    if (stage.length > 0) {
+      source = source.filter((item: any) => trimText(item.stage) == stage)
+    }
+    const start = (safePage - 1) * safeSize
+    const paged = source.slice(start, start + safeSize)
+    const items: GoodNewsItem[] = []
+    for (let i = 0; i < paged.length; i++) items.push(normalizeGoodNewsItem(paged[i]))
+    return {
+      success: true,
+      data: {
+        items: items,
+        total: source.length,
+        page: safePage,
+        pageSize: safeSize,
+        hasMore: start + paged.length < source.length,
+        isDemo: true
+      },
+      code: 0,
+      message: '演示数据'
+    }
+  }
+  const data: any = stage.length > 0
+    ? { stage: stage, page: safePage, page_size: safeSize }
+    : { page: safePage, page_size: safeSize }
+  const result = await request({ url: '/good-news', method: 'GET', data: data })
+  if (!result.success || result.data == null) return result
+  const source = result.data
+  const rawItems = Array.isArray(source.items) ? source.items as any[] : (Array.isArray(source) ? source as any[] : [])
+  const items: GoodNewsItem[] = []
+  for (let i = 0; i < rawItems.length; i++) items.push(normalizeGoodNewsItem(rawItems[i]))
+  return {
+    success: true,
+    data: {
+      items: items,
+      total: numberValue(source.total, items.length),
+      page: numberValue(source.page, safePage),
+      pageSize: numberValue(source.page_size, safeSize),
+      hasMore: source.has_more === true,
+      isDemo: source.is_demo === true
+    },
+    code: result.code,
+    message: result.message
+  }
+}
+
+export async function getGoodNewsDetail(id: string): Promise<any> {
+  const newsId = trimText(id)
+  if (newsId.length == 0) return { success: false, data: null, code: 422, message: '喜讯编号无效' }
+  if (isMockMode()) {
+    for (let i = 0; i < mockGoodNewsList.length; i++) {
+      if (trimText(mockGoodNewsList[i].id) == newsId) {
+        return { success: true, data: normalizeGoodNewsItem(mockGoodNewsList[i]), code: 0, message: '演示数据' }
+      }
+    }
+    return { success: false, data: null, code: 404, message: '喜讯不存在或未公开' }
+  }
+  const result = await request({ url: '/good-news/' + encodeURIComponent(newsId), method: 'GET' })
+  if (!result.success || result.data == null) return result
+  return { success: true, data: normalizeGoodNewsItem(result.data), code: result.code, message: result.message }
+}
+
+export async function blessGoodNews(id: string): Promise<any> {
+  const newsId = trimText(id)
+  if (newsId.length == 0) return { success: false, data: null, code: 422, message: '喜讯编号无效' }
+  if (isMockMode()) return { success: true, data: { blessed: true, blessing_count: -1 }, code: 0, message: '演示数据' }
+  const result = await request({
+    url: '/good-news/' + encodeURIComponent(newsId) + '/blessings',
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey('good-news-bless') },
+    data: {}
+  })
+  if (!result.success || result.data == null) return result
+  return {
+    success: true,
+    data: {
+      blessed: result.data.blessed === true || result.data.blessed_by_me === true,
+      blessingCount: numberValue(result.data.blessing_count, 0)
+    },
+    code: result.code,
+    message: result.message
+  }
+}
+
+export async function createGoodNewsReport(data: any): Promise<any> {
+  const error = validateGoodNewsReport(data)
+  if (error.length > 0) return { success: false, data: null, code: 422, message: error }
+  const payload = buildGoodNewsReportPayload(data)
+  if (isMockMode()) {
+    return {
+      success: true,
+      data: normalizeGoodNewsReport({
+        id: 'demo-report-' + String(Date.now()),
+        stage: payload.stage,
+        partner_name: payload.partner_name,
+        meet_duration_months: payload.meet_duration_months,
+        content: payload.content,
+        images: payload.images,
+        status: 'PENDING',
+        created_at: '刚刚',
+        is_demo: true
+      }),
+      code: 0,
+      message: '演示数据'
+    }
+  }
+  const result = await request({
+    url: '/good-news/reports',
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey('good-news-report') },
+    data: payload
+  })
+  if (!result.success || result.data == null) return result
+  return {
+    success: true,
+    data: normalizeGoodNewsReport(result.data),
+    code: result.code,
+    message: result.message
+  }
+}
+
+export async function getMyGoodNewsReports(): Promise<any> {
+  if (isMockMode()) {
+    const items: GoodNewsReportItem[] = []
+    for (let i = 0; i < mockGoodNewsReports.length; i++) items.push(normalizeGoodNewsReport(mockGoodNewsReports[i]))
+    return { success: true, data: { items: items, isDemo: true }, code: 0, message: '演示数据' }
+  }
+  const result = await request({ url: '/good-news/reports/mine', method: 'GET' })
+  if (!result.success || result.data == null) return result
+  const source = result.data
+  const rawItems = Array.isArray(source.items) ? source.items as any[] : (Array.isArray(source) ? source as any[] : [])
+  const items: GoodNewsReportItem[] = []
+  for (let i = 0; i < rawItems.length; i++) items.push(normalizeGoodNewsReport(rawItems[i]))
+  return { success: true, data: { items: items, isDemo: source.is_demo === true }, code: result.code, message: result.message }
+}
+
+export async function submitGoodNewsFeedback(data: any): Promise<any> {
+  const source = data != null ? data : {}
+  const content = trimText(source.content)
+  if (content.length == 0) return { success: false, data: null, code: 422, message: '请填写反馈内容' }
+  const kind = trimText(source.kind) == '投诉' ? '投诉' : '建议'
+  const rating = numberValue(source.rating, 0)
+  let finalContent = '红娘服务反馈'
+  if (rating > 0) finalContent += '（评分 ' + String(rating) + '/5）'
+  finalContent += '：' + content
+  if (finalContent.length > 2000) finalContent = finalContent.substring(0, 2000)
+  if (isMockMode()) return { success: true, data: { category: kind }, code: 0, message: '演示数据' }
+  return request({
+    url: '/support/feedback',
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey('good-news-feedback') },
+    data: { category: kind, content: finalContent, images: [] }
+  })
+}
+
+export async function uploadGoodNewsPhoto(filePath: string): Promise<any> {
+  if (isMockMode()) return { success: true, data: { url: filePath }, code: 0, message: '演示数据' }
+  return new Promise<any>((resolve) => {
+    uni.uploadFile({
+      url: buildApiUrl('/good-news/photo'),
+      filePath: filePath,
+      name: 'file',
+      header: getAccessToken() != '' ? { Authorization: 'Bearer ' + getAccessToken() } : {},
+      success: (res: any) => {
+        if (res.statusCode == 401) clearAuthTokens()
+        let data: any = null
+        try {
+          data = JSON.parse('' + res.data)
+        } catch (e) {
+          resolve({ success: false, data: null, code: res.statusCode, message: '上传响应解析失败' })
+          return
+        }
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve({ success: true, data: data, code: res.statusCode, message: 'success' })
+        } else {
+          const detail = data != null && data.detail != null ? data.detail : '上传失败'
+          resolve({ success: false, data: data, code: res.statusCode, message: '' + detail })
+        }
+      },
+      fail: (err: any) => {
+        const message = err != null && err.errMsg != null ? '' + err.errMsg : '图片上传失败，请检查网络'
+        resolve({ success: false, data: null, code: -1, message: message })
+      }
+    })
+  })
+}
