@@ -59,6 +59,7 @@ const item = api.normalizeGoodNewsItem({
   blessing_count: 5,
   blessed_by_me: true,
   verification_level: 'MATCHMAKER_FOLLOWUP',
+  display_mode: 'FULL',
   pending_review: true,
   published_at: '2026-10-28 10:00:00'
 })
@@ -71,6 +72,28 @@ assert.equal(item.verificationLabel, '红娘回访')
 assert.equal(item.pendingReview, true)
 assert.equal(item.blessedByMe, true)
 assert.equal(item.blessingCount, 5)
+
+const maskedItem = api.normalizeGoodNewsItem({
+  id: 8,
+  stage: '恋爱生活',
+  from_name: '张*',
+  to_name: '李*',
+  from_avatar: '/storage/a.webp',
+  to_avatar: '/storage/b.webp',
+  display_mode: 'MASKED',
+  content: '正文'
+})
+assert.equal(maskedItem.fromAvatar, '')
+assert.equal(maskedItem.toAvatar, '')
+
+const defaultMaskedItem = api.normalizeGoodNewsItem({
+  id: 9,
+  stage: '恋爱生活',
+  from_name: '王*',
+  from_avatar: '/storage/c.webp',
+  content: '正文'
+})
+assert.equal(defaultMaskedItem.fromAvatar, '')
 
 const config = api.normalizeGoodNewsConfig({
   is_demo: true,
@@ -107,8 +130,9 @@ assert.equal(payload.consent_confirmed, true)
 assert.equal(payload.consent_from, true)
 assert.equal(payload.consent_to, true)
 assert.equal(payload.consent_version, 'v1')
-assert.equal(payload.consent_scopes.length, 5)
+assert.equal(payload.consent_scopes.length, 4)
 assert.equal(payload.consent_scopes[0], 'name')
+assert.equal(payload.to_user_id, undefined)
 
 assert.equal(api.validateGoodNewsReport({ ...validReport, stage: '' }), '请选择当前状态')
 assert.equal(api.validateGoodNewsReport({ ...validReport, partnerName: '' }), '请填写对方称呼')

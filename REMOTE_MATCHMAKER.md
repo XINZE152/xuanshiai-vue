@@ -55,3 +55,5 @@ API 基址统一为 `https://xhztest.xyz/api/v1`，`USE_MOCK=false`。本地账�
 反馈复用现有 `POST /support/feedback`（建议/投诉），不写入喜讯正文。当前本仓库后端快照与远端 OpenAPI 都没有 `/good-news` 路径，`REMOTE_OPERATIONS` 也不含该能力；非 Mock 模式会显示“喜讯服务尚未开放/加载失败”，不使用演示数据伪装成功。`GOOD_NEWS_USE_MOCK` 默认 `false`，仅用于本地预览与自动化测试，演示数据会显著标注。
 
 后端落地前不得把该能力加入远端白名单；部署后需补充消费端接口、双方同意、审核状态、祝福明细与图片上传，并在微信开发者工具回归登录、筛选、祝福、报喜、审核中/驳回、无权限和 320/428 宽度。
+
+前端 P1 口径（2026-11-04 确认）：只有 `display_mode=FULL` 展示真实头像；`MASKED/ANONYMOUS/缺省` 使用中性占位头像。服务红娘姓名按平台服务信息展示，不要求会员单独同意 `matchmaker`。会员报喜只提交 `partner_name`，不传 `to_user_id`；允许多阶段故事，同 Couple + 同阶段 + `PENDING` 由服务端去重。报喜/反馈在每次提交生命周期内复用同一 `Idempotency-Key`。

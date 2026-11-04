@@ -496,6 +496,7 @@ export {
   normalizeGoodNewsReport,
   buildGoodNewsReportPayload,
   validateGoodNewsReport,
+  newGoodNewsIdempotencyKey,
   getGoodNewsConfig,
   getGoodNewsList,
   getGoodNewsDetail,
