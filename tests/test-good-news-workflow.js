@@ -28,7 +28,7 @@ const events=[]
 let detailReply = async ()=>({success:true,data:item})
 const ui = compile('components/MatchmakerGoodNews.uvue', name=>{
   if(name==='vue') return {ref:value=>({value}),computed:fn=>({get value(){return fn()}}),onMounted:()=>{},getCurrentInstance:()=>({proxy:{}}),nextTick:async()=>{}}
-  if(name.includes('api/good-news')) return {...api,getGoodNewsDetail:(...args)=>detailReply(...args)}
+  if(name.includes('api/workspace-good-news')) return {...api,getGoodNewsDetail:(...args)=>detailReply(...args)}
   if(name.includes('api/matchmaker')) return {getMatchmakerWorkspaceGoodNews:async()=>({success:true,data:{items:[],hasMore:false}}),getMatchmakerWorkspaceGoodNewsPennants:async()=>({success:true,data:{items:[],hasMore:false}})}
   if(name.includes('utils/good-news')) return helpers
   if(name.includes('api/config')) return {resolveMediaUrl:media}
@@ -97,6 +97,3 @@ async function run() {
   console.log('PASS good news: real API mapping, consent barriers, retry, late responses and blessing state')
 }
 run().catch(error=>{console.error(error);process.exitCode=1})
-
-
-
