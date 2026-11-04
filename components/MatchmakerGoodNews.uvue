@@ -1,0 +1,361 @@
+<template>
+  <view class="gn-root">
+    <view v-if="detail == null && !detailLoading && detailError.length == 0">
+      <view class="gn-stages">
+        <view v-for="stage in stages" :key="stage.label" class="gn-stage" :class="{ active: selectedStage == stage.label }" @tap="selectStage(stage.label)">
+          <view class="gn-stage-tile"><view class="gn-stage-platform"></view><view class="gn-stage-base"></view><image class="gn-stage-image" :src="stage.icon" mode="aspectFit"/><text class="gn-stage-label">{{ stage.label }}</text></view>
+        </view>
+      </view>
+      <view class="gn-feedback"><text class="gn-feedback-mark">♡</text><text class="gn-feedback-copy">记录每一步进展，分享值得纪念的时刻</text><text class="gn-feedback-action" @tap="openFeedback">反馈 ›</text></view>
+      <view class="gn-section"><text>{{ isPennant ? '锦旗飘扬' : (selectedStage.length > 0 ? selectedStage : '全部喜讯') }}</text><text v-if="selectedStage.length > 0" class="gn-clear" @tap="selectStage('')">查看全部</text></view>
+      <view v-if="loading && rows.length == 0" class="gn-state"><text>正在加载…</text></view>
+      <view v-else-if="error.length > 0" class="gn-state"><text>{{ error }}</text><text class="gn-state-action" @tap="loadRows(false)">重新加载</text></view>
+      <view v-else-if="rows.length == 0" class="gn-state gn-empty"><view class="gn-empty-icon"><text>♡</text></view><text>这里还没有{{ isPennant ? '锦旗' : '喜讯' }}</text><text class="gn-muted">{{ isPennant ? '每一份感谢，都值得被好好收藏' : '新的进展，等你来分享' }}</text><text class="gn-state-action" @tap="isPennant ? openPennant() : openFeedback()">{{ isPennant ? '赠送锦旗' : '反馈喜讯' }}</text></view>
+      <view v-for="row in rows" :key="row.id" class="gn-card">
+        <view class="gn-card-head">
+          <text class="gn-badge" :class="tone(row.stage)">{{ row.stage }}</text>
+          <view v-if="row.kind == 'news'" class="gn-people">
+            <view v-if="row.fromName.length > 0" class="gn-person" @tap="openPerson(row.fromUserId)"><image :src="avatar(row.fromAvatar, row.fromUserId)" mode="aspectFill"/><text>{{ row.fromName }}</text></view>
+            <view v-if="row.toName.length > 0" class="gn-person" @tap="openPerson(row.toUserId)"><image :src="avatar(row.toAvatar, row.toUserId)" mode="aspectFill"/><text>{{ row.toName }}</text></view>
+          </view>
+          <text v-else class="gn-gift-person">{{ row.giver }} <text class="gn-muted">赠给</text> {{ row.target }}</text>
+        </view>
+        <text v-if="row.pendingReview" class="gn-review">待审核 · 仅工作范围内可见</text>
+        <view v-if="row.kind == 'news'" class="gn-meta"><text>♙ 服务红娘：{{ row.matchmakerName || displayName }}</text><text v-if="row.meetDuration.length > 0">◷ 相识时间：{{ row.meetDuration }}</text></view>
+        <view v-if="row.kind == 'news' && row.images.length > 0" class="gn-gallery"><image v-for="(url, i) in row.images.slice(0, 3)" :key="url" :src="url" mode="aspectFill" @tap="previewImages(row.images, i)"/><text v-if="row.images.length > 3" class="gn-gallery-more">共 {{ row.images.length }} 张</text></view>
+        <text v-if="row.kind == 'news' && row.content.length > 0" class="gn-summary">{{ row.content.length > 58 ? row.content.substring(0, 58) + '…' : row.content }}</text>
+        <view v-if="row.kind == 'pennant'" class="gn-pennant-summary" @tap="openDetail(row)"><image class="gn-pennant-icon" src="/static/icons/good-news/pennant.png" mode="aspectFit"/><view class="gn-quote"><text>“</text><text>{{ row.words || '感谢用心服务，珍藏这份温暖。' }}</text></view></view>
+        <view class="gn-card-foot"><text v-if="row.kind == 'news'" class="gn-count" @tap="openBlessings(row)">{{ row.blessingCount }} 人已送祝福</text><text v-else class="gn-count">◷ {{ row.createdAt.substring(0, 10) }}</text><text class="gn-detail-link" @tap="openDetail(row)">详情 ›</text></view>
+      </view>
+      <view v-if="rows.length > 0 && error.length == 0" class="gn-more" @tap="hasMore && !loading ? loadRows(true) : null"><text>{{ loading ? '正在加载…' : (hasMore ? '加载更多' : '已经到底了') }}</text></view>
+      <view class="gn-fab" @tap="reportVisible = true"><text class="gn-fab-icon">🌷</text><text>报喜</text></view>
+    </view>
+
+    <view v-if="detailLoading" class="gn-state"><text>正在加载详情…</text></view>
+    <view v-else-if="detailError.length > 0" class="gn-state"><text>{{ detailError }}</text><text class="gn-state-action" @tap="retryDetail">重新加载</text><text class="gn-clear" @tap="back">返回分类</text></view>
+    <view v-else-if="detail != null" class="gn-detail">
+      <view class="gn-detail-card">
+        <view class="gn-detail-head"><text class="gn-badge" :class="tone(detail.stage)">{{ detail.stage }}</text><view v-if="detail.kind == 'news'" class="gn-people"><view v-if="detail.fromName.length > 0" class="gn-person" @tap="openPerson(detail.fromUserId)"><image :src="avatar(detail.fromAvatar, detail.fromUserId)" mode="aspectFill"/><text>{{ detail.fromName }}</text></view><view v-if="detail.toName.length > 0" class="gn-person" @tap="openPerson(detail.toUserId)"><image :src="avatar(detail.toAvatar, detail.toUserId)" mode="aspectFill"/><text>{{ detail.toName }}</text></view></view><text v-else class="gn-gift-person">{{ detail.giver }} 赠给 {{ detail.target }}</text><text v-if="detail.kind == 'news'" class="gn-received" @tap="openBlessings(detail)">收到祝福({{ detail.blessingCount }})</text></view>
+        <view class="gn-detail-body">
+          <text v-if="detail.pendingReview" class="gn-review">这条{{ detail.kind == 'pennant' ? '锦旗' : '喜讯' }}正在等待后台审核</text>
+          <view v-if="detail.kind == 'news'" class="gn-detail-meta"><text v-if="detail.meetDuration.length > 0" class="gn-duration">◷ 相识{{ detail.meetDuration }}</text><text class="gn-muted">反馈于 {{ detail.createdAt.substring(0, 10) }}</text></view>
+          <text v-if="detail.kind == 'news' && detail.content.length > 0" class="gn-content">{{ detail.content }}</text>
+          <view v-if="detail.kind == 'news'" class="gn-detail-images"><image v-for="(url, i) in detail.images" :key="url" :src="url" mode="widthFix" @tap="previewImages(detail.images, i)"/></view>
+          <view v-else class="gn-pennant-detail"><image v-if="detail.imageUrl.length > 0" :src="detail.imageUrl" mode="widthFix" @tap="previewImages([detail.imageUrl], 0)"/><view v-else class="gn-text-pennant"><text class="gn-text-pennant-name">赠 {{ detail.target }}</text><view class="gn-text-pennant-columns"><view v-for="(word, index) in pennantColumns(detail)" :key="index"><text v-for="(char, j) in word.split('')" :key="j">{{ char }}</text></view></view><text>{{ detail.giver }} 敬赠</text><text>{{ detail.dateText }}</text></view><text class="gn-pennant-date">赠送时间：{{ detail.createdAt }}</text></view>
+          <view v-if="detail.kind == 'news'" class="gn-care"><text class="gn-care-title">♡ 爱心提示</text><text>珍惜每一份信任。请尊重双方隐私，未经同意不传播照片和个人信息。</text></view>
+        </view>
+      </view>
+      <view class="gn-detail-floats"><button v-if="detail.kind == 'news' && !detail.pendingReview && detail.public" open-type="share" class="gn-float-share"><text>↗</text><text>分享</text></button><view v-if="detail.kind == 'news'" class="gn-float-bless" @tap="openBless(detail)"><text>♡</text><text>{{ detail.blessed ? '已送祝福' : '送祝福' }}</text></view></view>
+      <view class="gn-detail-bar"><view @tap="openPennant"><text>送锦旗</text></view><view @tap="openFeedback"><text>反馈喜讯</text></view><view @tap="back"><text>更多喜讯</text></view></view>
+    </view>
+
+    <XsaSheet :visible="reportVisible" title="报喜" @close="reportVisible = false"><view class="gn-report-options"><view @tap="openFeedback"><view class="gn-report-circle"><text>🌷</text></view><text>反馈喜讯</text></view><view @tap="openPennant"><view class="gn-report-circle gift"><text>🎏</text></view><text>赠送锦旗</text></view></view><text class="gn-form-tip">代会员记录进展与感谢，提交后由平台审核。</text></XsaSheet>
+
+    <XsaSheet :visible="feedbackVisible" title="反馈喜讯" :tall="true" @close="feedbackVisible = false"><view class="gn-form">
+      <view class="gn-privacy"><text class="gn-privacy-title">隐私提示</text><text>请先征得相关会员同意，再填写称呼和上传图片。提交后进入审核，通过后按平台展示设置展示。</text></view>
+      <view class="gn-field"><text>反馈人称呼</text><input :value="feedbackName" @input="feedbackName = $event.detail.value" placeholder="如：李先生" :maxlength="40"/></view>
+      <view class="gn-field"><text>对方称呼</text><input :value="partnerName" @input="partnerName = $event.detail.value" placeholder="如：林女士" :maxlength="40"/></view>
+      <view class="gn-field"><text>相识时间</text><input :value="meetDuration" @input="meetDuration = $event.detail.value" placeholder="请输入" type="number" :maxlength="4"/><text class="gn-muted">个月</text></view>
+      <picker mode="selector" :range="stageOptions" :value="formStageIndex" @change="formStageIndex = Number($event.detail.value)"><view class="gn-field"><text>当前状态</text><text class="gn-field-choice">{{ stageOptions[formStageIndex] }} ›</text></view></picker>
+      <textarea class="gn-textarea" :value="feedbackContent" @input="feedbackContent = $event.detail.value" placeholder="记录目前的情感进展，以及对服务的反馈" :maxlength="1000"/>
+      <text class="gn-form-title">上传图片 <text class="gn-muted">{{ formImages.length }}/9</text></text>
+      <view class="gn-form-images"><view v-for="(item, i) in formImages" :key="item.url" class="gn-form-image"><image :src="item.display" mode="aspectFill" @tap="previewFormImages(i)"/><text @tap="removeImage(i)">×</text></view><view v-if="formImages.length < 9" class="gn-image-add" @tap="chooseImages"><text>＋</text><text>{{ uploading ? '上传中' : '选择图片' }}</text></view></view>
+      <view class="gn-consent" @tap="feedbackConsent = !feedbackConsent"><text>{{ feedbackConsent ? '☑' : '☐' }} 已取得双方同意，确认上述反馈和图片可提交审核</text></view>
+      <text v-if="formError.length > 0" class="gn-error">{{ formError }}</text><view class="gn-submit" :class="{ disabled: submitting || uploading }" @tap="submitFeedback"><text>{{ submitting ? '提交中…' : '提交我的反馈' }}</text></view>
+    </view></XsaSheet>
+
+    <XsaSheet :visible="pennantVisible" title="赠送锦旗" :tall="true" @close="pennantVisible = false"><view class="gn-form">
+      <view class="gn-privacy"><text>填写感谢语即可生成锦旗。可先保存图片，也可提交至锦旗墙等待审核。</text></view>
+      <view class="gn-preview"><GoodNewsPennantCanvas ref="giftCanvas"/></view>
+      <view class="gn-field"><text>赠送人</text><input :value="giftGiver" @input="giftGiver = $event.detail.value; giftPath = ''" placeholder="如：李先生" :maxlength="10"/></view>
+      <view class="gn-field"><text>赠送给</text><text class="gn-field-choice">{{ displayName }}</text></view>
+      <view class="gn-field"><text>感谢语(左)</text><input :value="giftLeft" @input="giftLeft = $event.detail.value; giftPath = ''" placeholder="如：感谢红娘牵线" :maxlength="8"/></view>
+      <view class="gn-field"><text>感谢语(右)</text><input :value="giftRight" @input="giftRight = $event.detail.value; giftPath = ''" placeholder="如：成就美好姻缘" :maxlength="8"/></view>
+      <view class="gn-field"><text>日期</text><input :value="giftDate" @input="giftDate = $event.detail.value; giftPath = ''" placeholder="如：二零二六年十一月" :maxlength="24"/></view>
+      <view class="gn-consent" @tap="giftConsent = !giftConsent"><text>{{ giftConsent ? '☑' : '☐' }} 已取得赠送人同意，确认内容可提交审核</text></view>
+      <text v-if="giftError.length > 0" class="gn-error">{{ giftError }}</text><view class="gn-gift-actions"><view @tap="generateGift"><text>生成预览</text></view><view @tap="saveGift"><text>保存图片</text></view></view><view class="gn-submit" :class="{ disabled: giftWorking }" @tap="submitGift"><text>{{ giftWorking ? '处理中…' : '提交锦旗' }}</text></view>
+    </view></XsaSheet>
+
+    <XsaSheet :visible="blessVisible" title="送上祝福" @close="blessVisible = false"><view class="gn-form"><text class="gn-form-tip">每条喜讯每人可送一次祝福，留下你的心意吧。</text><view class="gn-wishes"><view v-for="wish in wishes" :key="wish" :class="{ active: blessMessage == wish }" @tap="blessMessage = wish"><text>{{ wish }}</text></view></view><textarea class="gn-textarea" :value="blessMessage" @input="blessMessage = $event.detail.value" placeholder="写一句祝福" :maxlength="100"/><text v-if="blessError.length > 0" class="gn-error">{{ blessError }}</text><view class="gn-submit" :class="{ disabled: blessing }" @tap="submitBlessing"><text>{{ blessing ? '发送中…' : '送出祝福' }}</text></view></view></XsaSheet>
+    <XsaSheet :visible="blessingsVisible" title="收到的祝福" :tall="true" @close="blessingsVisible = false"><view class="gn-form"><view v-if="blessingsLoading && blessingRows.length == 0" class="gn-state"><text>正在加载…</text></view><view v-else-if="blessingsError.length > 0" class="gn-state"><text>{{ blessingsError }}</text><text class="gn-state-action" @tap="loadBlessings(false)">重新加载</text></view><view v-else-if="blessingRows.length == 0" class="gn-state"><text>暂无可查看的祝福记录</text></view><view v-for="row in blessingRows" :key="row.id" class="gn-blessing-row"><image :src="row.avatar" mode="aspectFill"/><view><text class="gn-blessing-name">{{ row.nickname }}</text><text class="gn-blessing-message">{{ row.message }}</text><text class="gn-muted">{{ row.createdAt }}</text></view></view><text v-if="blessingsMore" class="gn-more" @tap="loadBlessings(true)">{{ blessingsLoading ? '正在加载…' : '加载更多' }}</text></view></XsaSheet>
+  </view>
+</template>
+
+<script setup lang="uts">
+import { ref, computed, onMounted, nextTick } from 'vue'
+import XsaSheet from '@/components/XsaSheet.uvue'
+import { getMatchmakerWorkspaceGoodNews, getMatchmakerWorkspaceGoodNewsPennants, uploadWorkspaceGoodNewsPhoto } from '@/api/matchmaker.uts'
+import { getGoodNewsDetail, normalizeGoodNews, getGoodNewsBlessings, sendGoodNewsBlessing, submitGoodNewsPennant, submitGoodNewsFeedback } from '@/api/workspace-good-news.uts'
+import { resolveMediaUrl } from '@/api/config.uts'
+import { GOOD_NEWS_STAGES, GOOD_NEWS_WISHES, goodNewsTone, goodNewsRequestId, goodNewsFallbackAvatar } from '@/utils/good-news.uts'
+import GoodNewsPennantCanvas from '@/components/GoodNewsPennantCanvas.uvue'
+
+const props = withDefaults(defineProps<{ displayName?: string; initialItemId?: string; initialKind?: string }>(), { displayName: '服务红娘', initialItemId: '', initialKind: 'news' })
+const emit = defineEmits<{ title: [value: string]; resetScroll: []; profile: [id: string]; shareInfo: [info: any] }>()
+const stages = GOOD_NEWS_STAGES
+const stageOptions = GOOD_NEWS_STAGES.slice(0, 7).map((row: any) => String(row.label))
+const wishes = GOOD_NEWS_WISHES
+const tone = goodNewsTone
+const selectedStage = ref('')
+const isPennant = computed(() => selectedStage.value == '锦旗飘扬')
+const rows = ref<any[]>([])
+const loading = ref(false)
+const error = ref('')
+const page = ref(1)
+const hasMore = ref(false)
+let listGeneration = 0
+const detail = ref<any>(null)
+const detailLoading = ref(false)
+const detailError = ref('')
+const detailRequest = ref<any>(null)
+let detailGeneration = 0
+const reportVisible = ref(false)
+const feedbackVisible = ref(false)
+const pennantVisible = ref(false)
+const blessVisible = ref(false)
+const blessingsVisible = ref(false)
+const toast = (message: string) => uni.showToast({ title: message, icon: 'none' })
+const apiMessage = (result: any): string => Number(result.code) == 404 || Number(result.code) == 501 ? '当前服务暂未开放这项功能' : String(result.message || '暂时无法加载，请重试')
+const avatar = (url: string, id: string): string => url.length > 0 ? url : goodNewsFallbackAvatar(id)
+const openPerson = (id: string) => { if (id.length > 0) emit('profile', id) }
+const previewImages = (urls: string[], index: number) => { if (urls.length > 0) uni.previewImage({ urls: urls, current: urls[index] }) }
+const pennantColumns = (row: any): string[] => row.rightWords.length > 0 || row.leftWords.length > 0 ? [row.rightWords, row.leftWords] : [row.words || '感谢用心服务']
+
+const loadRows = async (append: boolean = false) => {
+  if (append && (loading.value || !hasMore.value)) return
+  const generation = ++listGeneration
+  const targetPage = append ? page.value + 1 : 1
+  const kind = isPennant.value ? 'pennant' : 'news'
+  loading.value = true
+  error.value = ''
+  if (!append) rows.value = []
+  try {
+    const result = kind == 'pennant' ? await getMatchmakerWorkspaceGoodNewsPennants(targetPage, 20) : await getMatchmakerWorkspaceGoodNews(selectedStage.value, targetPage, 20)
+    if (generation != listGeneration) return
+    if (!result.success || result.data == null) { error.value = apiMessage(result); return }
+    const data = result.data
+    const items = (Array.isArray(data.items) ? data.items : []).map((row: any) => normalizeGoodNews(row, kind))
+    rows.value = append ? [...rows.value, ...items] : items
+    page.value = targetPage
+    hasMore.value = data.hasMore === true
+  } catch (e) { if (generation == listGeneration) error.value = '网络异常，请稍后重试' }
+  finally { if (generation == listGeneration) loading.value = false }
+}
+
+const selectStage = (stage: string) => {
+  selectedStage.value = selectedStage.value == stage ? '' : stage
+  void loadRows(false)
+  emit('resetScroll')
+}
+const openDetail = async (row: any) => {
+  const generation = ++detailGeneration
+  detailRequest.value = { id: row.id, kind: row.kind }
+  detail.value = null
+  detailError.value = ''
+  detailLoading.value = true
+  emit('resetScroll')
+  emit('title', row.kind == 'pennant' ? '锦旗飘扬' : '红娘喜讯')
+  try {
+    const result = await getGoodNewsDetail(String(row.id), String(row.kind))
+    if (generation != detailGeneration) return
+    if (!result.success || result.data == null) { detailError.value = apiMessage(result); return }
+    detail.value = result.data
+    emit('shareInfo', detail.value)
+  } catch (e) { if (generation == detailGeneration) detailError.value = '网络异常，请稍后重试' }
+  finally { if (generation == detailGeneration) detailLoading.value = false }
+}
+const retryDetail = () => { if (detailRequest.value != null) void openDetail(detailRequest.value) }
+const back = (): boolean => {
+  if (reportVisible.value || feedbackVisible.value || pennantVisible.value || blessVisible.value || blessingsVisible.value) { reportVisible.value = false; feedbackVisible.value = false; pennantVisible.value = false; blessVisible.value = false; blessingsVisible.value = false; return true }
+  if (detail.value != null || detailLoading.value || detailError.value.length > 0) { detailGeneration += 1; detail.value = null; detailError.value = ''; detailLoading.value = false; emit('title', '红娘喜讯'); emit('shareInfo', null); emit('resetScroll'); return true }
+  return false
+}
+
+const feedbackName = ref('')
+const partnerName = ref('')
+const meetDuration = ref('')
+const feedbackContent = ref('')
+const formStageIndex = ref(0)
+const formImages = ref<any[]>([])
+const previewFormImages = (index: number) => previewImages(formImages.value.map((row: any) => String(row.display)), index)
+const feedbackConsent = ref(false)
+const formError = ref('')
+const submitting = ref(false)
+const uploading = ref(false)
+let feedbackRequestId = ''
+const openFeedback = () => {
+  reportVisible.value = false
+  feedbackName.value = ''; partnerName.value = ''; meetDuration.value = ''; feedbackContent.value = ''; formImages.value = []; feedbackConsent.value = false; formError.value = ''
+  formStageIndex.value = Math.max(0, stageOptions.indexOf(selectedStage.value))
+  feedbackRequestId = goodNewsRequestId()
+  feedbackVisible.value = true
+}
+const removeImage = (index: number) => { if (!uploading.value) formImages.value = formImages.value.filter((row: any, i: number) => i != index) }
+const chooseImages = () => {
+  if (uploading.value) return
+  uni.chooseImage({ count: 9 - formImages.value.length, success: async (chosen: any) => {
+    uploading.value = true; formError.value = ''
+    try {
+      const paths = chosen.tempFilePaths as string[]
+      for (let i = 0; i < paths.length; i++) {
+        const result = await uploadWorkspaceGoodNewsPhoto(paths[i])
+        if (!result.success || result.data == null) { formError.value = apiMessage(result); break }
+        const url = String(result.data.url || '')
+        if (url.length == 0) { formError.value = '图片上传失败，请重试'; break }
+        formImages.value = [...formImages.value, { url: url, display: resolveMediaUrl(url) }]
+      }
+    } catch (e) { formError.value = '图片上传失败，请重试' }
+    finally { uploading.value = false }
+  } })
+}
+const submitFeedback = async () => {
+  if (submitting.value || uploading.value) return
+  if (feedbackName.value.trim().length == 0 || partnerName.value.trim().length == 0) { formError.value = '请填写双方称呼'; return }
+  if (!feedbackConsent.value) { formError.value = '请先确认已取得双方同意'; return }
+  submitting.value = true; formError.value = ''
+  try {
+    const result = await submitGoodNewsFeedback({ feedback_name: feedbackName.value.trim(), partner_name: partnerName.value.trim(), meet_duration: meetDuration.value.trim(), stage: stageOptions[formStageIndex.value], content: feedbackContent.value.trim(), images: formImages.value.map((row: any) => row.url), consent_confirmed: true, client_request_id: feedbackRequestId })
+    if (!result.success) { formError.value = apiMessage(result); return }
+    feedbackVisible.value = false; selectedStage.value = stageOptions[formStageIndex.value]; detail.value = null; emit('shareInfo', null); emit('title', '红娘喜讯'); toast('反馈已提交，等待审核'); await loadRows(false); emit('resetScroll')
+  } catch (e) { formError.value = '网络异常，请稍后重试' }
+  finally { submitting.value = false }
+}
+
+const giftCanvas = ref<any>(null)
+const giftGiver = ref('')
+const giftLeft = ref('感谢红娘牵线')
+const giftRight = ref('成就美好姻缘')
+const giftDate = ref('')
+const giftConsent = ref(false)
+const giftWorking = ref(false)
+const giftError = ref('')
+const giftPath = ref('')
+let giftRequestId = ''
+const giftPayload = (): any => ({ giver: giftGiver.value.trim(), receiver: props.displayName, leftWords: giftLeft.value.trim(), rightWords: giftRight.value.trim(), dateText: giftDate.value.trim() })
+const openPennant = async () => {
+  reportVisible.value = false; giftGiver.value = ''; giftLeft.value = '感谢红娘牵线'; giftRight.value = '成就美好姻缘'; giftConsent.value = false; giftError.value = ''; giftPath.value = ''; giftRequestId = goodNewsRequestId()
+  const date = new Date(); giftDate.value = String(date.getFullYear()) + '年' + String(date.getMonth() + 1) + '月' + String(date.getDate()) + '日'
+  pennantVisible.value = true
+  await nextTick()
+  try { await giftCanvas.value.render(giftPayload()) } catch (e: any) { giftError.value = '预览加载失败：' + String(e.errMsg || e.message || e) }
+}
+const drawGift = async (): Promise<string> => {
+  if (giftGiver.value.trim().length == 0 || giftLeft.value.trim().length == 0 || giftRight.value.trim().length == 0) throw new Error('请填写赠送人及左右感谢语')
+  const path = await giftCanvas.value.exportImage(giftPayload())
+  giftPath.value = path
+  return path
+}
+const generateGift = async () => {
+  if (giftWorking.value) return
+  giftWorking.value = true; giftError.value = ''
+  try { await drawGift(); toast('锦旗预览已更新') } catch (e: any) { giftError.value = String(e.message || '生成失败，请重试') }
+  finally { giftWorking.value = false }
+}
+const saveGift = async () => {
+  if (giftWorking.value) return
+  giftWorking.value = true; giftError.value = ''
+  try {
+    const path = giftPath.value.length > 0 ? giftPath.value : await drawGift()
+    await new Promise<void>((resolve, reject) => uni.saveImageToPhotosAlbum({ filePath: path, success: () => { toast('已保存到相册'); resolve() }, fail: () => { reject(new Error('保存失败，请确认相册权限后重试')) } }))
+  } catch (e: any) { giftError.value = String(e.message || '保存失败，请重试') }
+  finally { giftWorking.value = false }
+}
+const submitGift = async () => {
+  if (giftWorking.value) return
+  if (!giftConsent.value) { giftError.value = '请先确认已取得赠送人同意'; return }
+  giftWorking.value = true; giftError.value = ''
+  try {
+    const path = giftPath.value.length > 0 ? giftPath.value : await drawGift()
+    const uploaded = await uploadWorkspaceGoodNewsPhoto(path)
+    if (!uploaded.success || uploaded.data == null) { giftError.value = apiMessage(uploaded); return }
+    const result = await submitGoodNewsPennant({ giver: giftGiver.value.trim(), left_words: giftLeft.value.trim(), right_words: giftRight.value.trim(), date_text: giftDate.value.trim(), image_url: String(uploaded.data.url), consent_confirmed: true, client_request_id: giftRequestId })
+    if (!result.success) { giftError.value = apiMessage(result); return }
+    pennantVisible.value = false; detail.value = null; selectedStage.value = '锦旗飘扬'; emit('shareInfo', null); emit('title', '红娘喜讯'); toast('锦旗已提交，等待审核'); await loadRows(false); emit('resetScroll')
+  } catch (e: any) { giftError.value = String(e.message || '提交失败，请重试') }
+  finally { giftWorking.value = false }
+}
+
+const blessingTarget = ref<any>(null)
+const blessMessage = ref('')
+const blessing = ref(false)
+const blessError = ref('')
+const blessingRows = ref<any[]>([])
+const blessingsLoading = ref(false)
+const blessingsError = ref('')
+const blessingsPage = ref(1)
+const blessingsMore = ref(false)
+const openBless = (row: any) => {
+  if (row.pendingReview) { toast('审核通过后才能送祝福'); return }
+  if (row.blessed === true) { toast('你已经送过祝福'); return }
+  blessingTarget.value = row; blessMessage.value = wishes[0]; blessError.value = ''; blessVisible.value = true
+}
+const submitBlessing = async () => {
+  if (blessing.value || blessingTarget.value == null) return
+  if (blessMessage.value.trim().length == 0) { blessError.value = '请写一句祝福'; return }
+  blessing.value = true; blessError.value = ''
+  try {
+    const target = blessingTarget.value
+    const result = await sendGoodNewsBlessing(String(target.id), blessMessage.value)
+    if (!result.success || result.data == null) { blessError.value = apiMessage(result); return }
+    const count = Number(result.data.blessing_count || 0)
+    target.blessingCount = count; target.blessed = true
+    rows.value = rows.value.map((row: any) => row.id == target.id ? { ...row, blessingCount: count, blessed: true } : row)
+    if (detail.value != null && detail.value.id == target.id) detail.value = { ...detail.value, blessingCount: count, blessed: true }
+    blessVisible.value = false; toast(result.data.created === false ? '你已经送过祝福' : '祝福已送达')
+  } catch (e) { blessError.value = '网络异常，请稍后重试' }
+  finally { blessing.value = false }
+}
+const loadBlessings = async (append: boolean = false) => {
+  if (blessingsLoading.value || blessingTarget.value == null) return
+  blessingsLoading.value = true; blessingsError.value = ''
+  const targetPage = append ? blessingsPage.value + 1 : 1
+  try {
+    const result = await getGoodNewsBlessings(String(blessingTarget.value.id), targetPage)
+    if (!result.success || result.data == null) { blessingsError.value = apiMessage(result); return }
+    const data = result.data
+    const items = (Array.isArray(data.items) ? data.items : []).map((row: any) => ({ id: String(row.id), nickname: String(row.nickname || '会员'), avatar: avatar(row.avatar != null ? resolveMediaUrl(String(row.avatar)) : '', String(row.id)), message: String(row.message || ''), createdAt: String(row.created_at || '').replace('T', ' ').substring(0, 16) }))
+    blessingRows.value = append ? [...blessingRows.value, ...items] : items; blessingsPage.value = targetPage; blessingsMore.value = data.has_more === true
+    blessingTarget.value.blessed = data.blessed === true
+  } catch (e) { blessingsError.value = '网络异常，请稍后重试' }
+  finally { blessingsLoading.value = false }
+}
+const openBlessings = (row: any) => { blessingTarget.value = row; blessingRows.value = []; blessingsVisible.value = true; void loadBlessings(false) }
+defineExpose({ back })
+onMounted(async () => { await loadRows(false); if (props.initialItemId.length > 0) await openDetail({ id: props.initialItemId, kind: props.initialKind }) })
+</script>
+
+<style scoped>
+.gn-root { color: var(--ink); font-size: 25rpx; padding-bottom: 32rpx; }
+.gn-stages { display: flex; flex-direction: row; flex-wrap: wrap; padding: 4rpx 0 12rpx; }
+.gn-stage { width: 25%; padding: 0 8rpx 16rpx; box-sizing: border-box; }
+.gn-stage-tile { position: relative; height: 158rpx; width: 100%; }
+.gn-stage-platform { position: absolute; top: 38rpx; left: 0; right: 0; height: 58rpx; border-radius: 46rpx 46rpx 0 0; background: var(--plane-sky-deep); }
+.gn-stage-base { position: absolute; top: 74rpx; left: 0; right: 0; bottom: 0; border-radius: 0 0 28rpx 28rpx; background: var(--match-sky); }
+.gn-stage-image { position: absolute; top: 0; left: 50%; margin-left: -67rpx; width: 134rpx; height: 110rpx; }
+.gn-stage-label { position: absolute; left: 0; right: 0; bottom: 13rpx; color: var(--ink); font-size: 24rpx; line-height: 1.3; text-align: center; white-space: nowrap; }
+.gn-stage.active .gn-stage-base { background: var(--accent-bg); }.gn-stage.active .gn-stage-label { color: var(--accent2); font-weight: 800; }
+.gn-feedback { padding: 20rpx 18rpx; border-radius: 22rpx; background: var(--review-soft); display: flex; flex-direction: row; align-items: center; gap: 10rpx; color: var(--review-deep); }
+.gn-feedback-mark { font-size: 32rpx; }.gn-feedback-copy { flex: 1; min-width: 0; font-size: 21rpx; line-height: 1.5; }.gn-feedback-action { padding: 10rpx 18rpx; border-radius: 999rpx; background: var(--surface); font-size: 22rpx; font-weight: 700; }
+.gn-section { padding: 28rpx 6rpx 8rpx; display: flex; flex-direction: row; justify-content: space-between; align-items: center; font-size: 25rpx; font-weight: 700; }.gn-clear { color: var(--accent2); font-size: 22rpx; font-weight: 400; }
+.gn-card { padding: 22rpx; margin-top: 18rpx; border-radius: 30rpx; background: var(--surface); box-shadow: var(--shadow-sm); }
+.gn-card-head,.gn-meta,.gn-card-foot { display: flex; flex-direction: row; align-items: center; gap: 14rpx; }.gn-card-head { flex-wrap: wrap; justify-content: space-between; }
+.gn-badge { flex-shrink: 0; padding: 8rpx 16rpx; border-radius: 999rpx; background: var(--sage-soft); color: var(--accent2); font-size: 23rpx; }
+.gn-badge.coral { background: var(--match-blush); color: var(--match-coral); }.gn-badge.sky { background: var(--match-sky); color: var(--match-deep); }.gn-badge.plum { background: var(--review-lilac); color: var(--review-deep); }.gn-badge.pink { background: var(--review-soft); color: var(--review-danger); }.gn-badge.apricot { background: var(--shortcut-apricot); color: var(--review-orange); }.gn-badge.mint { background: var(--shortcut-mint); }
+.gn-people { flex: 1; min-width: 0; display: flex; flex-direction: row; justify-content: flex-end; gap: 14rpx; }.gn-person { max-width: 48%; display: flex; flex-direction: row; align-items: center; gap: 6rpx; min-width: 0; }.gn-person image { width: 36rpx; height: 36rpx; border-radius: 50%; flex-shrink: 0; background: var(--warm); }.gn-person text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 22rpx; }
+.gn-gift-person { flex: 1; min-width: 0; text-align: right; color: var(--ink2); font-size: 22rpx; line-height: 1.6; }.gn-review { display: block; padding-top: 14rpx; color: var(--review-orange); font-size: 21rpx; }
+.gn-meta { margin: 18rpx 0; color: var(--ink2); font-size: 21rpx; flex-wrap: wrap; }.gn-meta text + text { padding-left: 14rpx; border-left: 1px solid var(--line); }.gn-muted { color: var(--muted); font-size: 21rpx; }
+.gn-gallery { position: relative; display: flex; flex-direction: row; flex-wrap: wrap; gap: 8rpx; margin-top: 18rpx; }.gn-gallery image { width: 192rpx; height: 192rpx; max-width: 31%; border-radius: 12rpx 28rpx 12rpx 28rpx; background: var(--warm); }.gn-gallery-more { position: absolute; right: 14rpx; bottom: 10rpx; padding: 6rpx 10rpx; border-radius: 8rpx; background: var(--surface); color: var(--ink2); font-size: 18rpx; }
+.gn-summary { display: block; margin-top: 16rpx; color: var(--ink2); font-size: 24rpx; line-height: 1.7; white-space: pre-wrap; word-break: break-all; }
+.gn-card-foot { justify-content: space-between; margin-top: 22rpx; padding-top: 16rpx; border-top: 1px solid var(--line); }.gn-count { flex: 1; color: var(--muted); font-size: 21rpx; }.gn-detail-link { padding: 12rpx 24rpx; border-radius: 999rpx; color: var(--accent2); background: var(--match-sky); font-size: 23rpx; }
+.gn-pennant-summary { display: flex; flex-direction: row; align-items: center; gap: 16rpx; padding: 30rpx 2rpx 10rpx; }.gn-pennant-icon { width: 176rpx; height: 160rpx; flex-shrink: 0; }.gn-quote { flex: 1; min-width: 0; padding: 12rpx 18rpx; border: 1px solid var(--match-blush); border-radius: 20rpx; color: var(--review-danger); line-height: 1.7; font-size: 27rpx; font-weight: 700; background: var(--match-paper); }.gn-quote > text:first-child { font-size: 40rpx; color: var(--review-pink); }
+.gn-state { min-height: 290rpx; padding: 50rpx 24rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20rpx; color: var(--muted); font-size: 25rpx; text-align: center; }.gn-empty { background: var(--match-sky); border-radius: 26rpx; margin-top: 18rpx; }.gn-empty-icon { width: 108rpx; height: 108rpx; border-radius: 30rpx; background: var(--surface); display: flex; align-items: center; justify-content: center; color: var(--soft); font-size: 60rpx; }.gn-state-action { padding: 14rpx 28rpx; border-radius: 999rpx; background: var(--accent-bg); color: var(--accent2); font-size: 23rpx; }.gn-more { display: block; padding: 30rpx 20rpx; text-align: center; font-size: 22rpx; color: var(--muted); }
+.gn-fab { position: fixed; z-index: 50; right: 24rpx; bottom: calc(env(safe-area-inset-bottom) + 28rpx); width: 104rpx; height: 104rpx; border-radius: 50%; background: var(--surface); box-shadow: var(--match-shadow); display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--accent2); font-size: 20rpx; gap: 4rpx; }.gn-fab-icon { font-size: 36rpx; }
+.gn-detail { padding: 12rpx 0 125rpx; }.gn-detail-card { background: var(--surface); border-radius: 34rpx; overflow: hidden; }.gn-detail-head { padding: 26rpx 20rpx; display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 18rpx; background: var(--review-soft); }.gn-received { padding: 10rpx 18rpx; color: var(--review-deep); border-radius: 999rpx; background: var(--review-lilac); font-size: 22rpx; }.gn-detail-body { padding: 24rpx; }.gn-detail-meta { display: flex; flex-direction: row; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 18rpx; margin-bottom: 20rpx; }.gn-duration { padding: 9rpx 18rpx; border-radius: 999rpx; background: var(--review-lilac); color: var(--review-deep); font-size: 23rpx; }.gn-content { display: block; font-size: 30rpx; line-height: 1.8; white-space: pre-wrap; word-break: break-all; margin-bottom: 24rpx; }.gn-detail-images { display: flex; flex-direction: column; gap: 18rpx; }.gn-detail-images image { width: 100%; border-radius: 22rpx; background: var(--warm); }.gn-care { margin-top: 28rpx; padding: 22rpx; border: 1px solid var(--line); border-radius: 22rpx; color: var(--muted); font-size: 22rpx; line-height: 1.7; display: flex; flex-direction: column; gap: 10rpx; }.gn-care-title { color: var(--accent2); font-size: 25rpx; font-weight: 700; }
+.gn-pennant-detail { display: flex; flex-direction: column; align-items: center; gap: 32rpx; }.gn-pennant-detail > image { width: 100%; border-radius: 16rpx; }.gn-pennant-date { text-align: center; color: var(--muted); font-size: 23rpx; padding: 20rpx 0; }.gn-text-pennant { width: 100%; min-height: 650rpx; background: var(--review-danger); color: var(--plane-yellow); border: 8rpx solid var(--plane-yellow); border-radius: 10rpx 10rpx 80rpx 80rpx; padding: 36rpx 28rpx; display: flex; flex-direction: column; align-items: center; gap: 30rpx; }.gn-text-pennant-name { font-size: 24rpx; }.gn-text-pennant-columns { display: flex; flex-direction: row; justify-content: center; gap: 50rpx; }.gn-text-pennant-columns > view { display: flex; flex-direction: column; align-items: center; }.gn-text-pennant-columns text { font-size: 42rpx; font-weight: 800; line-height: 1.4; }
+.gn-detail-floats { position: fixed; z-index: 45; right: 26rpx; bottom: calc(env(safe-area-inset-bottom) + 180rpx); display: flex; flex-direction: column; gap: 18rpx; }.gn-detail-floats > view,.gn-detail-floats > button { width: 100rpx; height: 100rpx; border-radius: 50%; background: var(--surface); box-shadow: var(--match-shadow); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4rpx; color: var(--review-deep); padding: 0; margin: 0; border: 0; line-height: 1.4; font-size: 19rpx; }.gn-detail-floats > button::after { border: 0; }.gn-detail-floats text:first-child { font-size: 38rpx; }.gn-detail-bar { position: fixed; z-index: 48; left: 0; right: 0; bottom: 0; padding: 16rpx 22rpx calc(env(safe-area-inset-bottom) + 18rpx); background: var(--surface); border-top: 1px solid var(--line); display: flex; flex-direction: row; gap: 12rpx; }.gn-detail-bar > view { flex: 1; min-width: 0; padding: 20rpx 0; border-radius: 22rpx; background: var(--review-lilac); color: var(--review-deep); text-align: center; font-size: 25rpx; font-weight: 700; }.gn-detail-bar > view:nth-child(2) { background: var(--match-blush); color: var(--review-danger); }.gn-detail-bar > view:last-child { background: var(--warm); color: var(--ink2); }
+.gn-report-options { display: flex; flex-direction: row; justify-content: space-around; padding: 26rpx 10rpx; }.gn-report-options > view { display: flex; flex-direction: column; align-items: center; gap: 20rpx; color: var(--review-deep); font-size: 25rpx; }.gn-report-circle { width: 108rpx; height: 108rpx; border-radius: 50%; background: var(--review-lilac); display: flex; align-items: center; justify-content: center; font-size: 45rpx; }.gn-report-circle.gift { background: var(--match-blush); }.gn-form { padding: 8rpx 6rpx 20rpx; display: flex; flex-direction: column; gap: 18rpx; }.gn-form-tip { display: block; padding: 12rpx 6rpx; color: var(--muted); font-size: 22rpx; line-height: 1.7; }.gn-privacy { padding: 20rpx; border-radius: 20rpx; background: var(--match-sky); color: var(--ink2); font-size: 22rpx; line-height: 1.7; display: flex; flex-direction: column; gap: 10rpx; }.gn-privacy-title { font-weight: 700; color: var(--accent2); font-size: 25rpx; }.gn-field { min-height: 88rpx; border-bottom: 1px solid var(--line); display: flex; flex-direction: row; align-items: center; gap: 16rpx; font-size: 25rpx; }.gn-field > text:first-child { min-width: 140rpx; color: var(--ink2); }.gn-field input { flex: 1; min-width: 0; font-size: 25rpx; text-align: right; color: var(--ink); }.gn-field-choice { flex: 1; min-width: 0; text-align: right; color: var(--ink2); }.gn-textarea { width: 100%; height: 190rpx; padding: 20rpx; box-sizing: border-box; border-radius: 18rpx; background: var(--canvas); color: var(--ink); font-size: 24rpx; line-height: 1.7; }.gn-form-title { font-size: 25rpx; color: var(--ink2); }.gn-form-images { display: flex; flex-direction: row; flex-wrap: wrap; gap: 14rpx; }.gn-form-image,.gn-image-add { width: 138rpx; height: 138rpx; position: relative; }.gn-form-image image { width: 100%; height: 100%; border-radius: 16rpx; }.gn-form-image > text { position: absolute; top: 0; right: 0; width: 40rpx; height: 40rpx; border-radius: 0 16rpx 0 16rpx; background: var(--review-danger); color: var(--paper); text-align: center; font-size: 26rpx; }.gn-image-add { display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed var(--line); border-radius: 16rpx; color: var(--muted); gap: 8rpx; font-size: 20rpx; }.gn-image-add text:first-child { font-size: 42rpx; }.gn-consent { padding: 14rpx 4rpx; color: var(--accent2); font-size: 23rpx; line-height: 1.7; }.gn-error { display: block; color: var(--review-danger); font-size: 23rpx; line-height: 1.6; }.gn-submit { padding: 24rpx 16rpx; border-radius: 20rpx; color: var(--paper); background: var(--accent); text-align: center; font-size: 27rpx; font-weight: 700; }.disabled { opacity: 0.55; }.gn-preview { align-self: center; width: 200px; height: 280px; border-radius: 14rpx; overflow: hidden; background: var(--match-paper); }.gn-gift-actions { display: flex; flex-direction: row; gap: 14rpx; }.gn-gift-actions > view { flex: 1; padding: 20rpx; border: 1px solid var(--line); border-radius: 18rpx; color: var(--accent2); text-align: center; font-size: 25rpx; }.gn-wishes { display: flex; flex-direction: column; gap: 14rpx; }.gn-wishes > view { padding: 18rpx; border: 1px solid var(--line); border-radius: 18rpx; color: var(--ink2); font-size: 23rpx; line-height: 1.7; }.gn-wishes > view.active { border-color: var(--accent2); background: var(--accent-bg); color: var(--accent2); }.gn-blessing-row { display: flex; flex-direction: row; gap: 18rpx; padding: 20rpx 0; border-bottom: 1px solid var(--line); }.gn-blessing-row > image { width: 64rpx; height: 64rpx; border-radius: 50%; flex-shrink: 0; }.gn-blessing-row > view { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10rpx; }.gn-blessing-name { color: var(--ink); font-size: 25rpx; font-weight: 700; }.gn-blessing-message { color: var(--ink2); line-height: 1.7; font-size: 24rpx; word-break: break-all; }
+</style>
+
+
+
+

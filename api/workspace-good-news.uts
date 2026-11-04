@@ -1,0 +1,49 @@
+/** GOOD-NEWS-20261104: scoped news / pennant details and real interaction APIs. */
+import { request } from './matchmaker-remote.uts'
+import { resolveMediaUrl } from './config.uts'
+
+export function normalizeGoodNews(value: any, kind: string = 'news'): any {
+  const row = value != null ? value : {}
+  const media = (value: any): string => value != null ? resolveMediaUrl(String(value)) : ''
+  const name = (value: any): string => value == null || String(value) == '未命名会员' ? '' : String(value)
+  const images = Array.isArray(row.images) ? row.images.map((item: any) => media(item)).filter((item: string) => item.length > 0) : []
+  return {
+    id: String(row.id || ''), kind: kind, stage: kind == 'pennant' ? '锦旗飘扬' : String(row.stage || ''),
+    fromUserId: String(row.fromUserId || row.from_user_id || ''), toUserId: String(row.toUserId || row.to_user_id || ''),
+    fromName: name(row.fromName || row.from_name), toName: name(row.toName || row.to_name),
+    fromAvatar: media(row.fromAvatar || row.from_avatar), toAvatar: media(row.toAvatar || row.to_avatar),
+    matchmakerName: String(row.matchmakerName || row.matchmaker_name || ''),
+    meetDuration: String(row.meetDuration || row.meet_duration || ''),
+    images: images, content: String(row.content || ''), blessingCount: Number(row.blessingCount || row.blessing_count || 0),
+    pendingReview: row.pendingReview === true || row.pending_review === true,
+    public: row.public !== false,
+    createdAt: String(row.createdAt || row.created_at || '').replace('T', ' ').substring(0, 16),
+    giver: String(row.giver || ''), target: String(row.target || ''), maker: String(row.maker || ''),
+    words: String(row.words || ''), leftWords: String(row.leftWords || row.left_words || ''),
+    rightWords: String(row.rightWords || row.right_words || ''), dateText: String(row.dateText || row.date_text || ''),
+    imageUrl: media(row.imageUrl || row.image_url)
+  }
+}
+
+export async function getGoodNewsDetail(id: string, kind: string) {
+  const prefix = kind == 'pennant' ? '/matchmaker/workbench/good-news/pennants/' : '/matchmaker/workbench/good-news/'
+  const result = await request({ url: prefix + encodeURIComponent(id), method: 'GET' })
+  if (result.success && result.data != null) result.data = normalizeGoodNews(result.data, kind)
+  return result
+}
+
+export async function getGoodNewsBlessings(id: string, page: number = 1) {
+  return request({ url: '/matchmaker/workbench/good-news/' + encodeURIComponent(id) + '/blessings', method: 'GET', data: { page: page, page_size: 20 } })
+}
+
+export async function sendGoodNewsBlessing(id: string, message: string) {
+  return request({ url: '/matchmaker/workbench/good-news/' + encodeURIComponent(id) + '/blessings', method: 'POST', data: { message: message.trim() } })
+}
+
+export async function submitGoodNewsPennant(data: any) {
+  return request({ url: '/matchmaker/workbench/good-news/pennants', method: 'POST', data: data })
+}
+
+export async function submitGoodNewsFeedback(data: any) {
+  return request({ url: '/matchmaker/workbench/good-news', method: 'POST', data: data })
+}

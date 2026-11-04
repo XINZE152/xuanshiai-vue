@@ -982,6 +982,7 @@ export async function getMatchmakerWorkspaceGoodNews(stage: string, page: number
           blessing: item.blessing != null ? String(item.blessing) : '',
           blessingCount: item.blessing_count != null ? Number(item.blessing_count) : 0,
           pendingReview: item.pending_review === true,
+          public: item.public !== false,
           createdAt: formatWorkspaceTime(item.created_at)
         }
       }),
@@ -1013,6 +1014,10 @@ export async function getMatchmakerWorkspaceGoodNewsPennants(page: number, pageS
         giver: item.giver != null ? String(item.giver) : '',
         target: item.target != null ? String(item.target) : '',
         words: item.words != null ? String(item.words) : '',
+        leftWords: String(item.left_words || ''),
+        rightWords: String(item.right_words || ''),
+        dateText: String(item.date_text || ''),
+        pendingReview: item.pending_review === true,
         imageUrl: item.image_url != null ? resolveMediaUrl(String(item.image_url)) : '',
         createdAt: formatWorkspaceTime(item.created_at)
       })),

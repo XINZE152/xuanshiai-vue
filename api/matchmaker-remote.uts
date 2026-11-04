@@ -4,6 +4,15 @@ import { API_BASE_URL, USE_MOCK, getAccessToken } from './config.uts'
 
 export const MATCHMAKER_REMOTE_MODE = API_BASE_URL == 'https://xhztest.xyz'
 const REMOTE_OPERATIONS: string[] = [
+  "GET /matchmaker/workbench/good-news",
+  "POST /matchmaker/workbench/good-news",
+  "POST /matchmaker/workbench/good-news/photo",
+  "GET /matchmaker/workbench/good-news/pennants",
+  "POST /matchmaker/workbench/good-news/pennants",
+  "GET /matchmaker/workbench/good-news/pennants/{item_id}",
+  "GET /matchmaker/workbench/good-news/{item_id}",
+  "GET /matchmaker/workbench/good-news/{item_id}/blessings",
+  "POST /matchmaker/workbench/good-news/{item_id}/blessings",
   "GET /matchmaker/application-types",
   "POST /matchmaker/applications",
   "GET /matchmaker/applications/mine",
