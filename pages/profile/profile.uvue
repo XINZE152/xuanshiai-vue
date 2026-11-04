@@ -423,7 +423,7 @@ const loadOverview = async () => {
 		.then((completion: any) => {
 			if (completion != null && completion.success && completion.data != null) {
 				const completionData = completion.data as any
-				const score = completionData.score != null ? completionData.score : completionData.completion_score
+				const score = completionData.score
 				if (score != null && !isNaN(Number(score))) {
 					profileCompletion.value = Math.round(Number(score))
 					completionLoaded.value = true

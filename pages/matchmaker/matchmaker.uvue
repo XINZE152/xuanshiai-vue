@@ -153,6 +153,10 @@
 
 					</view>
 
+					<view v-if="currentTabValue === 'news'" class="tab-panel gn-tab-panel">
+						<GoodNewsPanel />
+					</view>
+
 				</view>
 			</scroll-view>
 		</view>
@@ -176,14 +180,15 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 	import XsaEmpty from '@/components/XsaEmpty.uvue'
 	import MatchmakerCard from '@/components/MatchmakerCard.uvue'
 	import MatchmakerRank from '@/components/MatchmakerRank.uvue'
+	import GoodNewsPanel from '@/components/GoodNewsPanel.uvue'
 	import {
 		getServiceMatchmakers,
 		getVolunteerMatchmakers,
 		getCustomPlans
 	} from '@/api'
 
-	const tabs = ['服务红娘', '私人定制']
-	const tabValues = ['service', 'custom']
+	const tabs = ['服务红娘', '私人定制', '喜讯']
+	const tabValues = ['service', 'custom', 'news']
 	const customHomeValues = [
 		{ mark: '准', title: '精准匹配', copy: '根据关系期待筛选候选对象。' },
 		{ mark: '专', title: '专属服务', copy: '一位红娘持续跟进反馈。' },
@@ -810,7 +815,7 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 	.matchmaker-tab {
 		position: relative;
 		flex: 1;
-		width: 50%;
+		width: auto;
 		min-width: 0;
 		flex-shrink: 1;
 		height: 80rpx;
@@ -818,7 +823,7 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 32rpx;
+		font-size: 28rpx;
 		font-weight: 700;
 		color: rgba(18, 101, 88, 0.55);
 	}
