@@ -1,0 +1,105 @@
+/**
+ * 红娘喜讯演示数据。
+ * 仅在 GOOD_NEWS_USE_MOCK=true 或全局 USE_MOCK 时使用；页面必须显示“演示数据”标识。
+ * 不得把这里的数字当作生产祝福人数或真实案例。
+ */
+
+export const mockGoodNewsConfig: any = {
+  is_demo: true,
+  title: '脱单喜讯',
+  description: '会员回访里的每一步进展，都会记在这里',
+  banner_url: '',
+  share_cover_url: '',
+  categories: [
+    { label: '牵手成功', value: '牵手成功', icon_url: '', sort_order: 100 },
+    { label: '恋爱生活', value: '恋爱生活', icon_url: '', sort_order: 90 },
+    { label: '已见父母', value: '已见父母', icon_url: '', sort_order: 80 },
+    { label: '已订婚', value: '已订婚', icon_url: '', sort_order: 70 },
+    { label: '已领证', value: '已领证', icon_url: '', sort_order: 60 },
+    { label: '已办婚礼', value: '已办婚礼', icon_url: '', sort_order: 50 },
+    { label: '婚后生活', value: '婚后生活', icon_url: '', sort_order: 40 },
+    { label: '锦旗飘扬', value: '锦旗飘扬', icon_url: '', sort_order: 30 }
+  ],
+  blessings: [
+    '愿你们往后的日子，眼里有光，心里有爱，身边有彼此。',
+    '恭喜解锁人生新地图，愿你们慢慢喜欢，慢慢相爱。'
+  ]
+}
+
+export const mockGoodNewsList: any[] = [
+  {
+    id: 'demo-good-news-1',
+    stage: '已订婚',
+    from_name: '林女士',
+    to_name: '王先生',
+    from_avatar: '/static/avatars/matchmaking-anime-001.jpg',
+    to_avatar: '/static/avatars/matchmaking-anime-002.jpg',
+    matchmaker_name: '林老师',
+    meet_duration_months: 8,
+    images: ['/static/avatars/matchmaking-anime-003.jpg', '/static/avatars/matchmaking-anime-004.jpg'],
+    content: '两个人先从一杯咖啡开始，后来一起徒步、见朋友，也认真聊过各自对家庭和生活的期待。节奏不快，但每一步都算数。',
+    blessing: '愿往后的日子，眼里有光，心里有爱。',
+    blessing_count: 12,
+    blessed_by_me: false,
+    verification_level: 'MATCHMAKER_FOLLOWUP',
+    display_mode: 'FULL',
+    pending_review: false,
+    published_at: '2026-10-28 10:00:00',
+    is_demo: true
+  },
+  {
+    id: 'demo-good-news-2',
+    stage: '已见父母',
+    from_name: '周先生',
+    to_name: '赵女士',
+    from_avatar: '/static/avatars/matchmaking-anime-005.jpg',
+    to_avatar: '/static/avatars/matchmaking-anime-006.jpg',
+    matchmaker_name: '周老师',
+    meet_duration_months: 14,
+    images: ['/static/avatars/matchmaking-anime-007.jpg'],
+    content: '从异地到同一个城市，他们把见父母这件事放在了彼此都准备好的时候。没有赶进度，只有认真商量。',
+    blessing: '愿每一次认真，都被温柔接住。',
+    blessing_count: 8,
+    blessed_by_me: false,
+    verification_level: 'PLATFORM_VERIFIED',
+    display_mode: 'FULL',
+    pending_review: false,
+    published_at: '2026-10-20 15:30:00',
+    is_demo: true
+  },
+  {
+    id: 'demo-good-news-3',
+    stage: '恋爱生活',
+    from_name: '许女士',
+    to_name: '沈先生',
+    from_avatar: '/static/avatars/matchmaking-anime-008.jpg',
+    to_avatar: '/static/avatars/matchmaking-anime-009.jpg',
+    matchmaker_name: '许老师',
+    meet_duration_months: 3,
+    images: [],
+    content: '还在慢慢了解，但已经开始分享日常。红娘只做了一件事：提醒他们别急着给关系下结论。',
+    blessing: '',
+    blessing_count: 3,
+    blessed_by_me: false,
+    verification_level: 'SELF_REPORTED',
+    display_mode: 'MASKED',
+    pending_review: false,
+    published_at: '2026-10-12 09:10:00',
+    is_demo: true
+  }
+]
+
+export const mockGoodNewsReports: any[] = [
+  {
+    id: 'demo-report-1',
+    stage: '恋爱生活',
+    partner_name: '对方',
+    meet_duration_months: 2,
+    content: '演示报喜：正在认真了解中。',
+    images: [],
+    status: 'PENDING',
+    reject_reason: '',
+    created_at: '2026-10-30 18:00:00',
+    is_demo: true
+  }
+]

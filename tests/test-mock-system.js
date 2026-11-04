@@ -49,6 +49,7 @@ try {
     'mock/community.uts',
     'mock/security.uts',
     'mock/matchmaker.uts',
+    'mock/good-news.uts',
     'mock/help.uts',
     'mock/spotlight.uts',
     'mock/ai-avatar.uts',
