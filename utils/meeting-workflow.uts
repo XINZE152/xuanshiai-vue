@@ -1,0 +1,12 @@
+/** 约会管理分组；已完成但没有跟进的历史记录仍需补齐跟进。 */
+export function getWorkspaceMeetingPresentation(requestStatus: string, meeting: any): any {
+  if (requestStatus == 'DECLINED' || requestStatus == 'CLOSED') return { phase: 'FAILED', statusLabel: '约会失败', detail: '申请已被拒绝或关闭' }
+  if (meeting != null) {
+    const status = String(meeting.status || '')
+    if (status == 'CANCELLED' || status == 'NO_SHOW') return { phase: 'FAILED', statusLabel: '约会失败', detail: String(meeting.cancelReason || '约会已取消或未按约到场') }
+    if (status == 'COMPLETED' && String(meeting.followUpContent || '').trim().length > 0) return { phase: 'COMPLETED', statusLabel: '完成约会', detail: '约会已完成，跟进记录已保存' }
+    return { phase: 'UPCOMING', statusLabel: '待见面', detail: status == 'COMPLETED' ? '请补充跟进记录后完成约会' : '已安排时间地点，请联系双方按约见面' }
+  }
+  if (requestStatus == 'ACCEPTED') return { phase: 'UPCOMING', statusLabel: '待见面', detail: '已同意约会，待红娘安排时间和地点' }
+  return { phase: 'PROCESSING', statusLabel: requestStatus == 'CONTACTED' ? '联系中' : '未回应', detail: '等待被邀请方回应，请联系双方确认意愿' }
+}
