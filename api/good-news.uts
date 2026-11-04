@@ -111,6 +111,11 @@ function idempotencyKey(prefix: string): string {
   return prefix + '-' + String(Date.now()) + '-' + String(goodNewsRequestSeq)
 }
 
+/** 供页面在“一次报喜/反馈”生命周期内复用同一个幂等键，重试不重复提交。 */
+export function newGoodNewsIdempotencyKey(prefix: string): string {
+  return idempotencyKey(prefix)
+}
+
 function isMockMode(): boolean {
   return USE_MOCK || GOOD_NEWS_USE_MOCK
 }
@@ -196,14 +201,17 @@ export function normalizeGoodNewsItem(raw: any): GoodNewsItem {
   const months = numberValue(source.meet_duration_months, 0)
   const durationText = trimText(source.meet_duration_text)
   const level = trimText(source.verification_level)
+  const displayMode = trimText(source.display_mode)
+  // 只有 FULL 展示真实头像；MASKED/ANONYMOUS 或缺省一律用中性占位，避免反向识别。
+  const showRealAvatar = displayMode == 'FULL'
   return {
     id: trimText(source.id),
     stage: trimText(source.stage),
     stageLabel: trimText(source.stage_label).length > 0 ? trimText(source.stage_label) : trimText(source.stage),
     fromName: trimText(source.from_name).length > 0 ? trimText(source.from_name) : trimText(from.display_name != null ? from.display_name : from.name),
     toName: trimText(source.to_name).length > 0 ? trimText(source.to_name) : trimText(to.display_name != null ? to.display_name : to.name),
-    fromAvatar: resolveMedia(source.from_avatar != null ? source.from_avatar : from.avatar),
-    toAvatar: resolveMedia(source.to_avatar != null ? source.to_avatar : to.avatar),
+    fromAvatar: showRealAvatar ? resolveMedia(source.from_avatar != null ? source.from_avatar : from.avatar) : '',
+    toAvatar: showRealAvatar ? resolveMedia(source.to_avatar != null ? source.to_avatar : to.avatar) : '',
     matchmakerName: trimText(source.matchmaker_name).length > 0 ? trimText(source.matchmaker_name) : (trimText(matchmaker.name).length > 0 ? trimText(matchmaker.name) : '服务红娘'),
     meetDurationMonths: months,
     meetDurationText: durationText.length > 0 ? durationText : formatGoodNewsDuration(months),
@@ -215,7 +223,7 @@ export function normalizeGoodNewsItem(raw: any): GoodNewsItem {
     pendingReview: source.pending_review === true || trimText(source.review_status) == 'PENDING',
     verificationLevel: level,
     verificationLabel: goodNewsVerificationLabel(level),
-    displayMode: trimText(source.display_mode),
+    displayMode: displayMode,
     publishedAt: trimText(source.published_at != null ? source.published_at : source.created_at),
     isDemo: source.is_demo === true
   }
@@ -268,7 +276,8 @@ export function buildGoodNewsReportPayload(data: any): any {
     consent_from: consentConfirmed,
     consent_to: consentConfirmed,
     consent_version: 'v1',
-    consent_scopes: ['name', 'avatar', 'photos', 'content', 'matchmaker'],
+    // 服务红娘姓名属于平台服务信息，不需要会员单独同意 matchmaker scope。
+    consent_scopes: ['name', 'avatar', 'photos', 'content'],
     // 兼容旧后端别名；新后端会忽略或映射为双方声明。
     consent_confirmed: consentConfirmed
   }
@@ -397,10 +406,11 @@ export async function blessGoodNews(id: string): Promise<any> {
   }
 }
 
-export async function createGoodNewsReport(data: any): Promise<any> {
+export async function createGoodNewsReport(data: any, idempotencyKeyOverride: string = ''): Promise<any> {
   const error = validateGoodNewsReport(data)
   if (error.length > 0) return { success: false, data: null, code: 422, message: error }
   const payload = buildGoodNewsReportPayload(data)
+  const requestKey = idempotencyKeyOverride.length > 0 ? idempotencyKeyOverride : idempotencyKey('good-news-report')
   if (isMockMode()) {
     return {
       success: true,
@@ -422,7 +432,7 @@ export async function createGoodNewsReport(data: any): Promise<any> {
   const result = await request({
     url: '/good-news/reports',
     method: 'POST',
-    headers: { 'Idempotency-Key': idempotencyKey('good-news-report') },
+    headers: { 'Idempotency-Key': requestKey },
     data: payload
   })
   if (!result.success || result.data == null) return result
@@ -449,7 +459,7 @@ export async function getMyGoodNewsReports(): Promise<any> {
   return { success: true, data: { items: items, isDemo: source.is_demo === true }, code: result.code, message: result.message }
 }
 
-export async function submitGoodNewsFeedback(data: any): Promise<any> {
+export async function submitGoodNewsFeedback(data: any, idempotencyKeyOverride: string = ''): Promise<any> {
   const source = data != null ? data : {}
   const content = trimText(source.content)
   if (content.length == 0) return { success: false, data: null, code: 422, message: '请填写反馈内容' }
@@ -460,10 +470,11 @@ export async function submitGoodNewsFeedback(data: any): Promise<any> {
   finalContent += '：' + content
   if (finalContent.length > 2000) finalContent = finalContent.substring(0, 2000)
   if (isMockMode()) return { success: true, data: { category: kind }, code: 0, message: '演示数据' }
+  const requestKey = idempotencyKeyOverride.length > 0 ? idempotencyKeyOverride : idempotencyKey('good-news-feedback')
   return request({
     url: '/support/feedback',
     method: 'POST',
-    headers: { 'Idempotency-Key': idempotencyKey('good-news-feedback') },
+    headers: { 'Idempotency-Key': requestKey },
     data: { category: kind, content: finalContent, images: [] }
   })
 }

@@ -88,12 +88,14 @@
 
 					<view class="gn-couple">
 						<view v-if="item.fromName.length > 0" class="gn-person">
-							<image class="gn-avatar" :src="item.fromAvatar" mode="aspectFill"></image>
+							<image v-if="item.fromAvatar.length > 0" class="gn-avatar" :src="item.fromAvatar" mode="aspectFill"></image>
+							<view v-else class="gn-avatar gn-avatar-placeholder"><text>会</text></view>
 							<text class="gn-name">{{ item.fromName }}</text>
 						</view>
 						<text v-if="item.fromName.length > 0 && item.toName.length > 0" class="gn-dot">·</text>
 						<view v-if="item.toName.length > 0" class="gn-person">
-							<image class="gn-avatar" :src="item.toAvatar" mode="aspectFill"></image>
+							<image v-if="item.toAvatar.length > 0" class="gn-avatar" :src="item.toAvatar" mode="aspectFill"></image>
+							<view v-else class="gn-avatar gn-avatar-placeholder"><text>会</text></view>
 							<text class="gn-name">{{ item.toName }}</text>
 						</view>
 					</view>
@@ -249,7 +251,8 @@ import {
 	blessGoodNews,
 	createGoodNewsReport,
 	submitGoodNewsFeedback,
-	uploadGoodNewsPhoto
+	uploadGoodNewsPhoto,
+	newGoodNewsIdempotencyKey
 } from '@/api/good-news.uts'
 
 const PAGE_SIZE = 10
@@ -284,12 +287,14 @@ const reportImages = ref<any[]>([])
 const consentConfirmed = ref(false)
 const reportError = ref('')
 const reportSubmitting = ref(false)
+const reportRequestKey = ref('')
 
 const feedbackKind = ref('建议')
 const feedbackRating = ref(0)
 const feedbackContent = ref('')
 const feedbackError = ref('')
 const feedbackSubmitting = ref(false)
+const feedbackRequestKey = ref('')
 
 const displayStages = computed((): any[] => {
 	if (config.value != null && config.value.stages != null && config.value.stages.length > 0) return config.value.stages
@@ -474,6 +479,7 @@ function resetReportForm() {
 
 function openReport() {
 	resetReportForm()
+	reportRequestKey.value = newGoodNewsIdempotencyKey('good-news-report')
 	reportSheetVisible.value = true
 }
 
@@ -547,9 +553,10 @@ async function submitReport() {
 	reportError.value = ''
 	reportSubmitting.value = true
 	try {
-		const result = await createGoodNewsReport(payload)
+		const result = await createGoodNewsReport(payload, reportRequestKey.value)
 		if (!result.success) {
-			reportError.value = result.message != null ? String(result.message) : '提交失败，请稍后重试'
+			if (Number(result.code) == 409) reportError.value = '同一阶段已提交过，请等待审核'
+			else reportError.value = result.message != null ? String(result.message) : '提交失败，请稍后重试'
 			return
 		}
 		if (result.data != null && result.data.id != null) {
@@ -558,6 +565,7 @@ async function submitReport() {
 		} else {
 			await loadMyReports()
 		}
+		reportRequestKey.value = ''
 		reportSheetVisible.value = false
 		showToast('已提交，审核通过且双方同意后公开')
 	} catch (e) {
@@ -572,6 +580,7 @@ function openFeedback() {
 	feedbackRating.value = 0
 	feedbackContent.value = ''
 	feedbackError.value = ''
+	feedbackRequestKey.value = newGoodNewsIdempotencyKey('good-news-feedback')
 	feedbackSheetVisible.value = true
 }
 
@@ -593,11 +602,13 @@ async function submitFeedback() {
 			kind: feedbackKind.value,
 			rating: feedbackRating.value,
 			content: content
-		})
+		}, feedbackRequestKey.value)
 		if (!result.success) {
-			feedbackError.value = result.message != null ? String(result.message) : '提交失败，请稍后重试'
+			if (Number(result.code) == 409) feedbackError.value = '同一反馈已提交，请勿重复操作'
+			else feedbackError.value = result.message != null ? String(result.message) : '提交失败，请稍后重试'
 			return
 		}
+		feedbackRequestKey.value = ''
 		feedbackSheetVisible.value = false
 		showToast('反馈已提交')
 	} catch (e) {
@@ -957,6 +968,15 @@ onMounted(() => {
 	height: 54rpx;
 	border-radius: 50%;
 	background: var(--warm);
+}
+
+.gn-avatar-placeholder {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--muted);
+	font-size: 20rpx;
+	font-weight: 800;
 }
 
 .gn-name {
