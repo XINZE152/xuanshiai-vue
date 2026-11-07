@@ -16,7 +16,7 @@
         <input class="pr-search-input" placeholder="请输入昵称/编号/姓名/手机号" placeholder-class="pr-search-ph" :value="keyword" confirm-type="search" @input="onKeyword" @confirm="loadMembers" />
       </view>
 
-      <scroll-view scroll-y class="pr-list" :show-scrollbar="false">
+      <scroll-view scroll-y class="pr-list" :show-scrollbar="false" @scrolltolower="loadMoreMembers">
         <view v-if="loading" class="state-card"><text>正在加载资料数据…</text></view>
         <view v-else-if="errorMessage != ''" class="state-card">
           <text>{{ errorMessage }}</text>
@@ -72,6 +72,7 @@
           </view>
 
         </view>
+        <view v-if="hasMoreMembers" class="state-card" @tap="loadMoreMembers"><text>{{ loadingMoreMembers ? '加载中…' : '加载更多' }}</text></view>
       </scroll-view>
 
       <view class="review-float-actions">
@@ -93,17 +94,29 @@
         </view>
         <scroll-view scroll-y class="filter-scroll" :show-scrollbar="false">
           <view v-for="row in filterRows" :key="row.key" class="filter-row">
-            <view class="filter-row-summary" @tap="toggleMemberFilter(row.key)">
+            <picker v-if="row.key == 'residence' || row.key == 'hometown' || row.key == 'household'" mode="region" @change="selectFilterRegion(row.key, $event)">
+              <view class="filter-row-summary"><text class="filter-label">{{ row.label }}</text><view class="filter-current"><text>{{ memberFilter[row.key] || '不限' }}</text><text class="filter-chevron">›</text></view></view>
+            </picker>
+            <view v-else class="filter-row-summary" @tap="toggleMemberFilter(row.key)">
               <text class="filter-label">{{ row.label }}</text>
               <view class="filter-current"><text>{{ filterValueText(row.key) }}</text><text class="filter-chevron">›</text></view>
             </view>
-            <view v-if="expandedFilterKey == row.key" class="filter-options">
+            <view v-if="expandedFilterKey == row.key && isRangeFilter(row.key)" class="filter-range">
+              <text class="filter-range-hint">选择{{ row.label }}范围</text>
+              <view class="filter-range-controls">
+                <picker :range="rangeValues(row.key)" :value="rangeBoundIndex(row.key, 'min')" @change="setRangeBound(row.key, 'min', $event)"><view class="filter-range-input"><text>{{ rangeBoundText(row.key, 'min') }}</text></view></picker>
+                <text class="filter-range-separator">—</text>
+                <picker :range="rangeValues(row.key)" :value="rangeBoundIndex(row.key, 'max')" @change="setRangeBound(row.key, 'max', $event)"><view class="filter-range-input"><text>{{ rangeBoundText(row.key, 'max') }}</text></view></picker>
+                <view class="filter-range-apply" @tap="applyRange(row.key)"><text>确定</text></view>
+              </view>
+            </view>
+            <view v-else-if="expandedFilterKey == row.key" class="filter-options">
               <view v-for="option in row.options" :key="row.key + option.value" class="filter-option" :class="{ selected: memberFilter[row.key] == option.value }" @tap="selectMemberFilter(row.key, option.value)">
                 <text>{{ option.label }}</text>
               </view>
             </view>
           </view>
-          <text class="filter-data-note">筛选结果会依据当前可用的会员资料实时更新。</text>
+          <text class="filter-data-note">收入保密与未填写暂无法区分。</text>
         </scroll-view>
         <view class="filter-footer">
           <view class="filter-reset" @tap="resetMemberFilter"><text>重置</text></view>
@@ -115,11 +128,14 @@
     <!-- 页面级菜单不受 scroll-view 裁切，坐标取自点击事件。 -->
     <view v-if="menuForId != 0 && menuMember != null" class="more-layer" @tap="closeMenu">
       <view class="more-pop" :style="{ left: menuLeft + 'px', top: menuTop + 'px' }" @tap.stop>
+        <view v-if="activeTab == 'REJECTED'" class="more-item last" @tap="pickupMember(menuMember)"><text>{{ pickupLoading ? '捞取中…' : '我要捞取' }}</text></view>
+        <template v-else>
         <view class="more-item" @tap="openIntroductions(menuMember)"><text>牵线({{ menuMember.introCount || 0 }})</text></view>
         <view class="more-item" @tap="openMatch(menuMember)"><text>匹配</text></view>
         <view class="more-item" @tap="openNote(menuMember)"><text>红娘说</text></view>
         <view class="more-item" :class="{ last: !canReview }" @tap="openAssign(menuMember)"><text>修改红娘</text></view>
         <view v-if="canReview" class="more-item last" @tap="onAbandonEntry(menuMember)"><text>{{ menuMember.review_status == 'REJECTED' ? '已弃海' : '移入弃海' }}</text></view>
+        </template>
       </view>
     </view>
 
@@ -317,6 +333,7 @@ import {
   getMatchmakerMemberNote,
   getMatchmakerMemberProfile,
   getMatchmakerReviewMembers,
+  pickupMatchmakerMember,
   getMatchmakerWorkspaceProfile,
   getDiscoveryPlaza,
   updateMatchmakerMemberNote,
@@ -353,29 +370,31 @@ const canReview = ref(false)
 
 const filterVisible = ref(false)
 const expandedFilterKey = ref('')
-const createMemberFilter = (): any => ({
-  hometown: '', residence: '', gender: '', ageRange: '', heightRange: '', education: '', occupation: '', income: '',
-  marital: '', housing: '', vehicle: '', smoking: '', drinking: '', certification: '', vipOnline: '', vipOffline: ''
-})
+const rangeDraftMin = ref('')
+const rangeDraftMax = ref('')
+const options = (values: string[]): any[] => [{ label: '不限', value: '' }, ...values.map((value: string): any => ({ label: value, value: value }))]
+const provinces = ['北京市','天津市','河北省','山西省','内蒙古自治区','辽宁省','吉林省','黑龙江省','上海市','江苏省','浙江省','安徽省','福建省','江西省','山东省','河南省','湖北省','湖南省','广东省','广西壮族自治区','海南省','重庆市','四川省','贵州省','云南省','西藏自治区','陕西省','甘肃省','青海省','宁夏回族自治区','新疆维吾尔自治区']
+const createMemberFilter = (): any => ({ hometown:'', residence:'', household:'', gender:'', ageRange:'', heightRange:'', weight:'', education:'', occupation:'', income:'', marital:'', housing:'', vehicle:'', smoking:'', drinking:'', ethnicity:'', religion:'', mbti:'' })
 const memberFilter = ref<any>(createMemberFilter())
+const appliedMemberFilter = ref<any>(createMemberFilter())
 const filterRows = [
-  { key: 'hometown', label: '籍贯', options: [{ label: '不限', value: '' }, { label: '江苏', value: '江苏' }, { label: '浙江', value: '浙江' }, { label: '上海', value: '上海' }, { label: '北京', value: '北京' }, { label: '广东', value: '广东' }, { label: '其他', value: '其他' }] },
-  { key: 'residence', label: '现居', options: [{ label: '不限', value: '' }, { label: '江苏', value: '江苏' }, { label: '浙江', value: '浙江' }, { label: '上海', value: '上海' }, { label: '北京', value: '北京' }, { label: '广东', value: '广东' }, { label: '其他', value: '其他' }] },
-  { key: 'gender', label: '性别', options: [{ label: '不限', value: '' }, { label: '男', value: 'male' }, { label: '女', value: 'female' }] },
-  { key: 'ageRange', label: '年龄', options: [{ label: '不限', value: '' }, { label: '20岁以下', value: 'under20' }, { label: '20-25岁', value: '20-25' }, { label: '26-30岁', value: '26-30' }, { label: '31-35岁', value: '31-35' }, { label: '36-40岁', value: '36-40' }, { label: '41岁以上', value: 'over40' }] },
-  { key: 'heightRange', label: '身高', options: [{ label: '不限', value: '' }, { label: '160cm以下', value: 'under160' }, { label: '160-169cm', value: '160-169' }, { label: '170-179cm', value: '170-179' }, { label: '180cm及以上', value: 'over180' }] },
-  { key: 'education', label: '学历', options: [{ label: '不限', value: '' }, { label: '高中及以下', value: 'highschool' }, { label: '大专', value: 'college' }, { label: '本科', value: 'bachelor' }, { label: '硕士及以上', value: 'master' }] },
-  { key: 'occupation', label: '职业', options: [{ label: '不限', value: '' }, { label: '事业单位/国企', value: '事业单位' }, { label: '教师/医生', value: '教师' }, { label: 'IT/互联网', value: '互联网' }, { label: '金融/法律', value: '金融' }, { label: '自由职业', value: '自由职业' }, { label: '其他', value: '其他' }] },
-  { key: 'income', label: '收入', options: [{ label: '不限', value: '' }, { label: '10万以下', value: '10万以下' }, { label: '10-20万', value: '10-20万' }, { label: '20-30万', value: '20-30万' }, { label: '30万以上', value: '30万以上' }] },
-  { key: 'marital', label: '婚况', options: [{ label: '不限', value: '' }, { label: '未婚', value: '1' }, { label: '离异', value: '2' }, { label: '丧偶', value: '3' }] },
-  { key: 'housing', label: '购房', options: [{ label: '不限', value: '' }, { label: '已购房', value: '已购房' }, { label: '未购房', value: '未购房' }, { label: '购房中', value: '购房中' }] },
-  { key: 'vehicle', label: '购车', options: [{ label: '不限', value: '' }, { label: '已购车', value: '已购车' }, { label: '未购车', value: '未购车' }, { label: '购车中', value: '购车中' }] },
-  { key: 'smoking', label: '吸烟', options: [{ label: '不限', value: '' }, { label: '不吸烟', value: '不吸烟' }, { label: '偶尔吸烟', value: '偶尔吸烟' }, { label: '吸烟', value: '吸烟' }] },
-  { key: 'drinking', label: '喝酒', options: [{ label: '不限', value: '' }, { label: '不喝酒', value: '不喝酒' }, { label: '偶尔喝酒', value: '偶尔喝酒' }, { label: '喝酒', value: '喝酒' }] },
-  { key: 'certification', label: '认证', options: [{ label: '不限', value: '' }, { label: '已实名', value: 'verified' }, { label: '未实名', value: 'unverified' }] },
-  { key: 'vipOnline', label: '线上VIP', options: [{ label: '不限', value: '' }, { label: '只看VIP', value: 'vip' }] },
-  { key: 'vipOffline', label: '线下VIP', options: [{ label: '不限', value: '' }, { label: '只看VIP', value: 'vip' }] }
+ {key:'gender',label:'性别',options:[{label:'不限',value:''},{label:'男',value:'male'},{label:'女',value:'female'}]},
+ {key:'ageRange',label:'年龄',options:[{label:'不限',value:''},{label:'20岁以下',value:'under20'},{label:'20-25岁',value:'20-25'},{label:'26-30岁',value:'26-30'},{label:'31-35岁',value:'31-35'},{label:'36-40岁',value:'36-40'},{label:'41岁以上',value:'over40'}]},
+ {key:'heightRange',label:'身高(cm)',options:[{label:'不限',value:''},{label:'160cm以下',value:'under160'},{label:'160-169cm',value:'160-169'},{label:'170-179cm',value:'170-179'},{label:'180cm及以上',value:'over180'}]},
+ {key:'weight',label:'体重(kg)',options:[{label:'不限',value:''},{label:'40kg以下',value:'under40'},{label:'40至不足50kg',value:'40-49'},{label:'50至不足60kg',value:'50-59'},{label:'60至不足70kg',value:'60-69'},{label:'70至不足80kg',value:'70-79'},{label:'80kg及以上',value:'over80'}]},
+ {key:'residence',label:'现居地',options:options(provinces)}, {key:'hometown',label:'家乡',options:options(provinces)}, {key:'household',label:'户口',options:options(provinces)},
+ {key:'education',label:'学历',options:[{label:'不限',value:''},{label:'高中及以下',value:'highschool'},{label:'大专',value:'college'},{label:'本科',value:'bachelor'},{label:'硕士',value:'masters'},{label:'博士',value:'doctor'}]},
+ {key:'marital',label:'婚姻状况',options:[{label:'不限',value:''},{label:'未婚',value:'1'},{label:'离异',value:'2'},{label:'丧偶',value:'3'}]},
+ {key:'occupation',label:'职业',options:options(['私企员工','央企/国企','事业单位/公务员','外企员工','自由职业','创业者/个体','教师','医生','律师','金融从业','互联网/IT','制造业','服务业','在校学生'])},
+ {key:'income',label:'收入（年）',options:[{label:'不限',value:''},{label:'小于10w',value:'under10'},{label:'10-20w',value:'10-20'},{label:'30-50w',value:'30-50'},{label:'50-100w',value:'50-100'},{label:'100w以上',value:'over100'}]},
+ {key:'mbti',label:'MBTI',options:options(['INTJ','INTP','ENTJ','ENTP','INFJ','INFP','ENFJ','ENFP','ISTJ','ISFJ','ESTJ','ESFJ','ISTP','ISFP','ESTP','ESFP'])},
+ {key:'housing',label:'购房',options:options(['已购房','未购房','与父母同住'])}, {key:'vehicle',label:'购车',options:options(['已购车','未购车'])},
+ {key:'ethnicity',label:'民族',options:options(['汉族','回族','满族','蒙古族','壮族','维吾尔族','藏族','苗族','彝族','其他'])},
+ {key:'smoking',label:'吸烟',options:options(['不吸烟','偶尔吸烟','经常吸烟'])}, {key:'drinking',label:'喝酒',options:options(['不饮酒','社交场合饮酒','经常饮酒'])}, {key:'religion',label:'宗教',options:options(['无宗教信仰','佛教','基督教','伊斯兰教','道教','其他'])}
 ]
+const memberPage = ref(1)
+const hasMoreMembers = ref(false)
+const loadingMoreMembers = ref(false)
 
 const subview = ref('')
 const selected = ref<any>(null)
@@ -416,6 +435,7 @@ const reviewReasonTemplates = [
 
 const modal = ref('')
 const menuForId = ref(0)
+const pickupLoading = ref(false)
 const menuLeft = ref(8)
 const menuTop = ref(8)
 const menuMember = computed(() => {
@@ -619,26 +639,50 @@ const memberFromWorkbench = (row: any): any => {
   return mapped
 }
 
-const loadWorkbenchMembers = async (tab: string): Promise<void> => {
-  const data: any = { page: 1, page_size: 100 }
+const loadWorkbenchMembers = async (tab: string, append: boolean = false): Promise<void> => {
+  const data: any = { page: append ? memberPage.value + 1 : 1, page_size: 30 }
   if (tab == 'PENDING' || tab == 'REJECTED') data['review_status'] = tab
   if (keyword.value.trim().length > 0) data['search'] = keyword.value.trim()
+  const selected: any = {}
+  for (const key of Object.keys(appliedMemberFilter.value)) { const value = String(appliedMemberFilter.value[key] || ''); if (value.length > 0) selected[key] = value }
+  if (tab == 'mine') selected['mine'] = '1'
+  data['filters'] = JSON.stringify(selected)
   const result = await getMatchmakerReviewMembers(data)
   if (!result.success || result.data == null) {
+    if (!append) { rawMembers.value = []; members.value = [] }
+    errorMessage.value = result.message != null ? String(result.message) : '资料数据加载失败'
+    return
+  }
+  if (Object.keys(selected).length > 0 && Number(result.data.filter_version || 0) != 1) {
     rawMembers.value = []
     members.value = []
-    errorMessage.value = result.message != null ? String(result.message) : '资料数据加载失败'
+    hasMoreMembers.value = false
+    errorMessage.value = '后端尚未支持资料筛选，请更新后端后重试'
     return
   }
   const items = Array.isArray(result.data.items) ? result.data.items as any[] : []
   const list: any[] = []
   for (let i = 0; i < items.length; i++) list.push(memberFromWorkbench(items[i]))
-  rawMembers.value = list
-  applyMemberFilter()
+  memberPage.value = Number(result.data.page || 1)
+  hasMoreMembers.value = result.data.has_more === true
+  rawMembers.value = append ? [...rawMembers.value, ...list] : list
+  members.value = rawMembers.value
   emitServedCount()
+}
+const loadMoreMembers = async () => {
+  if (loading.value || loadingMoreMembers.value || !hasMoreMembers.value || activeTab.value == 'vip_online' || activeTab.value == 'vip_offline') return
+  loadingMoreMembers.value = true
+  try { await loadWorkbenchMembers(activeTab.value, true) } finally { loadingMoreMembers.value = false }
 }
 
 const loadVipMembers = async (tab: string): Promise<void> => {
+  hasMoreMembers.value = false
+  if (Object.keys(appliedMemberFilter.value).some((key: string) => String(appliedMemberFilter.value[key] || '').length > 0)) {
+    rawMembers.value = []
+    members.value = []
+    errorMessage.value = 'VIP 页签暂不支持资料条件筛选，请在全部、待审或我的页签使用'
+    return
+  }
   // 线上VIP / 线下VIP：在线状态只有首页广场提供，继续与首页「会员专区」同源。
   const workbenchRes = await getMatchmakerReviewMembers({ page: 1, page_size: 100 })
   const extras: any = {}
@@ -671,7 +715,7 @@ const loadVipMembers = async (tab: string): Promise<void> => {
     list.push(memberFromPlaza(user, extras[String(uid)]))
   }
   rawMembers.value = list
-  applyMemberFilter()
+  members.value = list
   emitServedCount()
 }
 
@@ -696,6 +740,11 @@ const loadMembers = async () => {
 }
 
 const filterValueText = (key: string): string => {
+  const value = String(memberFilter.value[key] || '')
+  if (isRangeFilter(key) && value.indexOf('range:') == 0) {
+    const parts = value.split(':')
+    return (parts[1] || '不限') + ' — ' + (parts[2] || '不限')
+  }
   const row = (filterRows as any[]).find((item: any) => item.key == key)
   if (row == null) return '不限'
   const option = (row.options as any[]).find((item: any) => item.value == memberFilter.value[key])
@@ -704,11 +753,54 @@ const filterValueText = (key: string): string => {
 
 const toggleMemberFilter = (key: string) => {
   expandedFilterKey.value = expandedFilterKey.value == key ? '' : key
+  if (expandedFilterKey.value == key && isRangeFilter(key)) {
+    const value = String(memberFilter.value[key] || '')
+    const parts = value.indexOf('range:') == 0 ? value.split(':') : []
+    rangeDraftMin.value = parts.length > 1 ? parts[1] : ''
+    rangeDraftMax.value = parts.length > 2 ? parts[2] : ''
+  }
+}
+
+const isRangeFilter = (key: string): boolean => key == 'ageRange' || key == 'heightRange' || key == 'weight'
+const rangeValues = (key: string): string[] => {
+  const min = key == 'ageRange' ? 18 : (key == 'heightRange' ? 140 : 30)
+  const max = key == 'ageRange' ? 120 : (key == 'heightRange' ? 220 : 150)
+  const result: string[] = ['不限']
+  for (let i = min; i <= max; i++) result.push(String(i))
+  return result
+}
+const rangeBoundText = (_key: string, bound: string): string => {
+  const value = bound == 'min' ? rangeDraftMin.value : rangeDraftMax.value
+  return value.length > 0 ? value : '不限'
+}
+const rangeBoundIndex = (key: string, bound: string): number => {
+  const value = bound == 'min' ? rangeDraftMin.value : rangeDraftMax.value
+  const index = rangeValues(key).indexOf(value)
+  return index > 0 ? index : 0
+}
+const setRangeBound = (key: string, bound: string, event: any) => {
+  const index = Number(event.detail.value)
+  const values = rangeValues(key)
+  const value = index > 0 && index < values.length ? values[index] : ''
+  if (bound == 'min') rangeDraftMin.value = value
+  else rangeDraftMax.value = value
+}
+const applyRange = (key: string) => {
+  if (rangeDraftMin.value.length > 0 && rangeDraftMax.value.length > 0 && Number(rangeDraftMin.value) > Number(rangeDraftMax.value)) {
+    notify('下限不能大于上限')
+    return
+  }
+  memberFilter.value[key] = rangeDraftMin.value.length == 0 && rangeDraftMax.value.length == 0 ? '' : 'range:' + rangeDraftMin.value + ':' + rangeDraftMax.value
+  expandedFilterKey.value = ''
 }
 
 const selectMemberFilter = (key: string, value: string) => {
   memberFilter.value[key] = value
   expandedFilterKey.value = ''
+}
+const selectFilterRegion = (key: string, event: any) => {
+  const parts = event.detail.value as string[]
+  memberFilter.value[key] = parts.join(' ')
 }
 
 const closeMemberFilter = () => {
@@ -716,142 +808,8 @@ const closeMemberFilter = () => {
   expandedFilterKey.value = ''
 }
 
-const hasMemberValue = (member: any, key: string): boolean => {
-  return member != null && member[key] != null && String(member[key]).trim().length > 0
-}
-
-const textFilterMatches = (member: any, key: string, value: string): boolean => {
-  if (value.length == 0 || !hasMemberValue(member, key)) return true
-  const text = String(member[key])
-  if (value == '其他') return text.indexOf('江苏') < 0 && text.indexOf('浙江') < 0 && text.indexOf('上海') < 0 && text.indexOf('北京') < 0 && text.indexOf('广东') < 0
-  return text.indexOf(value) >= 0
-}
-
-const ageOfMember = (member: any): number => {
-  if (!hasMemberValue(member, 'birthday')) return -1
-  const year = parseInt(String(member.birthday).substring(0, 4))
-  return isNaN(year) ? -1 : new Date().getFullYear() - year
-}
-
-const rangeMatches = (numberValue: number, range: string, kind: string): boolean => {
-  if (range.length == 0 || numberValue < 0) return true
-  if (kind == 'age') {
-    if (range == 'under20') return numberValue < 20
-    if (range == '20-25') return numberValue >= 20 && numberValue <= 25
-    if (range == '26-30') return numberValue >= 26 && numberValue <= 30
-    if (range == '31-35') return numberValue >= 31 && numberValue <= 35
-    if (range == '36-40') return numberValue >= 36 && numberValue <= 40
-    return numberValue > 40
-  }
-  if (range == 'under160') return numberValue < 160
-  if (range == '160-169') return numberValue >= 160 && numberValue <= 169
-  if (range == '170-179') return numberValue >= 170 && numberValue <= 179
-  return numberValue >= 180
-}
-
-const educationFilterMatches = (member: any, value: string): boolean => {
-  if (value.length == 0 || !hasMemberValue(member, 'education')) return true
-  const education = String(member.education)
-  if (value == 'highschool') return education.indexOf('高中') >= 0 || education == '5'
-  if (value == 'college') return education.indexOf('大专') >= 0 || education == '4'
-  if (value == 'bachelor') return education.indexOf('本科') >= 0 || education == '3'
-  return education.indexOf('硕') >= 0 || education.indexOf('博') >= 0 || education == '1' || education == '2'
-}
-
-const occupationFilterMatches = (member: any, value: string): boolean => {
-  if (value.length == 0 || !hasMemberValue(member, 'job')) return true
-  const job = String(member.job)
-  if (value == '教师') return job.indexOf('教师') >= 0 || job.indexOf('医生') >= 0
-  if (value == '金融') return job.indexOf('金融') >= 0 || job.indexOf('法律') >= 0
-  if (value == '互联网') return job.indexOf('互联网') >= 0 || job.indexOf('IT') >= 0
-  return textFilterMatches(member, 'job', value)
-}
-
-// 婚况筛选：4-7 是「离异」的细分档，选「离异」要一并命中。
-const maritalFilterMatches = (member: any, value: string): boolean => {
-  if (value.length == 0 || !hasMemberValue(member, 'is_married')) return true
-  const status = Number(member.is_married)
-  if (value == '2') return status == 2 || (status >= 4 && status <= 7)
-  return String(status) == value
-}
-
-const vipFilterMatches = (member: any, keys: string[], value: string): boolean => {
-  if (value.length == 0) return true
-  let available = false
-  for (let i = 0; i < keys.length; i++) {
-    const key = keys[i]
-    if (hasMemberValue(member, key)) {
-      available = true
-      const raw = member[key]
-      if (raw === true || raw == 1 || String(raw).toUpperCase() == 'VIP' || String(raw).toLowerCase() == 'true') return true
-    }
-  }
-  return !available
-}
-
-const isFilterAvailable = (key: string): boolean => {
-  const fields: any = {
-    hometown: ['hometown'], residence: ['residence'], gender: ['gender'], ageRange: ['birthday'], heightRange: ['height'], education: ['education'], occupation: ['job'], income: ['income'], marital: ['is_married'], housing: ['housing'], vehicle: ['vehicle'], smoking: ['smoking'], drinking: ['drinking'], certification: ['realname_status'], vipOnline: ['vip_online', 'online_vip', 'vipOnline'], vipOffline: ['vip_offline', 'offline_vip', 'vipOffline']
-  }
-  const keys = fields[key] as string[]
-  if (keys == null) return false
-  return (rawMembers.value as any[]).some((member: any) => keys.some((field: string) => hasMemberValue(member, field)))
-}
-
-const unavailableFilterCount = (): number => {
-  let count = 0
-  const keys = Object.keys(memberFilter.value)
-  for (let i = 0; i < keys.length; i++) {
-    if (String(memberFilter.value[keys[i]]).length > 0 && !isFilterAvailable(keys[i])) count++
-  }
-  return count
-}
-
-const applyMemberFilter = () => {
-  const selectedFilter = memberFilter.value
-  let list = rawMembers.value as any[]
-  if (activeTab.value == 'mine') list = list.filter((item: any) => Number(item.matchmaker_id) == selfUserId.value)
-  list = list.filter((member: any) => {
-    if (selectedFilter.gender == 'male' && Number(member.gender) != 1) return false
-    if (selectedFilter.gender == 'female' && Number(member.gender) != 2) return false
-    if (!rangeMatches(ageOfMember(member), selectedFilter.ageRange, 'age')) return false
-    const height = hasMemberValue(member, 'height') ? Number(member.height) : -1
-    if (!rangeMatches(isNaN(height) ? -1 : height, selectedFilter.heightRange, 'height')) return false
-    if (!textFilterMatches(member, 'hometown', selectedFilter.hometown)) return false
-    if (!textFilterMatches(member, 'residence', selectedFilter.residence)) return false
-    if (!educationFilterMatches(member, selectedFilter.education)) return false
-    if (!occupationFilterMatches(member, selectedFilter.occupation)) return false
-    if (!textFilterMatches(member, 'income', selectedFilter.income)) return false
-    if (!maritalFilterMatches(member, selectedFilter.marital)) return false
-    if (!textFilterMatches(member, 'housing', selectedFilter.housing)) return false
-    if (!textFilterMatches(member, 'vehicle', selectedFilter.vehicle)) return false
-    if (!textFilterMatches(member, 'smoking', selectedFilter.smoking)) return false
-    if (!textFilterMatches(member, 'drinking', selectedFilter.drinking)) return false
-    if (selectedFilter.certification == 'verified' && Number(member.realname_status) != 2) return false
-    if (selectedFilter.certification == 'unverified' && Number(member.realname_status) == 2) return false
-    if (!vipFilterMatches(member, ['vip_online', 'online_vip', 'vipOnline'], selectedFilter.vipOnline)) return false
-    if (!vipFilterMatches(member, ['vip_offline', 'offline_vip', 'vipOffline'], selectedFilter.vipOffline)) return false
-    return true
-  })
-  members.value = list
-}
-
-const resetMemberFilter = () => {
-  memberFilter.value = createMemberFilter()
-  expandedFilterKey.value = ''
-  applyMemberFilter()
-}
-
-const confirmMemberFilter = () => {
-  applyMemberFilter()
-  const unavailableCount = unavailableFilterCount()
-  closeMemberFilter()
-  if (unavailableCount > 0) {
-    notify('已筛选 ' + String(members.value.length) + ' 位会员，部分条件待数据源支持')
-    return
-  }
-  notify('已按条件筛选 ' + String(members.value.length) + ' 位会员')
-}
+const resetMemberFilter = () => { memberFilter.value = createMemberFilter(); expandedFilterKey.value = '' }
+const confirmMemberFilter = () => { appliedMemberFilter.value = { ...memberFilter.value }; closeMemberFilter(); loadMembers() }
 
 const selectTab = (key: string) => {
   activeTab.value = key
@@ -864,7 +822,6 @@ const loadSelfProfile = async () => {
     if (result.success && result.data != null && result.data.user_id != null) {
       selfUserId.value = Number(result.data.user_id)
       canReview.value = String(result.data.level) == 'SUPER'
-      if (activeTab.value == 'mine') applyMemberFilter()
       emitServedCount()
     }
   } catch (e) {
@@ -880,7 +837,7 @@ const toggleMenu = (member: any, event: any) => {
   }
   const windowInfo = uni.getSystemInfoSync()
   const menuWidth = 270 * windowInfo.windowWidth / 750
-  const menuHeight = (canReview.value ? 5 : 4) * 84 * windowInfo.windowWidth / 750
+  const menuHeight = (activeTab.value == 'REJECTED' ? 1 : (canReview.value ? 5 : 4)) * 84 * windowInfo.windowWidth / 750
   let tapX = 0
   let tapY = 0
   if (event != null && event.detail != null) {
@@ -901,9 +858,28 @@ const toggleMenu = (member: any, event: any) => {
   const aboveTop = tapY - menuHeight - 28
   menuTop.value = aboveTop >= 8 ? aboveTop : Math.min(maxTop, tapY + 28)
   menuForId.value = id
-  if (!(member.introCount > 0)) loadIntroCount(member)
+  if (activeTab.value != 'REJECTED' && !(member.introCount > 0)) loadIntroCount(member)
 }
 const closeMenu = () => { menuForId.value = 0 }
+
+const pickupMember = async (member: any) => {
+  if (pickupLoading.value || member == null) return
+  pickupLoading.value = true
+  try {
+    const result = await pickupMatchmakerMember(String(member.user_id))
+    if (!result.success) {
+      notify(result.message || '捞取失败，请重试')
+      return
+    }
+    closeMenu()
+    notify('捞取成功，已归入我的会员')
+    await loadMembers()
+  } catch (error) {
+    notify('捞取失败，请重试')
+  } finally {
+    pickupLoading.value = false
+  }
+}
 
 const loadIntroCount = async (member: any) => {
   const result = await getMatchmakerMemberMatchHistory(String(member.user_id))
@@ -1350,6 +1326,7 @@ const onEnterMember = () => {
 }
 const onFilter = () => {
   closeMenu()
+  memberFilter.value = { ...appliedMemberFilter.value }
   filterVisible.value = true
 }
 
@@ -1446,30 +1423,37 @@ onMounted(() => {
 .act text { color: var(--ink2); font-size: 20rpx; }
 
 /* 筛选为页面级右侧抽屉，不受列表和卡片的 overflow 影响。 */
-.filter-layer { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 110; display: flex; flex-direction: row; }
+.filter-layer { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 110; display: flex; flex-direction: column; justify-content: flex-end; }
 .filter-mask { position: absolute; left: 0; top: 0; right: 0; bottom: 0; background: var(--ink); opacity: .44; }
-.filter-drawer { position: relative; width: 640rpx; max-width: 88%; height: 100%; margin-left: auto; background: var(--surface); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; }
+.filter-drawer { position: relative; width: 100%; height: 82%; border-radius: 40rpx 40rpx 0 0; overflow: hidden; background: var(--canvas); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; }
 /* 顶部留位与宿主导航带对齐（状态栏 + 88rpx），避免标题与关闭键顶进状态栏或微信胶囊。 */
-.filter-head { flex-shrink: 0; padding: calc(var(--status-bar-height) + 88rpx) 28rpx 24rpx; border-bottom: 1rpx solid var(--line); display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+.filter-head { flex-shrink: 0; padding: 34rpx 32rpx 24rpx; display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
 .filter-title { display: block; color: var(--ink); font-size: 31rpx; font-weight: 800; }
 .filter-subtitle { display: block; margin-top: 7rpx; color: var(--muted); font-size: 20rpx; }
 .filter-close { width: 56rpx; height: 56rpx; border-radius: 50%; background: var(--warm); display: flex; align-items: center; justify-content: center; }
 .filter-close text { color: var(--muted); font-size: 25rpx; }
 .filter-scroll { flex: 1; height: 0; padding: 0 28rpx 30rpx; box-sizing: border-box; }
-.filter-row { border-bottom: 1rpx solid var(--line); }
+.filter-row { margin-bottom: 12rpx; padding: 0 22rpx; border-radius: 22rpx; background: var(--surface); }
 .filter-row-summary { min-height: 94rpx; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 20rpx; }
 .filter-label { color: var(--ink); font-size: 25rpx; font-weight: 700; }
 .filter-current { min-width: 0; max-width: 360rpx; display: flex; flex-direction: row; align-items: center; gap: 10rpx; }
 .filter-current text:first-child { color: var(--muted); font-size: 22rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .filter-chevron { color: var(--muted) !important; font-size: 35rpx !important; line-height: 1; }
 .filter-options { padding: 0 0 22rpx; display: flex; flex-direction: row; flex-wrap: wrap; gap: 14rpx; }
+.filter-range { padding: 0 0 24rpx; display: flex; flex-direction: column; gap: 16rpx; }
+.filter-range-hint { color: var(--muted); font-size: 21rpx; }
+.filter-range-controls { display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
+.filter-range-input { min-width: 112rpx; height: 68rpx; padding: 0 18rpx; border: 1rpx solid var(--line); border-radius: 14rpx; background: var(--canvas); display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+.filter-range-input text, .filter-range-separator { color: var(--ink2); font-size: 23rpx; }
+.filter-range-apply { margin-left: auto; min-width: 110rpx; height: 68rpx; border-radius: 999rpx; background: var(--accent2); display: flex; align-items: center; justify-content: center; }
+.filter-range-apply text { color: var(--paper); font-size: 23rpx; font-weight: 700; }
 .filter-option { min-height: 54rpx; padding: 0 18rpx; border: 1rpx solid var(--line); border-radius: 999rpx; background: var(--paper); display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
 .filter-option text { color: var(--ink2); font-size: 21rpx; }
 .filter-option.selected { border-color: var(--accent); background: var(--accent-bg); }
 .filter-option.selected text { color: var(--accent2); font-weight: 800; }
 .filter-data-note { display: block; padding: 28rpx 0 10rpx; color: var(--muted); font-size: 19rpx; line-height: 1.5; }
 .filter-footer { flex-shrink: 0; padding: 18rpx 28rpx calc(env(safe-area-inset-bottom) + 18rpx); border-top: 1rpx solid var(--line); background: var(--surface); display: flex; flex-direction: row; gap: 18rpx; }
-.filter-reset, .filter-confirm { height: 78rpx; border-radius: 12rpx; display: flex; align-items: center; justify-content: center; }
+.filter-reset, .filter-confirm { height: 88rpx; border-radius: 999rpx; display: flex; align-items: center; justify-content: center; }
 .filter-reset { width: 180rpx; border: 1rpx solid var(--accent); background: var(--surface); }
 .filter-reset text { color: var(--accent2); font-size: 25rpx; font-weight: 800; }
 .filter-confirm { flex: 1; background: var(--accent2); }

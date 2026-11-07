@@ -1147,6 +1147,10 @@ export async function updateMatchmakerReviewMember(id: string, changes: any) {
   return request({ url: '/matchmaker/workbench/members/' + encodeURIComponent(id) + '/public-profile-review', method: 'PATCH', data: { status: status, reason: reason } })
 }
 
+export async function pickupMatchmakerMember(id: string) {
+  return request({ url: '/matchmaker/workbench/members/' + encodeURIComponent(id) + '/pickup', method: 'POST' })
+}
+
 export async function getMatchmakerMemberFollowUps(id: string) {
   return request({ url: '/matchmaker/workbench/members/' + encodeURIComponent(id) + '/follow-ups', method: 'GET', data: { page: 1, page_size: 100 } })
 }

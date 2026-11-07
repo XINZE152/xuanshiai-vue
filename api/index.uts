@@ -337,6 +337,7 @@ export {
   addPromoterLead,
   createPromoterWithdrawal,
   getMatchmakerReviewMembers,
+  pickupMatchmakerMember,
   getMatchmakerWorkspaceProfile,
   getMatchmakerWorkspaceHomepage,
   updateMatchmakerWorkspaceHomepage,
