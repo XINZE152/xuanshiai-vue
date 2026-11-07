@@ -1,0 +1,25 @@
+export const GOOD_NEWS_STAGES: any[] = [
+  { label: '牵手成功', icon: '/static/icons/good-news/holding-hands.png', tone: 'coral' },
+  { label: '恋爱生活', icon: '/static/icons/good-news/in-love.png', tone: 'sky' },
+  { label: '已见父母', icon: '/static/icons/good-news/meet-parents.png', tone: 'sage' },
+  { label: '已订婚', icon: '/static/icons/good-news/engaged.png', tone: 'plum' },
+  { label: '已领证', icon: '/static/icons/good-news/certificate.png', tone: 'pink' },
+  { label: '已办婚礼', icon: '/static/icons/good-news/wedding.png', tone: 'apricot' },
+  { label: '婚后生活', icon: '/static/icons/good-news/married-life.png', tone: 'mint' },
+  { label: '锦旗飘扬', icon: '/static/icons/good-news/pennant.png', tone: 'plum' }
+]
+
+export const GOOD_NEWS_WISHES = ['祝福你们，愿往后的日子温暖相伴。', '愿你们彼此珍惜，一起经历更多美好。', '很高兴见证你们的新进展，送上祝福。']
+
+export function goodNewsTone(stage: string): string {
+  const item = GOOD_NEWS_STAGES.find((item: any) => item.label == stage)
+  return item != null ? String(item.tone) : 'sage'
+}
+
+export function goodNewsRequestId(): string {
+  return 'gn-' + String(Date.now()) + '-' + Math.random().toString(36).substring(2, 12)
+}
+
+export function goodNewsFallbackAvatar(id: string): string {
+  return Number(id) % 2 == 0 ? '/static/portraits/profile-man-light.webp' : '/static/portraits/profile-woman-main.webp'
+}

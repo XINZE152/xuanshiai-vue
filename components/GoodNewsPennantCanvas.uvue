@@ -1,0 +1,14 @@
+<template>
+  <view><canvas id="pennantCanvas" canvas-id="pennantCanvas" type="2d" width="200" height="280" style="width: 200px; height: 280px;"></canvas></view>
+</template>
+
+<script setup lang="uts">
+import { getCurrentInstance } from 'vue'
+import { renderPennant, drawPennant } from '@/utils/pennant-drawer.uts'
+
+// 画布归自己的原生组件管理，避免跨越弹窗 slot 查询节点。
+const instance = getCurrentInstance()
+const render = (content: any) => renderPennant('pennantCanvas', instance != null ? instance.proxy : null, content)
+const exportImage = (content: any) => drawPennant('pennantCanvas', instance != null ? instance.proxy : null, content)
+defineExpose({ render, exportImage })
+</script>

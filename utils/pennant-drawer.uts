@@ -1,6 +1,6 @@
 /**
  * 锦旗在线生成：把五段文字按竖排画到空白锦旗底图上，导出临时图片。
- * 只在客户端绘制，不写后台——锦旗墙的数据仍来自后台「运营工具-锦旗管理」。
+ * 绘制完成后由调用方决定保存到相册或上传至锦旗审核接口。
  */
 
 const PENNANT_BG = '/static/generated/pennant-blank-bg.jpg'
@@ -111,10 +111,16 @@ async function paintPennant(
   cssWidth: number,
   cssHeight: number
 ): Promise<any> {
+  // 微信运行时的异步画布 API 直接调用 wx 查询，需要小程序组件实例。
+  // Vue proxy 与原生组件并非同一个对象，传 proxy 会找不到 Canvas 节点。
+  let canvasComponent = component
+  // #ifdef MP-WEIXIN
+  if (component != null && component.$scope != null) canvasComponent = component.$scope
+  // #endif
   const context: any = await new Promise<any>((resolve, reject) => {
     uni.createCanvasContextAsync({
       id: canvasId,
-      component: component,
+      component: canvasComponent,
       success: (created: any) => resolve(created),
       fail: (err: any) => reject(err)
     })
@@ -126,7 +132,7 @@ async function paintPennant(
   canvas.height = cssHeight * PENNANT_SCALE
   ctx.scale(PENNANT_SCALE, PENNANT_SCALE)
 
-  const image = canvas.createImage()
+  const image = context.createImage()
   await new Promise<void>((resolve, reject) => {
     image.onload = () => resolve()
     image.onerror = (err: any) => reject(err)

@@ -27,6 +27,7 @@ const core = [
   'test-good-news-contract.js',
   'test-introduction-workflow.js',
   'test-meeting-workflow.js',
+  'test-good-news-workflow.js',
   'test-matchmaker-account-pages.js',
   'test-master-ws-error-contract.js',
   'test-moxiang-ws-ticket-contract.js',

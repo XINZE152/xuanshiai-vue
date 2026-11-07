@@ -34,16 +34,17 @@
 			<view class="workspace-content" :class="{ 'lead-space': workspaceKind == 'lead' }">
 				<view v-if="workspaceKind != 'remote' && workspaceKind != 'news'" class="workspace-heading">
 					<text class="workspace-title">{{ workspaceTitle }}</text>
-					<text class="workspace-copy">{{ workspaceKind == 'entry' ? '提交后自动分派到您名下，信息仅用于平台牵线服务。' : '仅展示服务端已提供的数据，未开放能力不会创建本地记录。' }}</text>
+					<text v-if="workspaceKind != 'income-placeholder'" class="workspace-copy">{{ workspaceKind == 'entry' ? '提交后自动分派到您名下，信息仅用于平台牵线服务。' : '仅展示服务端已提供的数据，未开放能力不会创建本地记录。' }}</text>
 				</view>
-				<view v-if="workspaceKind != 'remote' && workspaceKind != 'entry'" class="workspace-tabs">
+				<view v-if="workspaceKind != 'remote' && workspaceKind != 'entry' && workspaceKind != 'income-placeholder' && workspaceKind != 'news'" class="workspace-tabs">
 					<view class="workspace-tabs-row">
 						<view v-for="item in workspaceTabs" :key="item" class="workspace-tab" :class="{ active: workspaceActiveTab == item }" @click="selectWorkspaceTab(item)"><text>{{ item }}</text></view>
 					</view>
 				</view>
-				<view v-if="workspaceKind != 'remote' && workspaceKind != 'entry' && workspaceKind != 'news'" class="workspace-search"><text class="workspace-search-glyph">⌕</text><input class="workspace-search-input" :placeholder="workspaceSearchPlaceholder" placeholder-class="workspace-search-ph" :value="workspaceKeyword" confirm-type="search" @input="onWorkspaceKeywordInput" @confirm="runWorkspaceSearch"/></view>
+				<view v-if="workspaceKind != 'remote' && workspaceKind != 'entry' && workspaceKind != 'news' && workspaceKind != 'income-placeholder'" class="workspace-search"><text class="workspace-search-glyph">⌕</text><input class="workspace-search-input" :placeholder="workspaceSearchPlaceholder" placeholder-class="workspace-search-ph" :value="workspaceKeyword" confirm-type="search" @input="onWorkspaceKeywordInput" @confirm="runWorkspaceSearch"/></view>
 
-				<view v-if="workspaceKind == 'commission'">
+				<view v-if="workspaceKind == 'income-placeholder'" class="workspace-state"><text>暂无记录</text></view>
+				<view v-else-if="workspaceKind == 'commission'">
 					<view class="workspace-cash"><text>资金结算</text><text class="workspace-cash-value">{{ workspaceTitle == '财务明细' ? workspaceFinanceTotal : workspaceCommissionTotal }}</text><text>{{ workspaceCashNote }}</text></view>
 
 					<!-- 专属推广工具：推广能力未开放，保留原提示 -->
@@ -172,7 +173,7 @@
 					<view v-else-if="workspaceVisibleMatches.length == 0" class="workspace-state"><text>没有符合条件的牵线记录</text></view>
 					<view v-else>
 						<view v-for="row in workspaceVisibleMatches" :key="row.id" class="workspace-match-card">
-							<view class="workspace-match-card-top"><text>申请时间：{{ row.time }}</text><view class="workspace-match-status-btn" :class="'t-' + row.status" @click="openMatchStatusSheet(row)"><text>{{ row.statusLabel }}</text><view class="workspace-match-status-arrow"><i></i></view></view></view>
+							<view class="workspace-match-card-top"><text>申请时间：{{ row.time }}</text><view class="workspace-match-status-btn match-status-indicator" :class="'t-' + row.status" @click="openMatchStatusSheet(row)"><text>{{ row.statusLabel }}</text><view class="workspace-match-status-arrow"></view></view></view>
 							<!-- 双人放大头像：按参考图做成两张圆角方图并排、中间压一枚心形徽标；点心形两侧任一图即以红娘权限进入该会员主页。 -->
 							<view class="workspace-match-pair">
 								<view class="workspace-match-col is-left">
@@ -239,7 +240,9 @@
 							<text v-if="row.status == 'PENDING'" class="workspace-match-reason">{{ row.applicationResponse == 'REJECTED' ? '对方拒绝' : '未回应' }}{{ row.responseReason.length > 0 ? '：' + row.responseReason : '' }}</text>
 							<text v-if="row.status == 'PENDING' || row.status == 'IN_PROGRESS'" class="workspace-match-owner">电话查看：申请人{{ row.fromPhoneViewed ? '已查看' : '未查看' }} · 被牵线方{{ row.toPhoneViewed ? '已查看' : '未查看' }}</text>
 							<text v-if="row.status == 'FAILED' && row.failureReason.length > 0" class="workspace-match-reason">失败原因：{{ row.failureReason }}</text>
-							<view v-if="row.status == 'IN_PROGRESS'" class="workspace-actions"><text @tap="openMatchStatusSheet(row)">确认已联系并记录对方态度</text></view>
+							<view v-if="row.status == 'IN_PROGRESS'" class="match-contact-action" hover-class="match-contact-action-pressed" @tap="openMatchStatusSheet(row)">
+								<text class="match-contact-action-label">确认已联系并记录对方态度</text>
+							</view>
 							<view v-if="row.status == 'PENDING' && row.fromPhoneViewed && row.toPhoneViewed" class="workspace-actions"><text @tap="confirmMatchContactsObtained(row)">确认已获得双方联系方式</text></view>
 							<text class="workspace-match-owner">服务红娘：{{ row.owner }}</text>
 						</view>
@@ -253,24 +256,32 @@
 					<view v-else-if="workspaceVisibleMeetings.length == 0" class="workspace-state"><text>没有符合条件的约会记录</text></view>
 					<view v-else>
 						<view v-for="row in workspaceVisibleMeetings" :key="row.id" class="workspace-match-card">
-							<view class="workspace-match-card-top"><text>申请时间：{{ row.createdAt }}</text><view class="workspace-match-status-btn" :class="row.phase == 'FAILED' ? 't-FAILED' : (row.phase == 'COMPLETED' ? 't-SUCCEEDED' : 't-PENDING')"><text>{{ row.statusLabel }}</text></view></view>
-							<view class="workspace-match-pair">
-								<view class="workspace-match-col is-left"><view class="workspace-match-photo" @tap="openWorkspaceMemberProfile(row.applicant)"><image :src="row.applicant.avatar" mode="aspectFill" class="workspace-match-photo-image" /></view><view class="workspace-match-caption"><text class="workspace-match-role role-applicant">申请人</text><text class="workspace-match-caption-name">{{ row.applicant.name }}</text></view><text class="workspace-match-caption-code">编号：{{ row.applicant.id }}</text></view>
-								<view class="workspace-match-col is-right"><view class="workspace-match-photo" @tap="openWorkspaceMemberProfile(row.target)"><image :src="row.target.avatar" mode="aspectFill" class="workspace-match-photo-image" /></view><view class="workspace-match-caption"><text class="workspace-match-role role-target">被邀请方</text><text class="workspace-match-caption-name">{{ row.target.name }}</text></view><text class="workspace-match-caption-code">编号：{{ row.target.id }}</text></view>
+							<view class="workspace-match-card-top"><text>申请时间：{{ row.createdAt }}</text><view class="workspace-match-status-btn match-status-indicator" :class="row.phase == 'FAILED' ? 't-FAILED' : (row.phase == 'COMPLETED' ? 't-SUCCEEDED' : (row.phase == 'PROCESSING' ? 't-IN_PROGRESS' : 't-PENDING'))"><text>{{ row.statusLabel }}</text><view class="workspace-match-status-arrow"></view></view></view>
+							<view class="meeting-invitation">
+								<view class="meeting-invitation-portraits">
+									<view class="meeting-invitation-portrait" @tap="openWorkspaceMemberProfile(row.applicant)"><image :src="row.applicant.avatar" mode="aspectFill" class="meeting-invitation-image" /></view>
+									<view class="meeting-invitation-portrait meeting-invitation-target" @tap="openWorkspaceMemberProfile(row.target)"><image :src="row.target.avatar" mode="aspectFill" class="meeting-invitation-image" /></view>
+								</view>
+								<text class="meeting-invitation-title"><text class="meeting-invitation-name">{{ row.applicant.name }}</text> 想要约见 <text class="meeting-invitation-name">{{ row.target.name }}</text></text>
+								<view class="meeting-invitation-members">
+									<view class="meeting-invitation-member"><text class="workspace-match-role role-applicant">申请人</text><text class="workspace-match-caption-code">编号：{{ row.applicant.id }}</text></view>
+									<view class="meeting-invitation-member"><text class="workspace-match-role role-target">被邀请方</text><text class="workspace-match-caption-code">编号：{{ row.target.id }}</text></view>
+								</view>
 							</view>
 							<text class="workspace-match-owner">{{ row.detail }}</text>
 							<text v-if="row.note.length > 0" class="workspace-match-owner">申请说明：{{ row.note }}</text>
 							<view v-if="row.meeting != null" class="workspace-filter-note"><view><text>约会时间：{{ row.meeting.scheduledAt }}</text></view><view><text>约会地点：{{ row.meeting.location }}</text></view></view>
 							<view v-if="row.meeting != null && row.meeting.followUpContent.length > 0" class="workspace-filter-note"><text>跟进记录：{{ row.meeting.followUpContent }}</text></view>
-							<view class="workspace-actions">
+							<view v-if="row.phase == 'PROCESSING' || (row.phase == 'UPCOMING' && row.meeting == null)" class="workspace-actions">
 								<text v-if="row.phase == 'PROCESSING'" @tap="openMeetingStatusSheet(row)">联系双方并记录意愿</text>
 								<text v-if="row.phase == 'UPCOMING' && row.meeting == null" @tap="openMeetingScheduleSheet(row)">安排时间地点</text>
-								<text v-if="row.phase == 'UPCOMING' && row.meeting != null" @tap="openMeetingRecordSheet(row)">填写跟进 / 完成约会</text>
+							</view>
+							<view v-if="row.phase == 'UPCOMING' && row.meeting != null" class="match-contact-action" hover-class="match-contact-action-pressed" @tap="openMeetingRecordSheet(row)">
+								<text class="match-contact-action-label">填写跟进 / 完成约会</text>
 							</view>
 							<text class="workspace-match-owner">服务红娘：{{ row.owner }}</text>
 						</view>
 					</view>
-					<view class="workspace-add" @tap="openMeetingCreateSheet"><text>+</text><text>添加约会</text></view>
 				</view>
 
 				<view v-else-if="workspaceKind == 'entry' && workspaceTitle == '录入会员'" class="workspace-entry-page">
@@ -393,111 +404,24 @@
 					<view v-for="activity in workspaceActivities" :key="activity.title" class="workspace-info-card"><text>{{ activity.title }}</text><text class="workspace-muted">{{ activity.time }} · {{ activity.city }}</text><view><text>报名人数</text><text>{{ activity.count }} 人</text></view><view><text>审核状态</text><text>{{ activity.status }}</text></view><view class="workspace-actions"><text @click="showToast('远端暂未开放活动管理')">报名名单</text><text @click="showToast('远端暂未开放活动管理')">编辑</text><text @click="showToast('远端暂未开放活动管理')">报名审核</text></view></view>
 				</view>
 
-				<view v-else-if="workspaceKind == 'news'">
-					<!-- 栏目头色带 + 压边白卡（阶段筛选）+ 反馈条，结构借鉴模板稿 -->
-					<view class="news-band">
-						<view class="news-band-copy">
-							<text class="news-band-title">脱单喜讯</text>
-							<text class="news-band-sub">会员回访里的每一步进展，都会记在这里</text>
-						</view>
-						<view class="news-band-count"><text class="news-band-count-value">{{ newsTotal }}</text><text class="news-band-count-label">条喜讯</text></view>
-					</view>
-					<view class="news-stage-card">
-						<view class="news-stage-grid">
-							<view v-for="item in newsStages" :key="item.label" class="news-stage" :class="{ active: isNewsStageActive(item.label) }" @click="selectNewsStage(item.label)">
-								<text class="news-stage-glyph" :class="item.tone">{{ item.glyph }}</text>
-								<text class="news-stage-label">{{ item.label }}</text>
-							</view>
-						</view>
-					</view>
-					<view v-if="workspaceActiveTab == '喜讯'" class="news-feedback">
-						<text class="news-feedback-glyph">💌</text>
-						<text class="news-feedback-text">收到您的脱单反馈，是我们最幸福的时刻</text>
-						<view class="news-feedback-btn" @click="openNewsReportSheet"><text>报喜</text><text class="news-feedback-arrow">›</text></view>
-					</view>
-
-					<view v-if="workspaceActiveTab == '锦旗'">
-						<view v-if="pennantsLoading" class="workspace-state"><text>正在加载锦旗…</text></view>
-						<view v-else-if="pennantsError.length > 0" class="workspace-state"><text>{{ pennantsError }}</text><text class="workspace-state-action" @click="loadWorkspacePennants">重新加载</text></view>
-						<view v-else-if="workspacePennants.length == 0" class="workspace-state"><text>还没有会员送来锦旗</text></view>
-						<view v-else>
-							<view v-for="row in workspacePennants" :key="row.id" class="news-pennant-card">
-								<image v-if="row.imageUrl.length > 0" class="news-pennant-image" :src="row.imageUrl" mode="aspectFill" @click="previewPennantImage(row.imageUrl)"/>
-								<view v-else class="news-pennant-plate"><text class="news-pennant-words">{{ row.words }}</text><text class="news-pennant-plate-mark">锦旗</text></view>
-								<view class="news-pennant-meta">
-									<text class="news-pennant-giver">{{ row.giver }} 敬赠</text>
-									<text class="news-pennant-target">受赠红娘：{{ row.target }}</text>
-									<text v-if="row.maker.length > 0" class="news-pennant-maker">制作方：{{ row.maker }}</text>
-									<text v-if="row.date.length > 0" class="news-pennant-date">{{ row.date }}</text>
-								</view>
-							</view>
-						</view>
-					</view>
-
-					<view v-else>
-						<view class="news-section"><text class="news-section-title">全部喜讯</text><text v-if="newsStage.length > 0" class="news-section-filter" @click="selectNewsStage(newsStage)">已筛选：{{ newsStage }} ✕</text></view>
-						<view v-if="newsLoading" class="workspace-state"><text>正在加载红娘喜讯…</text></view>
-						<view v-else-if="newsError.length > 0" class="workspace-state"><text>{{ newsError }}</text><text class="workspace-state-action" @click="loadWorkspaceNews">重新加载</text></view>
-						<view v-else-if="workspaceNews.length == 0" class="workspace-state"><text>{{ newsStage.length > 0 ? '这个阶段的喜讯还没上传' : '还没有匹配的喜讯' }}</text></view>
-						<view v-else>
-							<view v-for="row in workspaceNews" :key="row.id" class="news-card">
-								<view class="news-card-head">
-									<view class="news-card-head-left">
-										<text class="news-card-stage" :class="row.stageTone">{{ row.stage.length > 0 ? row.stage : '喜讯' }}</text>
-										<text v-if="row.pendingReview" class="news-card-pending">待审</text>
-									</view>
-									<view class="news-card-couple">
-										<view v-if="row.fromName.length > 0" class="news-card-person" @click="openNewsMemberProfile(row.fromUserId)">
-											<image class="news-card-avatar" :src="row.fromAvatar" mode="aspectFill"/>
-											<text class="news-card-name">{{ row.fromName }}</text>
-										</view>
-										<view v-if="row.toName.length > 0" class="news-card-person" @click="openNewsMemberProfile(row.toUserId)">
-											<image class="news-card-avatar" :src="row.toAvatar" mode="aspectFill"/>
-											<text class="news-card-name">{{ row.toName }}</text>
-										</view>
-									</view>
-								</view>
-								<view class="news-card-meta">
-									<text class="news-card-meta-glyph">👤</text><text class="news-card-meta-item">服务红娘：{{ row.matchmakerName }}</text>
-									<text class="news-card-meta-divider">|</text>
-									<text class="news-card-meta-glyph">🕐</text><text class="news-card-meta-item">相识时间：{{ row.meetDuration.length > 0 ? row.meetDuration : '未填写' }}</text>
-								</view>
-								<view v-if="row.images.length > 0" class="news-card-images">
-									<image v-for="(img, idx) in row.images" :key="img" class="news-card-image" :src="img" mode="aspectFill" @click="previewNewsImage(row.images, idx)"/>
-								</view>
-								<view v-if="newsDetailId == row.id" class="news-card-detail">
-									<text v-if="row.content.length > 0" class="news-card-content">{{ row.content }}</text>
-									<text v-else class="news-card-content news-card-content-empty">这条喜讯还没有填写正文</text>
-									<text v-if="row.blessing.length > 0" class="news-card-blessing">祝福语：{{ row.blessing }}</text>
-									<text v-if="row.createdAt.length > 0" class="news-card-date">发布于 {{ row.createdAt }}</text>
-									<view class="news-card-bless-btn" @click="blessGoodNews"><text>送祝福</text></view>
-								</view>
-								<view class="news-card-foot">
-									<text class="news-card-blessing-count" @click="blessGoodNews">{{ row.blessingText }}</text>
-									<view class="news-card-toggle" @click="toggleNewsDetail(row.id)"><text>{{ newsDetailId == row.id ? '收起' : '详情' }}</text><text class="news-card-toggle-arrow" :class="{ open: newsDetailId == row.id }">›</text></view>
-								</view>
-							</view>
-						</view>
-					</view>
-				</view>
+				<MatchmakerGoodNews v-else-if="workspaceKind == 'news'" ref="goodNewsPanel" :display-name="goodNewsDisplayName" :initial-item-id="goodNewsInitialItem" :initial-kind="goodNewsInitialKind" @title="workspaceTitle = $event" @resetScroll="resetGoodNewsScroll" @profile="openGoodNewsPerson" @shareInfo="goodNewsShare = $event"/>
 
 				<view v-else><view v-for="row in workspaceGenericRows" :key="row.title" class="workspace-generic-card"><view><text>{{ row.icon }}</text></view><view><text>{{ row.title }}</text><text>{{ row.desc }}</text></view><text @click="showToast(row.action)">{{ row.action }} ></text></view></view>
 			</view>
-			<view v-if="workspaceKind != 'remote' && workspaceKind != 'meeting' && workspaceKind != 'entry' && workspaceKind != 'news' && workspaceKind != 'lead' && workspaceKind != 'match'" class="workspace-add" @click="showToast('远端暂未开放此功能')"><text>+</text><text>添加</text></view>
+			<view v-if="workspaceKind != 'remote' && workspaceKind != 'meeting' && workspaceKind != 'entry' && workspaceKind != 'news' && workspaceKind != 'lead' && workspaceKind != 'match' && workspaceKind != 'income-placeholder'" class="workspace-add" @click="showToast('远端暂未开放此功能')"><text>+</text><text>添加</text></view>
 			<!-- 牵线记录：添加入口照搬资料待审的悬浮录入键（同款浅底圆形 + ✎ 字形） -->
 			<view v-if="workspaceKind == 'match'" class="match-float-actions">
 				<view class="fab-match-add" @click="openMatchAddSheet"><text class="fab-match-glyph">✎</text><text>添加</text></view>
+			</view>
+			<view v-if="workspaceKind == 'meeting'" class="match-float-actions">
+				<view class="fab-match-add" @tap="openMeetingCreateSheet"><text class="fab-match-glyph">✎</text><text>添加约会</text></view>
 			</view>
 			<!-- 客源线索：添加与筛选入口照搬资料待审的悬浮录入键（成对、右下角、同款圆形浅底） -->
 			<view v-if="workspaceKind == 'lead' && !leadFollowPanelVisible" class="lead-float-actions">
 				<view class="fab-lead-add" @click="openLeadAddSheet"><text class="fab-lead-glyph">✎</text><text>添加</text></view>
 				<view class="fab-lead-filter" :class="{ active: leadFilterStatus.length > 0 || leadFilterIntention > 0 }" @click="openLeadFilterSheet"><text class="fab-lead-glyph">☲</text><text>筛选</text></view>
 			</view>
-			<!-- 红娘喜讯：报喜入口沿用资料待审筛选键的位置与圆形样式 -->
-			<view v-if="workspaceKind == 'news'" class="workspace-add news-report" @click="openNewsReportSheet">
-				<text class="news-report-glyph">🌷</text>
-				<text class="news-report-label">报喜</text>
-			</view>
+
 		</scroll-view>
 		<MatchmakerManagementCenter
 			v-else-if="managementCenterVisible && managementCenterSnapshot != null"
@@ -788,88 +712,6 @@
 				<text>{{ submitting ? '提交中…' : (canSubmit ? '提交申请' : '请补全必填信息') }}</text>
 			</view>
 		</view>
-
-		<!-- 喜讯：报喜入口（反馈喜讯 / 赠送锦旗） -->
-		<XsaSheet :visible="newsReportSheetVisible" title="报喜" @close="newsReportSheetVisible = false">
-			<view class="news-report-grid">
-				<view class="news-report-tile lavender" @click="chooseNewsReportKind('news')">
-					<view class="news-report-icon lavender"><text>🌷</text></view>
-					<text class="news-report-tile-label">反馈喜讯</text>
-				</view>
-				<view class="news-report-tile blush" @click="chooseNewsReportKind('pennant')">
-					<view class="news-report-icon blush"><text>🎏</text></view>
-					<text class="news-report-tile-label">赠送锦旗</text>
-				</view>
-			</view>
-			<text class="news-report-note">喜讯由红娘在会员回访后代为登记，提交后进后台喜讯管理审核；锦旗只在本地按文字生成图片，可自行保存发送。</text>
-		</XsaSheet>
-
-		<!-- 喜讯：反馈喜讯表单（红娘代会员登记，提交后进后台喜讯管理待审） -->
-		<XsaSheet :visible="newsFeedbackSheetVisible" title="反馈喜讯" @close="newsFeedbackSheetVisible = false">
-			<view class="news-form-privacy">
-				<text class="news-form-privacy-title">隐私提示</text>
-				<text class="news-form-privacy-text">我们会充分考虑隐私保护，您与对方的个人信息（头像、照片、聊天截图）都会经过隐私处理，且在得到您的允许的前提才会在平台中展示。</text>
-			</view>
-			<view class="news-form-row">
-				<text class="news-form-label">对方称呼</text>
-				<input class="news-form-input" :value="newsFormPartner" @input="newsFormPartner = $event.detail.value" placeholder="请输入" :maxlength="40"/>
-			</view>
-			<view class="news-form-row">
-				<text class="news-form-label">相识时间</text>
-				<input class="news-form-input" :value="newsFormMeetDuration" @input="newsFormMeetDuration = $event.detail.value" placeholder="请输入" type="number" :maxlength="8"/>
-				<text class="news-form-unit">个月</text>
-			</view>
-			<picker mode="selector" :range="newsStageOptions" :value="newsFormStageIndex" @change="onNewsFormStageChange">
-				<view class="news-form-row">
-					<text class="news-form-label">当前状态</text>
-					<view class="news-form-picker-value"><text :class="{ placeholder: newsFormStage.length == 0 }">{{ newsFormStage.length > 0 ? newsFormStage : '选择' }}</text><text class="news-form-chevron">›</text></view>
-				</view>
-			</picker>
-			<textarea class="news-form-textarea" :value="newsFormContent" @input="newsFormContent = $event.detail.value" placeholder="请输入一段您目前情感状态的描述，以及对我们的服务的反馈" :maxlength="1000" auto-height/>
-			<text class="news-form-subtitle">上传图片</text>
-			<view class="news-form-images">
-				<view v-for="(item, index) in newsFormImages" :key="item.url" class="news-form-image-cell">
-					<image class="news-form-image" :src="item.display" mode="aspectFill" @click="previewNewsFormImage(index)"/>
-					<text class="news-form-image-remove" @click="removeNewsFormImage(index)">✕</text>
-				</view>
-				<view v-if="newsFormImages.length < 9" class="news-form-image-add" @click="chooseNewsFormImage"><text class="news-form-image-add-glyph">＋</text><text class="news-form-image-add-label">选择图片</text></view>
-			</view>
-			<text v-if="newsFormError.length > 0" class="workspace-form-error news-form-error">{{ newsFormError }}</text>
-			<view class="news-form-submit" :class="{ disabled: newsFormSubmitting }" @click="submitNewsFeedback"><text>{{ newsFormSubmitting ? '提交中…' : '提交我的反馈' }}</text></view>
-		</XsaSheet>
-
-		<!-- 锦旗：赠送锦旗（只在本地画一张锦旗图，不写后台锦旗墙） -->
-		<XsaSheet :visible="pennantSheetVisible" title="赠送锦旗" :tall="true" @close="pennantSheetVisible = false">
-			<view class="news-form-privacy">
-				<text class="news-form-privacy-text">只需要输入对应文字立即免费在线生成锦旗，经济环保。</text>
-			</view>
-			<view class="pennant-preview">
-				<canvas id="pennantCanvas" width="200" height="280" class="pennant-canvas" style="width: 200px; height: 280px;"></canvas>
-			</view>
-			<view class="news-form-row">
-				<text class="news-form-label">赠送人</text>
-				<input class="news-form-input" :value="pennantGiver" @input="pennantGiver = $event.detail.value" placeholder="如：李先生" :maxlength="10"/>
-			</view>
-			<view class="news-form-row">
-				<text class="news-form-label">赠送给</text>
-				<input class="news-form-input" :value="pennantReceiver" @input="pennantReceiver = $event.detail.value" placeholder="如：爱在合肥" :maxlength="10"/>
-			</view>
-			<view class="news-form-row">
-				<text class="news-form-label">感谢语(左)</text>
-				<input class="news-form-input" :value="pennantLeftWords" @input="pennantLeftWords = $event.detail.value" placeholder="如：感谢红娘牵线" :maxlength="8"/>
-			</view>
-			<view class="news-form-row">
-				<text class="news-form-label">感谢语(右)</text>
-				<input class="news-form-input" :value="pennantRightWords" @input="pennantRightWords = $event.detail.value" placeholder="如：成就美好姻缘" :maxlength="8"/>
-			</view>
-			<view class="news-form-row">
-				<text class="news-form-label">日期</text>
-				<input class="news-form-input" :value="pennantDate" @input="pennantDate = $event.detail.value" placeholder="如：二零二四年八月十五" :maxlength="12"/>
-			</view>
-			<text v-if="pennantError.length > 0" class="workspace-form-error news-form-error">{{ pennantError }}</text>
-			<text v-else-if="pennantReady" class="pennant-hint">锦旗已生成并存入手机相册，可直接发给对方。</text>
-			<view class="news-form-submit" :class="{ disabled: pennantWorking }" @click="generatePennant"><text>{{ pennantWorking ? '生成中…' : '立即生成锦旗' }}</text></view>
-		</XsaSheet>
 
 		<!-- 线索：状态选择 -->
 		<XsaSheet :visible="leadStatusSheetVisible" title="状态" @close="leadStatusSheetVisible = false">
@@ -1190,6 +1032,8 @@
 import XsaToast from '@/components/XsaToast.uvue'
 import XsaSheet from '@/components/XsaSheet.uvue'
 import MatchmakerManagementCenter from '@/components/MatchmakerManagementCenter.uvue'
+import MatchmakerGoodNews from '@/components/MatchmakerGoodNews.uvue'
+import { onShareAppMessage } from '@dcloudio/uni-app'
 import MatchmakerPendingReview from '@/components/MatchmakerPendingReview.uvue'
 import MatchmakerServiceNavSheet from '@/components/MatchmakerServiceNavSheet.uvue'
 import {
@@ -1221,17 +1065,12 @@ import {
 	getMatchmakerWorkspaceMeetingRequests,
 	getMatchmakerWorkspaceCommissionEntries,
 	getMatchmakerWorkspaceOfflineIncome,
-	getMatchmakerWorkspaceGoodNews,
-	getMatchmakerWorkspaceGoodNewsPennants,
-	uploadWorkspaceGoodNewsPhoto,
-	createMatchmakerWorkspaceGoodNews,
 	getMatchmakerMemberContact,
 	submitMatchmakerApplication
 } from '@/api'
 import { getWorkspaceMeetingPresentation } from '@/utils/meeting-workflow.uts'
 import { resolveMediaUrl } from '@/api/config.uts'
-import { getCurrentInstance, nextTick } from 'vue'
-import { drawPennant, renderPennant, type PennantContent } from '@/utils/pennant-drawer.uts'
+import { nextTick } from 'vue'
 import { savePosterToPhotos } from '@/utils/moxiang-poster-drawer.uts'
 
 // ===== 基本信息 =====
@@ -1269,6 +1108,13 @@ const pendingReviewInitialTab = ref('PENDING')
 const autoOpenPendingReview = ref(false)
 // 支持从其他页面直达某个工作区：?workspace=meeting（约见申请）/ ?workspace=match（待我牵线）
 const autoOpenWorkspace = ref('')
+const goodNewsPanel = ref<any>(null)
+const goodNewsShare = ref<any>(null)
+const goodNewsInitialItem = ref('')
+const goodNewsInitialKind = ref('news')
+const goodNewsDisplayName = computed(() => managementCenterSnapshot.value != null && managementCenterSnapshot.value.identity != null ? String(managementCenterSnapshot.value.identity.name || '服务红娘') : '服务红娘')
+const resetGoodNewsScroll = () => { workspaceScrollTop.value = 1; nextTick(() => { workspaceScrollTop.value = 0 }) }
+const openGoodNewsPerson = (id: string) => { openWorkspaceMemberProfile({ id: id }) }
 const workspaceVisible = ref(false)
 const workspaceTitle = ref('')
 const workspaceKind = ref('general')
@@ -1323,58 +1169,6 @@ const workspaceFinanceLoading = ref(false)
 const workspaceFinanceError = ref('')
 const workspaceFinanceUsingDemoData = ref(false)
 const workspaceFinanceTotalAmount = ref('')
-// 红娘喜讯与锦旗墙读服务端接口（数据源为后台「运营工具-喜讯管理」内容域），不再有本地演示数。
-const workspaceNews = ref<any[]>([])
-const workspacePennants = ref<any[]>([])
-const newsLoading = ref(false)
-const newsError = ref('')
-const newsStage = ref('')
-const newsTotal = ref(0)
-const newsDetailId = ref('')
-const newsReportSheetVisible = ref(false)
-// 报喜-反馈喜讯表单：当前状态取上方阶段格里除「锦旗飘扬」之外的 7 个分类。
-const newsFeedbackSheetVisible = ref(false)
-const newsStageOptions: string[] = ['牵手成功', '恋爱生活', '已见父母', '已订婚', '已领证', '已办婚礼', '婚后生活']
-const newsFormStage = ref('')
-const newsFormStageIndex = ref(0)
-const newsFormPartner = ref('')
-const newsFormMeetDuration = ref('')
-const newsFormContent = ref('')
-const newsFormImages = ref<any[]>([])
-const newsFormError = ref('')
-const newsFormSubmitting = ref(false)
-// 报喜-赠送锦旗：只在本地画一张锦旗图，不写后台锦旗墙。
-const pennantSheetVisible = ref(false)
-const pennantGiver = ref('')
-const pennantReceiver = ref('')
-const pennantLeftWords = ref('')
-const pennantRightWords = ref('')
-const pennantDate = ref('')
-const pennantError = ref('')
-const pennantWorking = ref(false)
-const pennantReady = ref(false)
-const pennantInstance = getCurrentInstance()
-const pennantsLoading = ref(false)
-const pennantsError = ref('')
-const pennantsLoaded = ref(false)
-// 阶段筛选与后台栏目配置的 8 个分类同名；最后一项跳「锦旗」页签，不参与喜讯阶段过滤。
-const newsStages: any[] = [
-	{ label: '牵手成功', glyph: '💞', tone: 't-coral' },
-	{ label: '恋爱生活', glyph: '💬', tone: 't-sky' },
-	{ label: '已见父母', glyph: '👪', tone: 't-sage' },
-	{ label: '已订婚', glyph: '💍', tone: 't-plum' },
-	{ label: '已领证', glyph: '📕', tone: 't-apricot' },
-	{ label: '已办婚礼', glyph: '🎉', tone: 't-mint' },
-	{ label: '婚后生活', glyph: '🏠', tone: 't-lilac' },
-	{ label: '锦旗飘扬', glyph: '🎏', tone: 't-blush' }
-]
-const newsStageTone = (stage: string): string => {
-	for (let i = 0; i < newsStages.length; i++) {
-		if (newsStages[i].label == stage) return String(newsStages[i].tone)
-	}
-	return 't-sage'
-}
-// 会员未上传头像时用首字占位，和资料待审卡片同一处理。
 const commissionAvatarText = (name: any): string => {
 	const text = name != null ? String(name).trim() : ''
 	return text.length > 0 ? text.substring(0, 1) : '会'
@@ -1411,7 +1205,7 @@ const workspaceCashNote = computed((): string => {
 		? '线下业绩与开单收款为本地演示数据，服务端接入后自动切换。'
 		: '线下业绩为本人作为销售红娘的线下 VIP 已收款订单，由平台按月统一结算。'
 	if (workspaceCommissionUsingDemoData.value) return '分成金额计入账号余额，可申请提现；当前为本地演示数据。'
-	return '分成金额计入账号余额，已入账部分可申请提现。'
+	return '分成记录按服务端数据展示，实际可提现余额以账户余额为准。'
 })
 const workspaceLeads = ref<any[]>([])
 // 九级意向独立保存，便于按 A-J 完整筛选与回显。
@@ -1737,6 +1531,9 @@ const closePendingReview = () => {
 }
 
 const closeWorkspace = () => {
+	if (workspaceKind.value == 'news' && goodNewsPanel.value != null && goodNewsPanel.value.back()) return
+	goodNewsInitialItem.value = ''
+	goodNewsShare.value = null
 	if (pendingReviewVisible.value) {
 		closePendingReview()
 		return
@@ -2998,295 +2795,6 @@ const loadWorkspaceMeetings = async () => {
 	}
 }
 
-// ===== 红娘喜讯：读后台「运营工具-喜讯管理」内容域，只做浏览与详情 =====
-const loadWorkspaceNews = async () => {
-	newsLoading.value = true
-	newsError.value = ''
-	try {
-		const result = await getMatchmakerWorkspaceGoodNews(newsStage.value, 1, 100)
-		if (!result.success || result.data == null) {
-			workspaceNews.value = []
-			newsTotal.value = 0
-			newsError.value = result.message != null ? String(result.message) : '红娘喜讯加载失败'
-			return
-		}
-		const source = result.data
-		const items = Array.isArray(source.items) ? source.items : []
-		workspaceNews.value = items.map((item: any) => {
-			const images: string[] = Array.isArray(item.images) ? item.images as string[] : []
-			// 红娘端只登记对方称呼，没有的一侧服务端返回空串，卡片上就不渲染这一侧。
-			const fromName = item.fromName != null ? String(item.fromName) : ''
-			const toName = item.toName != null ? String(item.toName) : ''
-			const stage = item.stage != null ? String(item.stage) : ''
-			const content = item.content != null ? String(item.content) : ''
-			const createdAt = item.createdAt != null ? String(item.createdAt) : ''
-			const blessingCount = item.blessingCount != null ? Number(item.blessingCount) : 0
-			return {
-				id: item.id != null ? String(item.id) : '',
-				stage: stage,
-				stageTone: newsStageTone(stage),
-				fromUserId: item.fromUserId != null ? String(item.fromUserId) : '',
-				toUserId: item.toUserId != null ? String(item.toUserId) : '',
-				fromName: fromName,
-				toName: toName,
-				fromAvatar: item.fromAvatar != null && String(item.fromAvatar).length > 0 ? String(item.fromAvatar) : getIntroductionFallbackAvatar(item.fromUserId, '', fromName),
-				toAvatar: item.toAvatar != null && String(item.toAvatar).length > 0 ? String(item.toAvatar) : getIntroductionFallbackAvatar(item.toUserId, '', toName),
-				matchmakerName: item.matchmakerName != null ? String(item.matchmakerName) : '服务红娘',
-				meetDuration: item.meetDuration != null ? String(item.meetDuration) : '',
-				images: images,
-				content: content,
-				summary: content.length > 56 ? content.substring(0, 56) + '…' : content,
-				blessing: item.blessing != null ? String(item.blessing) : '',
-				blessingText: String(blessingCount) + '人已送祝福',
-				pendingReview: item.pendingReview === true,
-				createdAt: createdAt,
-				date: createdAt.length >= 10 ? createdAt.substring(0, 10) : createdAt
-			}
-		})
-		newsTotal.value = source.total != null ? Number(source.total) : items.length
-	} catch (e) {
-		workspaceNews.value = []
-		newsTotal.value = 0
-		newsError.value = '网络数据加载失败，请稍后重试'
-	} finally {
-		newsLoading.value = false
-	}
-}
-
-const loadWorkspacePennants = async () => {
-	pennantsLoading.value = true
-	pennantsError.value = ''
-	pennantsLoaded.value = false
-	try {
-		const result = await getMatchmakerWorkspaceGoodNewsPennants(1, 100)
-		if (!result.success || result.data == null) {
-			workspacePennants.value = []
-			pennantsError.value = result.message != null ? String(result.message) : '锦旗墙加载失败'
-			return
-		}
-		const items = Array.isArray(result.data.items) ? result.data.items : []
-		workspacePennants.value = items.map((item: any) => ({
-			id: item.id != null ? String(item.id) : '',
-			maker: item.maker != null ? String(item.maker) : '',
-			giver: item.giver != null ? String(item.giver) : '',
-			target: item.target != null ? String(item.target) : '',
-			words: item.words != null ? String(item.words) : '',
-			imageUrl: item.imageUrl != null ? String(item.imageUrl) : '',
-			date: item.createdAt != null && String(item.createdAt).length >= 10 ? String(item.createdAt).substring(0, 10) : ''
-		}))
-		pennantsLoaded.value = true
-	} catch (e) {
-		workspacePennants.value = []
-		pennantsError.value = '网络数据加载失败，请稍后重试'
-	} finally {
-		pennantsLoading.value = false
-	}
-}
-
-const selectNewsStage = (stage: string) => {
-	if (stage == '锦旗飘扬') {
-		workspaceActiveTab.value = '锦旗'
-		return
-	}
-	// 再点一次已选中的阶段即取消筛选，回到全部喜讯。
-	newsStage.value = newsStage.value == stage ? '' : stage
-	newsDetailId.value = ''
-	void loadWorkspaceNews()
-}
-
-const isNewsStageActive = (stage: string): boolean => {
-	if (stage == '锦旗飘扬') return workspaceActiveTab.value == '锦旗'
-	return workspaceActiveTab.value == '喜讯' && newsStage.value == stage
-}
-
-const toggleNewsDetail = (id: string) => {
-	newsDetailId.value = newsDetailId.value == id ? '' : id
-}
-
-const previewNewsImage = (images: string[], index: number) => {
-	if (images.length == 0) return
-	uni.previewImage({ urls: images, current: index })
-}
-
-const previewPennantImage = (url: string) => {
-	if (url.length == 0) return
-	uni.previewImage({ urls: [url], current: 0 })
-}
-
-const openNewsMemberProfile = (userId: string) => {
-	// 后台喜讯表单目前只登记姓名文本，没有关联会员时不跳主页。
-	if (userId.length == 0) {
-		showToast('这条喜讯只登记了姓名，未关联会员')
-		return
-	}
-	uni.navigateTo({
-		url: '/pagesSub/userExtra/user/detail?userId=' + userId + '&matchmakerView=1',
-		fail: () => showToast('打开会员主页失败')
-	})
-}
-
-const openNewsReportSheet = () => {
-	newsReportSheetVisible.value = true
-}
-
-// 报喜面板分流：反馈喜讯已有写入接口，赠送锦旗还没有服务端入口。
-const chooseNewsReportKind = (kind: string) => {
-	newsReportSheetVisible.value = false
-	if (kind == 'pennant') {
-		pennantGiver.value = ''
-		pennantReceiver.value = ''
-		pennantLeftWords.value = ''
-		pennantRightWords.value = ''
-		pennantDate.value = ''
-		pennantError.value = ''
-		pennantReady.value = false
-		pennantSheetVisible.value = true
-		redrawPennant()
-		return
-	}
-	newsFormStage.value = ''
-	newsFormStageIndex.value = 0
-	newsFormPartner.value = ''
-	newsFormMeetDuration.value = ''
-	newsFormContent.value = ''
-	newsFormImages.value = []
-	newsFormError.value = ''
-	newsFeedbackSheetVisible.value = true
-}
-
-const pennantPayload = (): PennantContent => {
-	return {
-		giver: pennantGiver.value.trim(),
-		receiver: pennantReceiver.value.trim(),
-		leftWords: pennantLeftWords.value.trim(),
-		rightWords: pennantRightWords.value.trim(),
-		dateText: pennantDate.value.trim()
-	} as PennantContent
-}
-
-const pennantHost = (): any => {
-	return pennantInstance != null && pennantInstance.proxy != null ? pennantInstance.proxy : null
-}
-
-// 打开面板时先画一面空白锦旗当模板；canvas 常驻在 XsaSheet 里，等一帧拿到节点即可。
-const redrawPennant = async () => {
-	await nextTick()
-	try {
-		await renderPennant('pennantCanvas', pennantHost(), pennantPayload())
-	} catch (e: any) {
-		console.error('[pennant] 预览绘制失败', e)
-	}
-}
-
-const generatePennant = async () => {
-	if (pennantWorking.value) return
-	const payload = pennantPayload()
-	if (payload.giver.length == 0) {
-		pennantError.value = '请填写赠送人'
-		return
-	}
-	if (payload.receiver.length == 0) {
-		pennantError.value = '请填写赠送给'
-		return
-	}
-	if (payload.leftWords.length == 0 || payload.rightWords.length == 0) {
-		pennantError.value = '左右两条感谢语都要填写'
-		return
-	}
-	pennantError.value = ''
-	pennantWorking.value = true
-	try {
-		const tempPath = await drawPennant('pennantCanvas', pennantHost(), payload)
-		// savePosterToPhotos 只在真正写进相册后返回 true，未授权时它自己会弹引导，这里不再谎报已保存。
-		pennantReady.value = await savePosterToPhotos(tempPath)
-	} catch (e: any) {
-		console.error('[pennant] 锦旗生成失败', e)
-		pennantError.value = '锦旗生成失败，请稍后重试'
-	} finally {
-		pennantWorking.value = false
-	}
-}
-
-const onNewsFormStageChange = (event: any) => {
-	const index = Number(event.detail.value)
-	newsFormStageIndex.value = index
-	newsFormStage.value = index >= 0 && index < newsStageOptions.length ? newsStageOptions[index] : ''
-}
-
-const chooseNewsFormImage = () => {
-	const remaining = 9 - newsFormImages.value.length
-	if (remaining <= 0) {
-		showToast('一条喜讯最多上传 9 张图片')
-		return
-	}
-	uni.chooseImage({
-		count: remaining,
-		sizeType: ['compressed'],
-		sourceType: ['album', 'camera'],
-		success: async (res: any) => {
-			const paths: any[] = res.tempFilePaths != null ? (res.tempFilePaths as any[]) : []
-			if (paths.length == 0) return
-			showToast('图片上传中…')
-			for (let i = 0; i < paths.length; i++) {
-				try {
-					const uploaded = await uploadWorkspaceGoodNewsPhoto(String(paths[i]))
-					if (uploaded.success && uploaded.data != null && uploaded.data.url != null) {
-						// url 存服务端相对路径（入库用），display 才是给 image 组件的完整地址。
-						const url = String(uploaded.data.url)
-						newsFormImages.value.push({ url: url, display: resolveMediaUrl(url) })
-					} else {
-						showToast(uploaded.message != null ? String(uploaded.message) : '图片上传失败')
-					}
-				} catch (e) {
-					showToast('图片上传失败，请重试')
-				}
-			}
-		}
-	})
-}
-
-const removeNewsFormImage = (index: number) => {
-	newsFormImages.value.splice(index, 1)
-}
-
-const previewNewsFormImage = (index: number) => {
-	const urls: string[] = newsFormImages.value.map((item: any) => String(item.display))
-	if (urls.length == 0) return
-	uni.previewImage({ urls: urls, current: index })
-}
-
-const submitNewsFeedback = async () => {
-	if (newsFormSubmitting.value) return
-	const partner = newsFormPartner.value.trim()
-	if (partner.length == 0) {
-		newsFormError.value = '请填写对方称呼'
-		return
-	}
-	if (newsFormStage.value.length == 0) {
-		newsFormError.value = '请选择当前状态'
-		return
-	}
-	newsFormError.value = ''
-	newsFormSubmitting.value = true
-	const result = await createMatchmakerWorkspaceGoodNews({
-		stage: newsFormStage.value,
-		partnerName: partner,
-		meetDuration: newsFormMeetDuration.value.trim(),
-		content: newsFormContent.value.trim(),
-		images: newsFormImages.value.map((item: any) => String(item.url))
-	})
-	newsFormSubmitting.value = false
-	if (!result.success) {
-		newsFormError.value = result.message != null && String(result.message).length > 0 ? String(result.message) : '提交失败，请稍后重试'
-		return
-	}
-	newsFeedbackSheetVisible.value = false
-	showToast('已提交，后台审核通过后公开')
-	await loadWorkspaceNews()
-}
-
-const blessGoodNews = () => showToast('送祝福将在服务端开放写入后启用')
-
 // ===== 牵线管理：添加牵线记录 =====
 const matchAddSheetVisible = ref(false)
 const matchAddPickerVisible = ref(false)
@@ -3695,13 +3203,9 @@ const openWorkspace = async (title: string, kind: string, initialTab: string = '
 	if (kind == 'match') await loadWorkspaceMatches()
 	if (kind == 'meeting') await loadWorkspaceMeetings()
 	// 「线上分成」与「财务明细」各读服务端；「专属推广工具」没有对应数据源，仍是演示数据。
-	if (kind == 'commission' && title == '线上分成') await loadWorkspaceCommissionEntries()
+	if (kind == 'commission' && title == '我的分成') await loadWorkspaceCommissionEntries()
 	if (kind == 'commission' && title == '财务明细') await loadWorkspaceOfflineIncome()
-	if (kind == 'news') {
-		newsStage.value = ''
-		newsDetailId.value = ''
-		await Promise.all([loadWorkspaceNews(), loadWorkspacePennants()])
-	}
+	if (kind == 'news') workspaceTitle.value = '红娘喜讯'
 }
 
 const refreshManagementCenter = async () => {
@@ -3732,11 +3236,11 @@ const handleManagementCenterAction = (name: string) => {
 		return
 	}
 	if (name == 'metric:online_commission') {
-		openWorkspace('线上分成', 'commission')
+		openWorkspace('我的分成', 'commission')
 		return
 	}
 	if (name == 'metric:offline_performance') {
-		openWorkspace('财务明细', 'commission')
+		openWorkspace('财务明细', 'income-placeholder')
 		return
 	}
 	if (name == 'metric:pending_introduction') {
@@ -3768,7 +3272,7 @@ const handleManagementCenterAction = (name: string) => {
 		return
 	}
 	if (name == '分成明细' || name == '查看分成明细' || name == '财务明细' || name == '查看财务明细') {
-		openWorkspace(name.indexOf('财务') >= 0 ? '财务明细' : '线上分成', 'commission')
+		name.indexOf('财务') >= 0 ? openWorkspace('财务明细', 'income-placeholder') : openWorkspace('我的分成', 'commission')
 		return
 	}
 	if (name == '录入线索' || name == '录入会员') {
@@ -3841,7 +3345,17 @@ const onServiceNavSelect = (key: string) => {
 	if (key == 'meeting') { openWorkspace('约会管理', 'meeting', '全部'); return }
 }
 
+onShareAppMessage(() => {
+	const row = goodNewsShare.value
+	if (row != null && row.kind == 'news' && row.pendingReview !== true && row.public !== false) {
+		return { title: row.stage + ' · 记录美好进展', path: '/pagesSub/matchmaker/become-matchmaker?workspace=news&newsId=' + encodeURIComponent(String(row.id)), imageUrl: row.images.length > 0 ? row.images[0] : '' }
+	}
+	return { title: '红娘喜讯 · 记录每一步美好进展', path: '/pagesSub/matchmaker/become-matchmaker?workspace=news' }
+})
+
 onLoad((options: any) => {
+	goodNewsInitialItem.value = options != null && options.newsId != null ? String(options.newsId) : ''
+	goodNewsInitialKind.value = options != null && options.newsKind == 'pennant' ? 'pennant' : 'news'
 	// 会员主页「编辑资料」入口：进入页面后自动打开资料待审列表
 	autoOpenPendingReview.value = options != null && (options.openPendingReview == '1' || options.openPendingReview == 1 || options.openPendingReview === true)
 	// 直达工作区：?workspace=meeting（约见申请）/ ?workspace=match（待我牵线）
@@ -3865,6 +3379,7 @@ onShow(async () => {
 		if (managementCenterVisible.value) {
 			if (kind == 'meeting') openWorkspace('约会管理', 'meeting', '全部')
 			else if (kind == 'match') openWorkspace('待我牵线', 'match', '待牵线')
+			else if (kind == 'news') openWorkspace('红娘喜讯', 'news')
 		}
 		return
 	}
@@ -4227,8 +3742,24 @@ const submitApplication = async () => {
 .workspace-match-status-btn.t-FAILED { background: var(--match-coral); }
 .workspace-match-status-arrow { width: 28rpx; height: 28rpx; border-radius: 50%; background: rgba(255, 255, 255, .3); display: flex; align-items: center; justify-content: center; }
 .workspace-match-status-arrow i { width: 10rpx; height: 10rpx; border-top: 3rpx solid var(--paper); border-right: 3rpx solid var(--paper); transform: rotate(45deg); margin-left: -3rpx; }
+.workspace-match-status-btn.match-status-indicator { background: var(--sage-soft); }
+.workspace-match-status-btn.match-status-indicator text { color: var(--accent2); }
+.match-status-indicator.t-PENDING .workspace-match-status-arrow { background: var(--plane-yellow); }
+.match-status-indicator.t-IN_PROGRESS .workspace-match-status-arrow { background: var(--paper); }
+.match-status-indicator.t-SUCCEEDED .workspace-match-status-arrow { background: var(--accent2); }
+.match-status-indicator.t-FAILED .workspace-match-status-arrow { background: var(--match-coral); }
 .workspace-match-status-btn:active { opacity: .8; transform: scale(.97); }
 /* 双人放大头像：两张圆角方图并排，中间压一枚心形徽标；图下各带角色标 + 姓名 + 编号，点图以红娘权限进该会员主页。 */
+.meeting-invitation { padding: 24rpx 8rpx 12rpx; display: flex; flex-direction: column; align-items: center; gap: 24rpx; }
+.meeting-invitation-portraits { display: flex; flex-direction: row; align-items: center; justify-content: center; }
+.meeting-invitation-portrait { width: 232rpx; height: 232rpx; border-radius: 50%; border: 6rpx solid var(--surface); box-sizing: border-box; overflow: hidden; background: var(--warm); box-shadow: var(--shadow-sm); }
+.meeting-invitation-target { margin-left: -44rpx; position: relative; z-index: 1; }
+.meeting-invitation-portrait:active { opacity: 0.85; }
+.meeting-invitation-image { width: 100%; height: 100%; border-radius: 50%; }
+.meeting-invitation-title { max-width: 100%; color: var(--ink2); font-size: 28rpx; line-height: 1.6; text-align: center; word-break: break-all; }
+.meeting-invitation-name { color: var(--accent2); font-weight: 800; }
+.meeting-invitation-members { width: 100%; display: flex; flex-direction: row; align-items: flex-start; justify-content: center; }
+.meeting-invitation-member { width: 50%; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 10rpx; }
 .workspace-match-pair { position: relative; padding: 44rpx 0 0; display: flex; flex-direction: row; align-items: flex-start; }
 .workspace-match-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 16rpx; }
 /* 两列相向平移 20rpx + 照片各转 4°，让两张图在接缝处部分叠住（右图压左图）；姓名与编号不跟着倾斜。 */
@@ -4285,12 +3816,13 @@ const submitApplication = async () => {
 .workspace-match-vip { padding: 1rpx 10rpx; border-radius: 6rpx; font-size: 17rpx; font-weight: 800; color: #ffffff; background: #b98a2b; flex-shrink: 0; }
 /* 联系方式：默认只留入口，点开走受审计接口后就地展开；号码芯片再点一下即复制。 */
 .workspace-match-contact-row { display: flex; flex-direction: row; align-items: center; gap: 14rpx; min-height: 60rpx; padding: 10rpx 0; border-top: 1rpx solid var(--line); }
+.workspace-match-contact-row .workspace-match-role { width: 180rpx; height: 60rpx; padding: 0; box-sizing: border-box; text-align: center; line-height: 60rpx; font-size: 21rpx; }
 .workspace-match-contact-body { flex: 1; min-width: 0; display: flex; flex-direction: row; align-items: center; justify-content: flex-end; gap: 10rpx; flex-wrap: wrap; }
 .workspace-match-contact-values { display: flex; flex-direction: row; align-items: center; justify-content: flex-end; gap: 10rpx; flex-wrap: wrap; }
 .workspace-match-contact-chip { max-width: 250rpx; padding: 8rpx 16rpx; border-radius: 12rpx; font-size: 21rpx; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-match-contact-chip.phone { background: #FDE7EB; color: var(--match-coral); }
 .workspace-match-contact-chip.wechat { background: #E9F7EF; color: var(--sage); }
-.workspace-match-contact-open { padding: 8rpx 20rpx; border-radius: 999rpx; border: 1rpx dashed var(--accent2); color: var(--accent2); font-size: 21rpx; font-weight: 800; }
+.workspace-match-contact-open { width: 180rpx; height: 60rpx; padding: 0; box-sizing: border-box; text-align: center; line-height: 58rpx; border-radius: 999rpx; border: 1rpx dashed var(--accent2); color: var(--accent2); font-size: 21rpx; font-weight: 800; }
 .workspace-match-contact-open:active { opacity: .7; }
 .workspace-match-contact-state { color: var(--muted); font-size: 20rpx; }
 .workspace-match-contact-state.error { color: var(--match-coral); }
@@ -4496,6 +4028,9 @@ const submitApplication = async () => {
 .workspace-add { position: fixed; right: 22rpx; bottom: 38rpx; width: 84rpx; height: 84rpx; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; color: var(--paper); font-size: 17rpx; font-weight: 800; box-shadow: var(--shadow-sm); }.workspace-add text:first-child { font-size: 30rpx; line-height: 28rpx; }
 
 /* 微信小程序 uvue 必须显式标记横向 flex，避免文字与操作按钮纵向叠压。 */
+.match-contact-action { min-height: 88rpx; border-radius: 999rpx; background: var(--accent); display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 20rpx; }
+.match-contact-action-pressed { opacity: 0.8; }
+.match-contact-action-label { color: var(--paper); font-size: 24rpx; font-weight: 700; }
 .workspace-tabs, .workspace-search, .workspace-promotion > view, .workspace-commission-row > view, .workspace-info-card > view:not(.workspace-actions):not(.workspace-member-header), .workspace-actions, .workspace-match-card-top, .workspace-meeting-card-top, .workspace-meeting-pair, .workspace-meeting-person, .workspace-meeting-arrangement > view, .workspace-member-header, .workspace-entry-card > view:not(.workspace-entry-submit), .workspace-generic-card { flex-direction: row; }
 .workspace-tabs, .workspace-search, .workspace-actions, .workspace-meeting-pair, .workspace-meeting-person, .workspace-member-header, .workspace-generic-card { min-width: 0; }
 .workspace-info-card > view, .workspace-member-header > view, .workspace-generic-card > view { min-width: 0; }
@@ -6738,130 +6273,4 @@ const submitApplication = async () => {
 .ls-foot { margin-top: 20rpx; display: flex; justify-content: center; }
 .ls-foot text { color: #9AA8A2; font-size: 20rpx; text-align: center; }
 
-/* ===== 红娘喜讯中心：色带 + 压边阶段卡 + 反馈条 + 喜讯卡列表 + 锦旗墙 ===== */
-.news-band { margin-top: 4rpx; padding: 26rpx 26rpx 60rpx; border-radius: 20rpx; background: linear-gradient(180deg, var(--security-hero) 0%, var(--paper) 100%); display: flex; flex-direction: row; align-items: flex-start; justify-content: space-between; }
-.news-band-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6rpx; }
-.news-band-title { color: var(--ink); font-size: 34rpx; font-weight: 800; }
-.news-band-sub { color: var(--muted); font-size: 20rpx; line-height: 1.5; }
-.news-band-count { flex: none; min-width: 104rpx; padding: 10rpx 16rpx; border-radius: 16rpx; background: var(--surface); display: flex; flex-direction: column; align-items: center; box-shadow: var(--shadow-sm); }
-.news-band-count-value { color: var(--accent2); font-size: 34rpx; font-weight: 800; line-height: 1.2; }
-.news-band-count-label { color: var(--muted); font-size: 18rpx; }
-.news-stage-card { margin-top: -40rpx; padding: 22rpx 12rpx; border-radius: 20rpx; background: var(--surface); display: flex; flex-direction: column; box-shadow: var(--shadow-sm); }
-.news-stage-grid { display: flex; flex-direction: row; flex-wrap: wrap; }
-.news-stage { width: 25%; padding: 10rpx 4rpx 12rpx; display: flex; flex-direction: column; align-items: center; gap: 8rpx; border-radius: 16rpx; }
-.news-stage-glyph { width: 62rpx; height: 62rpx; border-radius: 50%; display: flex; flex-direction: row; align-items: center; justify-content: center; font-size: 30rpx; background: var(--warm); }
-.news-stage-label { color: var(--ink2); font-size: 19rpx; text-align: center; }
-.news-stage.active { background: var(--accent-bg); }
-.news-stage.active .news-stage-label { color: var(--accent2); font-weight: 800; }
-.news-feedback { margin-top: 18rpx; padding: 16rpx 18rpx; border-radius: 18rpx; background: var(--review-soft); display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
-.news-feedback-glyph { flex: none; font-size: 26rpx; }
-.news-feedback-text { flex: 1; min-width: 0; color: var(--review-deep); font-size: 20rpx; line-height: 1.45; }
-.news-feedback-btn { flex: none; padding: 10rpx 16rpx; border-radius: 999rpx; background: var(--surface); color: var(--accent2); font-size: 20rpx; font-weight: 800; display: flex; flex-direction: row; align-items: center; gap: 4rpx; }
-.news-feedback-arrow { font-size: 22rpx; line-height: 1; }
-.news-section { margin-top: 24rpx; padding: 0 6rpx; display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
-.news-section-title { color: var(--ink); font-size: 26rpx; font-weight: 800; }
-.news-section-filter { padding: 8rpx 16rpx; border-radius: 999rpx; background: var(--warm); color: var(--accent2); font-size: 19rpx; }
-.news-card { margin-top: 18rpx; padding: 22rpx; border-radius: 20rpx; background: var(--surface); display: flex; flex-direction: column; gap: 16rpx; box-shadow: var(--shadow-sm); }
-.news-card-head { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12rpx; }
-.news-card-stage { flex: none; padding: 9rpx 18rpx; border-radius: 999rpx; font-size: 20rpx; font-weight: 800; line-height: 1.2; }
-.news-card-couple { flex: 1; min-width: 0; display: flex; flex-direction: row; justify-content: flex-end; }
-.news-card-person { max-width: 176rpx; min-width: 0; margin-left: 14rpx; display: flex; flex-direction: row; align-items: center; }
-.news-card-avatar { flex: none; width: 46rpx; height: 46rpx; border-radius: 50%; }
-.news-card-name { min-width: 0; margin-left: 8rpx; color: var(--ink); font-size: 20rpx; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.news-card-meta { display: flex; flex-direction: row; align-items: center; gap: 10rpx; color: var(--ink2); font-size: 20rpx; }
-.news-card-meta-glyph { font-size: 22rpx; color: var(--muted); }
-.news-card-meta-item { color: var(--ink2); }
-.news-card-meta-divider { color: var(--line); }
-.news-card-images { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12rpx; }
-.news-card-image { width: 168rpx; height: 168rpx; border-radius: 16rpx; background: var(--warm); }
-.news-card-detail { padding: 18rpx; border-radius: 16rpx; background: var(--paper); border: 1rpx solid var(--line); display: flex; flex-direction: column; gap: 10rpx; }
-.news-card-content { color: var(--ink2); font-size: 21rpx; line-height: 1.6; }
-.news-card-content-empty { color: var(--muted); }
-.news-card-blessing { color: var(--accent2); font-size: 20rpx; line-height: 1.6; }
-.news-card-date { color: var(--muted); font-size: 19rpx; }
-.news-card-bless-btn { margin-top: 4rpx; align-self: flex-start; padding: 12rpx 26rpx; border-radius: 999rpx; background: var(--sage-soft); color: var(--accent2); font-size: 20rpx; font-weight: 800; }
-.news-card-foot { padding-top: 14rpx; border-top: 1rpx solid var(--line); display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
-.news-card-blessing-count { color: var(--muted); font-size: 19rpx; }
-.news-card-toggle { padding: 10rpx 20rpx; border-radius: 999rpx; background: var(--warm); color: var(--accent2); font-size: 20rpx; font-weight: 800; display: flex; flex-direction: row; align-items: center; gap: 4rpx; }
-.news-card-toggle-arrow { font-size: 24rpx; line-height: 1; transform: rotate(90deg); }
-.news-card-toggle-arrow.open { transform: rotate(-90deg); }
-/* 阶段配色：沿用现有语义 Token，按喜讯阶段分档（徽标用底+字，筛选图标只用底色） */
-.news-card-stage.t-coral { background: var(--match-blush); color: var(--match-coral); }
-.news-card-stage.t-sky { background: var(--match-sky); color: var(--match-deep); }
-.news-card-stage.t-sage { background: var(--sage-soft); color: var(--sage); }
-.news-card-stage.t-plum { background: var(--plane-lilac); color: var(--plane-purple-deep); }
-.news-card-stage.t-apricot { background: var(--shortcut-apricot); color: var(--review-orange); }
-.news-card-stage.t-mint { background: var(--shortcut-mint); color: var(--accent2); }
-.news-card-stage.t-lilac { background: var(--shortcut-lilac); color: var(--review-deep); }
-.news-card-stage.t-blush { background: var(--review-lilac); color: var(--review-purple); }
-.news-stage-glyph.t-coral { background: var(--match-blush); }
-.news-stage-glyph.t-sky { background: var(--match-sky); }
-.news-stage-glyph.t-sage { background: var(--sage-soft); }
-.news-stage-glyph.t-plum { background: var(--plane-lilac); }
-.news-stage-glyph.t-apricot { background: var(--shortcut-apricot); }
-.news-stage-glyph.t-mint { background: var(--shortcut-mint); }
-.news-stage-glyph.t-lilac { background: var(--shortcut-lilac); }
-.news-stage-glyph.t-blush { background: var(--review-lilac); }
-.news-pennant-card { margin-top: 18rpx; padding: 22rpx; border-radius: 20rpx; background: var(--surface); display: flex; flex-direction: column; gap: 16rpx; box-shadow: var(--shadow-sm); }
-.news-pennant-image { width: 100%; height: 300rpx; border-radius: 16rpx; background: var(--warm); }
-.news-pennant-plate { padding: 30rpx 24rpx; border-radius: 16rpx; background: var(--match-blush); display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 16rpx; }
-.news-pennant-words { flex: 1; min-width: 0; color: var(--match-coral); font-size: 26rpx; font-weight: 800; line-height: 1.5; }
-.news-pennant-plate-mark { flex: none; padding: 6rpx 14rpx; border-radius: 999rpx; background: var(--surface); color: var(--match-coral); font-size: 18rpx; }
-.news-pennant-meta { display: flex; flex-direction: column; gap: 6rpx; }
-.news-pennant-giver { color: var(--ink); font-size: 22rpx; font-weight: 700; }
-.news-pennant-target, .news-pennant-maker, .news-pennant-date { color: var(--muted); font-size: 19rpx; }
-
-/* 报喜：右下角悬浮键沿用资料待审「筛选」键的圆形样式，面板按模板稿做双入口卡片 */
-.workspace-add.news-report { width: 104rpx; height: 104rpx; flex-direction: column; gap: 2rpx; background: var(--surface); box-shadow: var(--match-shadow); }
-.workspace-add.news-report:active { opacity: 0.8; transform: scale(0.96); }
-.workspace-add.news-report .news-report-glyph { font-size: 36rpx; line-height: 34rpx; }
-.workspace-add.news-report .news-report-label { color: var(--ink); font-size: 19rpx; font-weight: 800; line-height: 1.2; }
-.news-report-grid { display: flex; flex-direction: row; gap: 18rpx; }
-.news-report-tile { flex: 1; min-width: 0; padding: 34rpx 18rpx 30rpx; border-radius: 24rpx; display: flex; flex-direction: column; align-items: center; gap: 20rpx; }
-.news-report-tile.lavender { background: var(--shortcut-lilac); }
-.news-report-tile.blush { background: var(--match-blush); }
-.news-report-tile:active { opacity: 0.86; }
-.news-report-icon { width: 104rpx; height: 104rpx; border-radius: 50%; display: flex; flex-direction: row; align-items: center; justify-content: center; font-size: 44rpx; color: var(--text-invert); }
-.news-report-icon.lavender { background: linear-gradient(135deg, var(--review-purple), var(--plane-purple)); }
-.news-report-icon.blush { background: linear-gradient(135deg, var(--badge-coral), var(--match-coral)); }
-.news-report-tile-label { font-size: 25rpx; font-weight: 800; }
-.news-report-tile.lavender .news-report-tile-label { color: var(--review-deep); }
-.news-report-tile.blush .news-report-tile-label { color: var(--match-coral); }
-.news-report-note { margin-top: 22rpx; color: var(--muted); font-size: 20rpx; line-height: 1.5; }
-
-/* 喜讯卡片：待审标记与「只有一侧有姓名」的排版 */
-.news-card-head-left { flex: none; display: flex; flex-direction: row; align-items: center; gap: 10rpx; }
-.news-card-pending { padding: 9rpx 14rpx; border-radius: 999rpx; background: var(--warm); color: var(--muted); font-size: 18rpx; font-weight: 700; line-height: 1.2; }
-
-/* 反馈喜讯表单 */
-.news-form-privacy { padding: 18rpx 20rpx; border-radius: 18rpx; background: var(--warm); display: flex; flex-direction: column; gap: 8rpx; }
-.news-form-privacy-title { color: var(--ink); font-size: 22rpx; font-weight: 800; }
-.news-form-privacy-text { color: var(--ink2); font-size: 21rpx; line-height: 1.6; }
-.news-form-row { display: flex; flex-direction: row; align-items: center; gap: 14rpx; padding: 22rpx 0; border-bottom: 1px solid var(--line); }
-.news-form-label { flex: none; width: 130rpx; color: var(--ink2); font-size: 23rpx; font-weight: 700; }
-.news-form-input { flex: 1; min-width: 0; color: var(--ink); font-size: 24rpx; text-align: right; }
-.news-form-unit { flex: none; color: var(--ink2); font-size: 23rpx; }
-.news-form-picker-value { flex: 1; min-width: 0; display: flex; flex-direction: row; align-items: center; justify-content: flex-end; gap: 8rpx; }
-.news-form-picker-value text { color: var(--ink); font-size: 24rpx; }
-.news-form-picker-value text.placeholder { color: var(--muted); }
-.news-form-chevron { color: var(--muted); font-size: 28rpx; line-height: 1; }
-.news-form-textarea { width: 100%; min-height: 160rpx; margin-top: 22rpx; padding: 20rpx; box-sizing: border-box; border-radius: 18rpx; background: var(--warm); color: var(--ink); font-size: 23rpx; line-height: 1.6; }
-.news-form-subtitle { margin-top: 26rpx; color: var(--ink); font-size: 24rpx; font-weight: 800; }
-.news-form-images { margin-top: 16rpx; display: flex; flex-direction: row; flex-wrap: wrap; gap: 16rpx; }
-.news-form-image-cell { position: relative; width: 160rpx; height: 160rpx; }
-.news-form-image { width: 160rpx; height: 160rpx; border-radius: 16rpx; background: var(--warm); }
-.news-form-image-remove { position: absolute; top: 0; right: 0; width: 40rpx; height: 40rpx; border-radius: 0 16rpx 0 16rpx; background: rgba(12, 19, 19, .46); color: var(--text-invert); font-size: 20rpx; text-align: center; line-height: 40rpx; }
-.news-form-image-add { width: 160rpx; height: 160rpx; border-radius: 16rpx; background: var(--warm); border: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6rpx; }
-.news-form-image-add-glyph { color: var(--muted); font-size: 40rpx; line-height: 40rpx; }
-.news-form-image-add-label { color: var(--muted); font-size: 19rpx; }
-.news-form-error { display: block; margin-top: 16rpx; }
-.news-form-submit { margin-top: 30rpx; height: 88rpx; border-radius: 18rpx; background: linear-gradient(135deg, var(--review-purple), var(--plane-purple)); display: flex; flex-direction: row; align-items: center; justify-content: center; }
-.news-form-submit text { color: var(--text-invert); font-size: 27rpx; font-weight: 800; }
-.news-form-submit:active { opacity: .88; }
-.news-form-submit.disabled { opacity: .56; }
-
-/* 赠送锦旗：预览就是绘制用的 canvas，尺寸与 utils/pennant-drawer.uts 的入参一致 */
-.pennant-preview { margin-top: 22rpx; display: flex; flex-direction: row; justify-content: center; }
-.pennant-canvas { border-radius: 12rpx; }
-.pennant-hint { display: block; margin-top: 16rpx; color: var(--muted); font-size: 20rpx; line-height: 1.5; }
 </style>
