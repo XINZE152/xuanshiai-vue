@@ -173,7 +173,7 @@
 					<view v-else-if="workspaceVisibleMatches.length == 0" class="workspace-state"><text>没有符合条件的牵线记录</text></view>
 					<view v-else>
 						<view v-for="row in workspaceVisibleMatches" :key="row.id" class="workspace-match-card">
-							<view class="workspace-match-card-top"><text>申请时间：{{ row.time }}</text><view class="workspace-match-status-btn" :class="'t-' + row.status" @click="openMatchStatusSheet(row)"><text>{{ row.statusLabel }}</text><view class="workspace-match-status-arrow"><i></i></view></view></view>
+							<view class="workspace-match-card-top"><text>申请时间：{{ row.time }}</text><view class="workspace-match-status-btn match-status-indicator" :class="'t-' + row.status" @click="openMatchStatusSheet(row)"><text>{{ row.statusLabel }}</text><view class="workspace-match-status-arrow"></view></view></view>
 							<!-- 双人放大头像：按参考图做成两张圆角方图并排、中间压一枚心形徽标；点心形两侧任一图即以红娘权限进入该会员主页。 -->
 							<view class="workspace-match-pair">
 								<view class="workspace-match-col is-left">
@@ -240,7 +240,9 @@
 							<text v-if="row.status == 'PENDING'" class="workspace-match-reason">{{ row.applicationResponse == 'REJECTED' ? '对方拒绝' : '未回应' }}{{ row.responseReason.length > 0 ? '：' + row.responseReason : '' }}</text>
 							<text v-if="row.status == 'PENDING' || row.status == 'IN_PROGRESS'" class="workspace-match-owner">电话查看：申请人{{ row.fromPhoneViewed ? '已查看' : '未查看' }} · 被牵线方{{ row.toPhoneViewed ? '已查看' : '未查看' }}</text>
 							<text v-if="row.status == 'FAILED' && row.failureReason.length > 0" class="workspace-match-reason">失败原因：{{ row.failureReason }}</text>
-							<view v-if="row.status == 'IN_PROGRESS'" class="workspace-actions"><text @tap="openMatchStatusSheet(row)">确认已联系并记录对方态度</text></view>
+							<view v-if="row.status == 'IN_PROGRESS'" class="match-contact-action" hover-class="match-contact-action-pressed" @tap="openMatchStatusSheet(row)">
+								<text class="match-contact-action-label">确认已联系并记录对方态度</text>
+							</view>
 							<view v-if="row.status == 'PENDING' && row.fromPhoneViewed && row.toPhoneViewed" class="workspace-actions"><text @tap="confirmMatchContactsObtained(row)">确认已获得双方联系方式</text></view>
 							<text class="workspace-match-owner">服务红娘：{{ row.owner }}</text>
 						</view>
@@ -254,7 +256,7 @@
 					<view v-else-if="workspaceVisibleMeetings.length == 0" class="workspace-state"><text>没有符合条件的约会记录</text></view>
 					<view v-else>
 						<view v-for="row in workspaceVisibleMeetings" :key="row.id" class="workspace-match-card">
-							<view class="workspace-match-card-top"><text>申请时间：{{ row.createdAt }}</text><view class="workspace-match-status-btn" :class="row.phase == 'FAILED' ? 't-FAILED' : (row.phase == 'COMPLETED' ? 't-SUCCEEDED' : 't-PENDING')"><text>{{ row.statusLabel }}</text></view></view>
+							<view class="workspace-match-card-top"><text>申请时间：{{ row.createdAt }}</text><view class="workspace-match-status-btn match-status-indicator" :class="row.phase == 'FAILED' ? 't-FAILED' : (row.phase == 'COMPLETED' ? 't-SUCCEEDED' : (row.phase == 'PROCESSING' ? 't-IN_PROGRESS' : 't-PENDING'))"><text>{{ row.statusLabel }}</text><view class="workspace-match-status-arrow"></view></view></view>
 							<view class="meeting-invitation">
 								<view class="meeting-invitation-portraits">
 									<view class="meeting-invitation-portrait" @tap="openWorkspaceMemberProfile(row.applicant)"><image :src="row.applicant.avatar" mode="aspectFill" class="meeting-invitation-image" /></view>
@@ -270,10 +272,12 @@
 							<text v-if="row.note.length > 0" class="workspace-match-owner">申请说明：{{ row.note }}</text>
 							<view v-if="row.meeting != null" class="workspace-filter-note"><view><text>约会时间：{{ row.meeting.scheduledAt }}</text></view><view><text>约会地点：{{ row.meeting.location }}</text></view></view>
 							<view v-if="row.meeting != null && row.meeting.followUpContent.length > 0" class="workspace-filter-note"><text>跟进记录：{{ row.meeting.followUpContent }}</text></view>
-							<view class="workspace-actions">
+							<view v-if="row.phase == 'PROCESSING' || (row.phase == 'UPCOMING' && row.meeting == null)" class="workspace-actions">
 								<text v-if="row.phase == 'PROCESSING'" @tap="openMeetingStatusSheet(row)">联系双方并记录意愿</text>
 								<text v-if="row.phase == 'UPCOMING' && row.meeting == null" @tap="openMeetingScheduleSheet(row)">安排时间地点</text>
-								<text v-if="row.phase == 'UPCOMING' && row.meeting != null" @tap="openMeetingRecordSheet(row)">填写跟进 / 完成约会</text>
+							</view>
+							<view v-if="row.phase == 'UPCOMING' && row.meeting != null" class="match-contact-action" hover-class="match-contact-action-pressed" @tap="openMeetingRecordSheet(row)">
+								<text class="match-contact-action-label">填写跟进 / 完成约会</text>
 							</view>
 							<text class="workspace-match-owner">服务红娘：{{ row.owner }}</text>
 						</view>
@@ -1201,7 +1205,7 @@ const workspaceCashNote = computed((): string => {
 		? '线下业绩与开单收款为本地演示数据，服务端接入后自动切换。'
 		: '线下业绩为本人作为销售红娘的线下 VIP 已收款订单，由平台按月统一结算。'
 	if (workspaceCommissionUsingDemoData.value) return '分成金额计入账号余额，可申请提现；当前为本地演示数据。'
-	return '分成金额计入账号余额，已入账部分可申请提现。'
+	return '分成记录按服务端数据展示，实际可提现余额以账户余额为准。'
 })
 const workspaceLeads = ref<any[]>([])
 // 九级意向独立保存，便于按 A-J 完整筛选与回显。
@@ -3199,7 +3203,7 @@ const openWorkspace = async (title: string, kind: string, initialTab: string = '
 	if (kind == 'match') await loadWorkspaceMatches()
 	if (kind == 'meeting') await loadWorkspaceMeetings()
 	// 「线上分成」与「财务明细」各读服务端；「专属推广工具」没有对应数据源，仍是演示数据。
-	if (kind == 'commission' && title == '线上分成') await loadWorkspaceCommissionEntries()
+	if (kind == 'commission' && title == '我的分成') await loadWorkspaceCommissionEntries()
 	if (kind == 'commission' && title == '财务明细') await loadWorkspaceOfflineIncome()
 	if (kind == 'news') workspaceTitle.value = '红娘喜讯'
 }
@@ -3232,11 +3236,11 @@ const handleManagementCenterAction = (name: string) => {
 		return
 	}
 	if (name == 'metric:online_commission') {
-		openWorkspace('线上分成', 'income-placeholder')
+		openWorkspace('我的分成', 'commission')
 		return
 	}
 	if (name == 'metric:offline_performance') {
-		openWorkspace('线下业绩', 'income-placeholder')
+		openWorkspace('财务明细', 'income-placeholder')
 		return
 	}
 	if (name == 'metric:pending_introduction') {
@@ -3268,7 +3272,7 @@ const handleManagementCenterAction = (name: string) => {
 		return
 	}
 	if (name == '分成明细' || name == '查看分成明细' || name == '财务明细' || name == '查看财务明细') {
-		openWorkspace(name.indexOf('财务') >= 0 ? '线下业绩' : '线上分成', 'income-placeholder')
+		name.indexOf('财务') >= 0 ? openWorkspace('财务明细', 'income-placeholder') : openWorkspace('我的分成', 'commission')
 		return
 	}
 	if (name == '录入线索' || name == '录入会员') {
@@ -3738,6 +3742,12 @@ const submitApplication = async () => {
 .workspace-match-status-btn.t-FAILED { background: var(--match-coral); }
 .workspace-match-status-arrow { width: 28rpx; height: 28rpx; border-radius: 50%; background: rgba(255, 255, 255, .3); display: flex; align-items: center; justify-content: center; }
 .workspace-match-status-arrow i { width: 10rpx; height: 10rpx; border-top: 3rpx solid var(--paper); border-right: 3rpx solid var(--paper); transform: rotate(45deg); margin-left: -3rpx; }
+.workspace-match-status-btn.match-status-indicator { background: var(--sage-soft); }
+.workspace-match-status-btn.match-status-indicator text { color: var(--accent2); }
+.match-status-indicator.t-PENDING .workspace-match-status-arrow { background: var(--plane-yellow); }
+.match-status-indicator.t-IN_PROGRESS .workspace-match-status-arrow { background: var(--paper); }
+.match-status-indicator.t-SUCCEEDED .workspace-match-status-arrow { background: var(--accent2); }
+.match-status-indicator.t-FAILED .workspace-match-status-arrow { background: var(--match-coral); }
 .workspace-match-status-btn:active { opacity: .8; transform: scale(.97); }
 /* 双人放大头像：两张圆角方图并排，中间压一枚心形徽标；图下各带角色标 + 姓名 + 编号，点图以红娘权限进该会员主页。 */
 .meeting-invitation { padding: 24rpx 8rpx 12rpx; display: flex; flex-direction: column; align-items: center; gap: 24rpx; }
@@ -3806,12 +3816,13 @@ const submitApplication = async () => {
 .workspace-match-vip { padding: 1rpx 10rpx; border-radius: 6rpx; font-size: 17rpx; font-weight: 800; color: #ffffff; background: #b98a2b; flex-shrink: 0; }
 /* 联系方式：默认只留入口，点开走受审计接口后就地展开；号码芯片再点一下即复制。 */
 .workspace-match-contact-row { display: flex; flex-direction: row; align-items: center; gap: 14rpx; min-height: 60rpx; padding: 10rpx 0; border-top: 1rpx solid var(--line); }
+.workspace-match-contact-row .workspace-match-role { width: 180rpx; height: 60rpx; padding: 0; box-sizing: border-box; text-align: center; line-height: 60rpx; font-size: 21rpx; }
 .workspace-match-contact-body { flex: 1; min-width: 0; display: flex; flex-direction: row; align-items: center; justify-content: flex-end; gap: 10rpx; flex-wrap: wrap; }
 .workspace-match-contact-values { display: flex; flex-direction: row; align-items: center; justify-content: flex-end; gap: 10rpx; flex-wrap: wrap; }
 .workspace-match-contact-chip { max-width: 250rpx; padding: 8rpx 16rpx; border-radius: 12rpx; font-size: 21rpx; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-match-contact-chip.phone { background: #FDE7EB; color: var(--match-coral); }
 .workspace-match-contact-chip.wechat { background: #E9F7EF; color: var(--sage); }
-.workspace-match-contact-open { padding: 8rpx 20rpx; border-radius: 999rpx; border: 1rpx dashed var(--accent2); color: var(--accent2); font-size: 21rpx; font-weight: 800; }
+.workspace-match-contact-open { width: 180rpx; height: 60rpx; padding: 0; box-sizing: border-box; text-align: center; line-height: 58rpx; border-radius: 999rpx; border: 1rpx dashed var(--accent2); color: var(--accent2); font-size: 21rpx; font-weight: 800; }
 .workspace-match-contact-open:active { opacity: .7; }
 .workspace-match-contact-state { color: var(--muted); font-size: 20rpx; }
 .workspace-match-contact-state.error { color: var(--match-coral); }
@@ -4017,6 +4028,9 @@ const submitApplication = async () => {
 .workspace-add { position: fixed; right: 22rpx; bottom: 38rpx; width: 84rpx; height: 84rpx; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; color: var(--paper); font-size: 17rpx; font-weight: 800; box-shadow: var(--shadow-sm); }.workspace-add text:first-child { font-size: 30rpx; line-height: 28rpx; }
 
 /* 微信小程序 uvue 必须显式标记横向 flex，避免文字与操作按钮纵向叠压。 */
+.match-contact-action { min-height: 88rpx; border-radius: 999rpx; background: var(--accent); display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 20rpx; }
+.match-contact-action-pressed { opacity: 0.8; }
+.match-contact-action-label { color: var(--paper); font-size: 24rpx; font-weight: 700; }
 .workspace-tabs, .workspace-search, .workspace-promotion > view, .workspace-commission-row > view, .workspace-info-card > view:not(.workspace-actions):not(.workspace-member-header), .workspace-actions, .workspace-match-card-top, .workspace-meeting-card-top, .workspace-meeting-pair, .workspace-meeting-person, .workspace-meeting-arrangement > view, .workspace-member-header, .workspace-entry-card > view:not(.workspace-entry-submit), .workspace-generic-card { flex-direction: row; }
 .workspace-tabs, .workspace-search, .workspace-actions, .workspace-meeting-pair, .workspace-meeting-person, .workspace-member-header, .workspace-generic-card { min-width: 0; }
 .workspace-info-card > view, .workspace-member-header > view, .workspace-generic-card > view { min-width: 0; }

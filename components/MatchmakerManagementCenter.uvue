@@ -203,8 +203,8 @@ const navigationItems = computed(() => {
 		{ key: 'introductions', label: '牵线记录', icon: '牵', tone: 'tone-four', action: '查看牵线记录', value: '成功 ' + metricValue('introduction_succeeded') },
 		{ key: 'requests', label: '约见申请', icon: '约', tone: 'tone-five', action: '查看约见申请', value: metricValue('meeting_requests') + ' 条待处理' },
 		{ key: 'meetings', label: '约会管理', icon: '会', tone: 'tone-one', action: '查看约会管理', value: '等待见面 ' + metricValue('pending_meeting') },
-		{ key: 'commission', label: '线上分成', icon: '分', tone: 'tone-three', action: '查看分成明细', value: '--' },
-		{ key: 'finance', label: '线下业绩', icon: '财', tone: 'tone-five', action: '查看财务明细', value: '--' },
+		{ key: 'commission', label: '分成明细', icon: '分', tone: 'tone-three', action: '查看分成明细', value: '--' },
+		{ key: 'finance', label: '财务明细', icon: '财', tone: 'tone-five', action: '查看财务明细', value: '--' },
 		{ key: 'account', label: '我的账号', icon: '账', tone: 'tone-four', action: '查看我的账号', value: '' }
 	]
 	return base
