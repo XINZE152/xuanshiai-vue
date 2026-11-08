@@ -547,7 +547,7 @@
 
 	const openEmotionLab = () => {
 		basicInfoEditVisible.value = false
-		uni.navigateTo({ url: '/pages/emotion-lab/emotion-lab' })
+		uni.navigateTo({ url: '/pagesSub/emotionLab/emotion-lab' })
 	}
 
 	// 认证跳转

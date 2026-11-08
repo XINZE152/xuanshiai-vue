@@ -338,7 +338,7 @@
 <script setup lang="uts">
 import { ref, computed } from 'vue'
 import XsaApplySheet from '@/components/XsaApplySheet.uvue'
-import XsaSpotlightSuccessSheet from '@/components/XsaSpotlightSuccessSheet.uvue'
+import XsaSpotlightSuccessSheet from '@/pagesSub/userExtra/components/XsaSpotlightSuccessSheet.uvue'
 import XsaAiMatchSheet from '@/components/XsaAiMatchSheet.uvue'
 import XsaAiCatBubble from '@/components/XsaAiCatBubble.uvue'
 import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
@@ -346,7 +346,7 @@ import XsaZhiyuHub from '@/components/XsaZhiyuHub.uvue'
 import { getUserDetail, likeUser, getOwnProfile, getMyPosts, getMembershipStatus, getUserVisitorCount, saveAiAvatarProfileSnapshot, getDynamicList, getPortraitNarrative, getUserPartnerPreference } from '@/api'
 import { normalizeIdealPartner } from '@/api/preference.uts'
 import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
-import locationJson from '@/data/location.json'
+import { LOCATION_TREE as locationJson } from '../data/location.uts'
 import { sendSuperlike } from '@/api/spotlight.uts'
 import { guardRealName } from '@/utils/realNameGate.uts'
 import { incomeDisplayText, locationDisplayByCodes, educationLabel as educationLabelOf } from '@/utils/profile-field-display.uts'
@@ -895,7 +895,7 @@ const redirectParentRoute = (): boolean => {
 	let storedMode: any = null
 	try { storedMode = uni.getStorageSync('xsa_onboarding_mode') } catch (e) {}
 	if (storedMode == null || String(storedMode) != 'parent') return false
-	uni.reLaunch({ url: '/pages/parent/parent' })
+	uni.reLaunch({ url: '/pagesSub/parent/parent' })
 	return true
 }
 

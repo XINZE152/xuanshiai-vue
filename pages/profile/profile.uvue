@@ -4,7 +4,7 @@
 		<view class="nav-bar" :style="{ paddingTop: (statusBarHeight + 12) + 'px', paddingRight: (menuButtonSpacing + 8) + 'px' }">
 			<view class="nav-right">
 				<view class="nav-icon-btn role-switch-btn" @tap="onSwitchToParent" aria-label="切换到父母端" title="切换到父母端">
-					<image class="nav-icon-img role-switch-icon" src="/static/icons/switch-parents.png" mode="aspectFit"></image>
+					<image class="nav-icon-img role-switch-icon" src="/static/icons/switch-parents.webp" mode="aspectFit"></image>
 				</view>
 				<view class="nav-icon-btn" @tap="onSettings">
 					<text class="ic ic-me ic-shezhi nav-icon"></text>
@@ -453,7 +453,7 @@ const onSwitchToParent = () => {
 		success: (result) => {
 			if (result.confirm != true) return
 			uni.setStorageSync('xsa_onboarding_mode', 'parent')
-			uni.reLaunch({ url: '/pages/parent/parent' })
+			uni.reLaunch({ url: '/pagesSub/parent/parent' })
 		}
 	})
 }
@@ -667,7 +667,7 @@ const handleMenuItem = (item: any) => {
 }
 
 const onEmotionLab = () => {
-	uni.navigateTo({ url: '/pages/emotion-lab/emotion-lab' })
+	uni.navigateTo({ url: '/pagesSub/emotionLab/emotion-lab' })
 }
 
 // iconSrc 非空时用 SVG 图片图标（优先），否则用 iconClass 字体图标

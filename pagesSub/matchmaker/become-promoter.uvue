@@ -130,7 +130,7 @@
 						<text class="qr-title">微信扫码咨询</text>
 						<text class="qr-subtitle">添加客服微信，备注"推广红娘入驻咨询"</text>
 						<view class="qr-image-wrap">
-							<image class="qr-image" src="/static/qrcodes/kefu-wechat.png" mode="aspectFit"></image>
+							<image class="qr-image" src="/static/qrcodes/kefu-wechat.webp" mode="aspectFit"></image>
 						</view>
 						<text class="qr-tip">长按识别二维码添加</text>
 					</view>

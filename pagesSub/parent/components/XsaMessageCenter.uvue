@@ -1,0 +1,1031 @@
+<template>
+		<view class="message-center" :class="{ 'parent-mode': isParentMode }">
+			<scroll-view class="scroller" :scroll-y="!isParentMode" @scrolltolower="handleLoadMore">
+			<view class="shortcuts" v-if="showStandardShortcuts">
+				<view class="shortcut" @click="openApplications">
+					<text class="sc-title">认识申请</text>
+					<text class="sc-desc text-muted">{{ applicationHint }}</text>
+				</view>
+				<view class="shortcut" @click="openPaperPlane">
+					<text class="sc-title">纸飞机</text>
+					<text class="sc-desc text-muted">匿名认真表达</text>
+				</view>
+			<view class="shortcut" @click="openMoments">
+					<text class="sc-title">Ta 的动态</text>
+					<text class="sc-desc text-muted">关注的人有更新</text>
+				</view>
+				<view class="shortcut" @click="openEmotionLab">
+					<text class="sc-title">情感实验室</text>
+					<text class="sc-desc text-muted">完善匹配线索</text>
+				</view>
+			</view>
+			<view class="parent-actions" v-else>
+				<view class="parent-action" @click="openApplications">
+					<view class="parent-action-copy">
+						<text class="sc-title">我的申请</text>
+						<text class="sc-desc text-muted">查看收到和发出的申请</text>
+					</view>
+					<text class="parent-action-status text-accent">{{ applicationHint }}</text>
+				</view>
+			</view>
+
+			<view class="section-head">
+				<text class="section-title">最近聊天</text>
+				<text
+					class="section-action text-accent"
+					:class="{ disabled: markingAllRead || !canMarkAllRead }"
+					@click="markAllRead"
+				>全部已读</text>
+			</view>
+
+			<view class="app-card" v-if="pendingApplicationCount > 0" @click="openApplications">
+				<text class="app-title">{{ incomingHasMore ? '已加载待处理申请' : '待处理申请' }} {{ pendingApplicationCount }}</text>
+				<text class="app-desc text-muted">双方同意后才会开放聊天</text>
+			</view>
+
+			<XsaConversationList
+				:conversations="conversations"
+				:loading="initialLoading"
+				:loading-more="loadingMore"
+				:error="pageError"
+				:has-more="conversationHasMore"
+				:large-text="isParentMode"
+				:protect-photos="isParentMode"
+				:retry-reset="conversationErrorMode == 'reset'"
+					@open="handleMessageClick"
+					@retry="retryLoad"
+					@retry-more="retryLoadMore"
+					@load-more="handleLoadMore"
+			/>
+		</scroll-view>
+
+		<XsaApplicationTabs
+			:visible="appVisible"
+			:active-tab="applicationTab"
+			:tabs="applicationTabs"
+			:applications="applications"
+				:loading="currentApplicationLoading"
+			:error="currentApplicationError"
+				:action-id="applicationActionId"
+				:has-more="currentApplicationHasMore"
+			:large-text="isParentMode"
+			:protect-photos="isParentMode"
+			@close="appVisible = false"
+			@change="handleApplicationTabChange"
+			@retry="retryApplications"
+			@load-more="loadMoreApplications"
+			@accept="acceptApp"
+			@reject="rejectApp"
+		/>
+
+		<XsaToast :visible="toastVisible" :message="toastMessage" :large-text="isParentMode" @hide="toastVisible = false" />
+	</view>
+</template>
+
+<script setup lang="uts">
+	import XsaApplicationTabs from '@/pagesSub/parent/components/XsaApplicationTabs.uvue'
+	import XsaConversationList from '@/pagesSub/parent/components/XsaConversationList.uvue'
+	import XsaToast from '@/components/XsaToast.uvue'
+	import type { MessageSubject, ParentContext } from '@/api'
+	import { handleApplication } from '@/api'
+	import {
+		getConversationPage,
+		getApplicationPage,
+		getChatPermission,
+		markAllMessagesRead,
+		getParentAccessGate,
+		getParentContext
+	} from '@/api'
+
+	interface Props {
+		mode?: 'standard' | 'parent'
+		parentContext?: ParentContext | null
+		refreshKey?: number
+	}
+
+	const props = withDefaults(defineProps<Props>(), {
+		mode: 'standard',
+		parentContext: null,
+		refreshKey: 0
+	})
+
+	const emit = defineEmits<{
+		'parent-context-change': [context: ParentContext]
+	}>()
+
+	const PAGE_SIZE = 10
+	const applicationTabs = ['收到的', '发出的']
+	const isParentMode = computed(() => props.mode == 'parent')
+	const showStandardShortcuts = computed(() => !isParentMode.value)
+	const conversations = ref([] as any[])
+	const conversationCursor = ref('')
+	const conversationHasMore = ref(true)
+	const unreadTotal = ref(0)
+	const allReadConfirmed = ref(false)
+	const canMarkAllRead = computed(() => unreadTotal.value > 0 || (conversationHasMore.value && conversations.value.length > 0 && !allReadConfirmed.value))
+	const initialLoading = ref(false)
+	const loadingMore = ref(false)
+	const pageError = ref('')
+	const conversationErrorMode = ref('')
+	const markingAllRead = ref(false)
+	const navigatingUserId = ref(0)
+	const conversationMutationVersion = ref(0)
+	const activeMessageSubject = ref(null as MessageSubject | null)
+
+	const applicationTab = ref(0)
+	const incomingApplications = ref([] as any[])
+	const outgoingApplications = ref([] as any[])
+	const incomingCursor = ref('')
+	const outgoingCursor = ref('')
+	const incomingHasMore = ref(true)
+	const outgoingHasMore = ref(true)
+	const incomingApplicationLoading = ref(false)
+	const outgoingApplicationLoading = ref(false)
+	const incomingApplicationError = ref('')
+	const outgoingApplicationError = ref('')
+	const incomingApplicationErrorMode = ref('')
+	const outgoingApplicationErrorMode = ref('')
+	const incomingPendingCount = ref(0)
+	const applicationActionId = ref(0)
+	const appVisible = ref(false)
+	const applicationMutationVersion = ref(0)
+	const applicationCommandIds = ref({} as any)
+	const incomingApplicationRequestVersion = ref(0)
+	const outgoingApplicationRequestVersion = ref(0)
+	let parentAccessEpoch = 0
+	let parentAccessRequest: Promise<boolean> | null = null
+	let parentAccessRequestEpoch = -1
+	let markAllReadAttemptSequence = 0
+	let navigationAttemptSequence = 0
+	let applicationActionSequence = 0
+	let componentActive = true
+
+	const toastVisible = ref(false)
+	const toastMessage = ref('')
+
+	const applications = computed((): any[] => {
+		return applicationTab.value === 0 ? incomingApplications.value : outgoingApplications.value
+	})
+
+	const pendingApplicationCount = computed(() => {
+		return incomingPendingCount.value
+	})
+
+	const applicationHint = computed(() => {
+		const count = pendingApplicationCount.value
+		if (count > 0) return `${count} 条待处理${incomingHasMore.value ? '（已加载）' : ''}`
+		return incomingHasMore.value && incomingApplications.value.length > 0 ? '更多申请待查看' : '暂无新申请'
+	})
+
+	const currentApplicationHasMore = computed(() => {
+		return applicationTab.value === 0 ? incomingHasMore.value : outgoingHasMore.value
+	})
+
+	const currentApplicationLoading = computed(() => {
+		return applicationTab.value === 0 ? incomingApplicationLoading.value : outgoingApplicationLoading.value
+	})
+
+	const currentApplicationError = computed(() => {
+		return applicationTab.value === 0 ? incomingApplicationError.value : outgoingApplicationError.value
+	})
+
+	const refreshCenter = () => {
+		if (!componentActive) return
+		loadConversationPage(true)
+		loadApplicationPage('incoming', true)
+		if (outgoingApplications.value.length > 0) loadApplicationPage('outgoing', true)
+	}
+
+	onMounted(() => refreshCenter())
+
+	watch(() => props.refreshKey, (next: number, previous: number) => {
+		if (next != previous) refreshCenter()
+	})
+
+	const showToast = (message: string) => {
+		if (!componentActive) return
+		toastMessage.value = message
+		toastVisible.value = true
+	}
+
+	const responseMessage = (res: any, fallback: string): string => {
+		if (res != null && res.message != null && res.message != 'success') return '' + res.message
+		if (res != null && res.data != null && res.data.message != null) return '' + res.data.message
+		return fallback
+	}
+
+	const subjectKey = (subject: MessageSubject | null): string => {
+		if (subject == null) return ''
+		if (subject.mode == 'parent') return 'parent-' + (subject.childId != null ? subject.childId : 0)
+		return 'self'
+	}
+
+	const parentSubjectFromContext = (context: ParentContext | null): MessageSubject | null => {
+		const gate = getParentAccessGate(context)
+		if (gate == null || gate.allowed != true || context == null || context.child == null) return null
+		const childId = Number(context.child.id)
+		if (!Number.isFinite(childId) || Math.floor(childId) != childId || childId <= 0) return null
+		return { mode: 'parent', childId: childId } as MessageSubject
+	}
+
+	const invalidateConversationRequests = () => {
+		conversationMutationVersion.value += 1
+		initialLoading.value = false
+		loadingMore.value = false
+	}
+
+	const invalidateApplicationRequests = () => {
+		applicationMutationVersion.value += 1
+		incomingApplicationRequestVersion.value += 1
+		outgoingApplicationRequestVersion.value += 1
+		incomingApplicationLoading.value = false
+		outgoingApplicationLoading.value = false
+	}
+
+	onUnmounted(() => {
+		componentActive = false
+		parentAccessEpoch += 1
+		parentAccessRequest = null
+		parentAccessRequestEpoch = -1
+		markAllReadAttemptSequence += 1
+		navigationAttemptSequence += 1
+		applicationActionSequence += 1
+		invalidateConversationRequests()
+		invalidateApplicationRequests()
+		markingAllRead.value = false
+		navigatingUserId.value = 0
+		applicationActionId.value = 0
+	})
+
+	const clearSensitiveMessageState = (message: string = '', keepApplicationOpen: boolean = false) => {
+		const wasApplicationOpen = appVisible.value
+		parentAccessEpoch += 1
+		parentAccessRequest = null
+		parentAccessRequestEpoch = -1
+		markAllReadAttemptSequence += 1
+		navigationAttemptSequence += 1
+		applicationActionSequence += 1
+		invalidateConversationRequests()
+		invalidateApplicationRequests()
+		conversations.value = []
+		conversationCursor.value = ''
+		conversationHasMore.value = false
+		unreadTotal.value = 0
+		initialLoading.value = false
+		loadingMore.value = false
+		pageError.value = message
+		conversationErrorMode.value = message == '' ? '' : 'reset'
+		incomingApplications.value = []
+		outgoingApplications.value = []
+		incomingCursor.value = ''
+		outgoingCursor.value = ''
+		incomingHasMore.value = false
+		outgoingHasMore.value = false
+		incomingApplicationLoading.value = false
+		outgoingApplicationLoading.value = false
+		incomingApplicationError.value = message
+		outgoingApplicationError.value = message
+		incomingApplicationErrorMode.value = message == '' ? '' : 'reset'
+		outgoingApplicationErrorMode.value = message == '' ? '' : 'reset'
+		incomingPendingCount.value = 0
+		markingAllRead.value = false
+		navigatingUserId.value = 0
+		applicationActionId.value = 0
+		applicationCommandIds.value = {}
+		activeMessageSubject.value = null
+		appVisible.value = keepApplicationOpen && wasApplicationOpen
+	}
+
+	const clearParentMessageState = (message: string = '') => {
+		if (!isParentMode.value) return
+		clearSensitiveMessageState(message, false)
+	}
+
+	const isUnauthorizedResponse = (res: any): boolean => {
+		if (res == null) return false
+		if (res.code != null && String(res.code) == '401') return true
+		return res.data != null && res.data.code != null && String(res.data.code) == '401'
+	}
+
+	const handleUnauthorizedResponse = (res: any, fallback: string): boolean => {
+		if (!componentActive) return false
+		if (!isUnauthorizedResponse(res)) return false
+		const message = responseMessage(res, fallback)
+		clearSensitiveMessageState(message, !isParentMode.value)
+		showToast(message)
+		return true
+	}
+
+	const handleSubjectUnauthorizedResponse = (
+		res: any,
+		requestSubjectKey: string,
+		fallback: string
+	): boolean => {
+		if (!componentActive) return false
+		if (requestSubjectKey != subjectKey(activeMessageSubject.value)) return false
+		return handleUnauthorizedResponse(res, fallback)
+	}
+
+	watch(() => props.parentContext, (context: any) => {
+		if (!isParentMode.value) return
+		const subject = parentSubjectFromContext(context as ParentContext | null)
+		if (subject == null) {
+			clearParentMessageState('父母端访问条件已失效')
+			return
+		}
+		if (
+			activeMessageSubject.value != null &&
+			subjectKey(activeMessageSubject.value) != subjectKey(subject)
+		) clearParentMessageState()
+		activeMessageSubject.value = subject
+	})
+
+	const fetchParentAccess = async (requestEpoch: number): Promise<boolean> => {
+		try {
+			const contextRes = await getParentContext()
+			if (!componentActive || requestEpoch != parentAccessEpoch) return false
+			const latestStoredMode = uni.getStorageSync('xsa_onboarding_mode')
+			if (latestStoredMode == null || String(latestStoredMode) != 'parent') {
+				clearParentMessageState('当前账号不是父母身份')
+				showToast('当前账号不是父母身份')
+				return false
+			}
+			if (contextRes == null || contextRes.success != true || contextRes.data == null) {
+				const message = responseMessage(contextRes, '暂时无法确认父母端访问权限')
+				clearParentMessageState(message)
+				showToast(message)
+				return false
+			}
+			const latestContext = contextRes.data as ParentContext
+			const gate = getParentAccessGate(latestContext)
+			const subject = parentSubjectFromContext(latestContext)
+			if (gate == null || gate.allowed != true || subject == null) {
+				const message = gate != null && gate.message != null ? '' + gate.message : '父母端访问条件已失效'
+				clearParentMessageState(message)
+				showToast(message)
+				return false
+			}
+			if (
+				activeMessageSubject.value != null &&
+				subjectKey(activeMessageSubject.value) != subjectKey(subject)
+				) clearParentMessageState()
+			activeMessageSubject.value = subject
+			if (!componentActive) return false
+			emit('parent-context-change', latestContext)
+			return componentActive
+		} catch (error) {
+			if (!componentActive || requestEpoch != parentAccessEpoch) return false
+			clearParentMessageState('暂时无法确认父母端访问权限')
+			showToast('暂时无法确认父母端访问权限')
+			return false
+		}
+	}
+
+	const ensureParentAccess = async (): Promise<boolean> => {
+		if (!componentActive) return false
+		if (!isParentMode.value) {
+			activeMessageSubject.value = { mode: 'self' } as MessageSubject
+			return componentActive
+		}
+		const storedMode = uni.getStorageSync('xsa_onboarding_mode')
+		if (storedMode == null || String(storedMode) != 'parent') {
+			clearParentMessageState('当前账号不是父母身份')
+			showToast('当前账号不是父母身份')
+			return false
+		}
+		const requestEpoch = parentAccessEpoch
+		const existingRequest = parentAccessRequest
+		if (existingRequest != null && parentAccessRequestEpoch == requestEpoch) {
+			const result = await existingRequest
+			return componentActive && result
+		}
+		const request = fetchParentAccess(requestEpoch)
+		parentAccessRequest = request
+		parentAccessRequestEpoch = requestEpoch
+		try {
+			const result = await request
+			return componentActive && result
+		} finally {
+			if (parentAccessRequest == request) {
+				parentAccessRequest = null
+				parentAccessRequestEpoch = -1
+			}
+		}
+	}
+
+	const isConversationRequestCurrent = (version: number, requestSubjectKey: string): boolean => {
+		return componentActive &&
+			version == conversationMutationVersion.value &&
+			requestSubjectKey == subjectKey(activeMessageSubject.value)
+	}
+
+	const isApplicationRequestCurrent = (
+		version: number,
+		requestVersion: number,
+		requestSubjectKey: string,
+		incoming: boolean
+	): boolean => {
+		const activeRequestVersion = incoming
+			? incomingApplicationRequestVersion.value
+			: outgoingApplicationRequestVersion.value
+		return componentActive &&
+			version == applicationMutationVersion.value &&
+			requestVersion == activeRequestVersion &&
+			requestSubjectKey == subjectKey(activeMessageSubject.value)
+	}
+
+	const appendUnique = (current: any[], next: any[]): any[] => {
+		const merged = current.slice()
+		next.forEach((item: any) => {
+			if (!merged.some((existing: any) => existing.id == item.id)) merged.push(item)
+		})
+		return merged
+	}
+
+	const loadConversationPage = async (
+		reset: boolean = false,
+		force: boolean = false
+	): Promise<boolean> => {
+		if (!componentActive) return false
+		if (!force && (initialLoading.value || loadingMore.value)) return false
+		if (!reset && !conversationHasMore.value) return false
+		if (!await ensureParentAccess() || !componentActive) return false
+		if (!force && (initialLoading.value || loadingMore.value)) return false
+		if (!reset && !conversationHasMore.value) return false
+		const subject = activeMessageSubject.value
+		if (subject == null) return false
+		if (force) invalidateConversationRequests()
+		const mutationVersion = conversationMutationVersion.value
+		const requestSubjectKey = subjectKey(subject)
+		if (reset) initialLoading.value = true
+		else loadingMore.value = true
+		pageError.value = ''
+		conversationErrorMode.value = ''
+		try {
+			const cursor = reset ? '' : conversationCursor.value
+			const res = await getConversationPage(
+				cursor,
+				PAGE_SIZE,
+				isParentMode.value ? 'protected' : 'standard',
+				subject
+			)
+			if (handleSubjectUnauthorizedResponse(res, requestSubjectKey, '登录状态已失效，请重新登录')) return false
+			if (!isConversationRequestCurrent(mutationVersion, requestSubjectKey)) return false
+			if (res == null || res.success != true || res.data == null) {
+				throw new Error(responseMessage(res, '消息加载失败'))
+			}
+			const data = res.data
+			const list = data.list != null ? data.list as any[] : []
+			conversations.value = reset ? list : appendUnique(conversations.value, list)
+			conversationCursor.value = data.nextCursor != null ? '' + data.nextCursor : ''
+			conversationHasMore.value = data.hasMore == true
+			unreadTotal.value = conversations.value.reduce((total: number, item: any) => total + Number(item.unreadCount || 0), 0)
+			if (reset) allReadConfirmed.value = false
+			return true
+		} catch (error: any) {
+			if (!isConversationRequestCurrent(mutationVersion, requestSubjectKey)) return false
+			pageError.value = error != null && error.message != null ? '' + error.message : '消息加载失败，请稍后重试'
+			conversationErrorMode.value = reset ? 'reset' : 'more'
+			return false
+		} finally {
+			if (isConversationRequestCurrent(mutationVersion, requestSubjectKey)) {
+				initialLoading.value = false
+				loadingMore.value = false
+			}
+		}
+	}
+
+	const retryLoad = () => {
+		loadConversationPage(true)
+	}
+
+	const retryLoadMore = () => {
+		loadConversationPage(false)
+	}
+
+	const handleLoadMore = () => {
+		loadConversationPage(false)
+	}
+
+	const loadApplicationPage = async (
+		direction: string,
+		reset: boolean = false,
+		force: boolean = false
+	): Promise<boolean> => {
+		if (!componentActive) return false
+		const incoming = direction == 'incoming'
+		if (!force && incoming && incomingApplicationLoading.value) return false
+		if (!force && !incoming && outgoingApplicationLoading.value) return false
+		const hasMore = incoming ? incomingHasMore.value : outgoingHasMore.value
+		if (!reset && !hasMore) return false
+		if (!await ensureParentAccess() || !componentActive) return false
+		if (!force && incoming && incomingApplicationLoading.value) return false
+		if (!force && !incoming && outgoingApplicationLoading.value) return false
+		const latestHasMore = incoming ? incomingHasMore.value : outgoingHasMore.value
+		if (!reset && !latestHasMore) return false
+		const subject = activeMessageSubject.value
+		if (subject == null) return false
+		if (force && incoming) incomingApplicationLoading.value = false
+		if (force && !incoming) outgoingApplicationLoading.value = false
+		const mutationVersion = applicationMutationVersion.value
+		const requestVersion = incoming
+			? incomingApplicationRequestVersion.value + 1
+			: outgoingApplicationRequestVersion.value + 1
+		if (incoming) incomingApplicationRequestVersion.value = requestVersion
+		else outgoingApplicationRequestVersion.value = requestVersion
+		const requestSubjectKey = subjectKey(subject)
+		if (incoming) {
+			incomingApplicationLoading.value = true
+			incomingApplicationError.value = ''
+			incomingApplicationErrorMode.value = ''
+		} else {
+			outgoingApplicationLoading.value = true
+			outgoingApplicationError.value = ''
+			outgoingApplicationErrorMode.value = ''
+		}
+		try {
+			const cursor = reset ? '' : incoming ? incomingCursor.value : outgoingCursor.value
+			const res = await getApplicationPage(
+				direction,
+				cursor,
+				PAGE_SIZE,
+				isParentMode.value ? 'protected' : 'standard',
+				subject
+			)
+			if (handleSubjectUnauthorizedResponse(res, requestSubjectKey, '登录状态已失效，请重新登录')) return false
+			if (!isApplicationRequestCurrent(mutationVersion, requestVersion, requestSubjectKey, incoming)) return false
+			if (res == null || res.success != true || res.data == null) {
+				throw new Error(responseMessage(res, '申请加载失败'))
+			}
+			const data = res.data
+			const list = data.list != null ? data.list as any[] : []
+			if (incoming) {
+				incomingApplications.value = reset ? list : appendUnique(incomingApplications.value, list)
+				incomingCursor.value = data.nextCursor != null ? '' + data.nextCursor : ''
+				incomingHasMore.value = data.hasMore == true
+				incomingPendingCount.value = incomingApplications.value.filter((item: any) => item.status == 'pending').length
+			} else {
+				outgoingApplications.value = reset ? list : appendUnique(outgoingApplications.value, list)
+				outgoingCursor.value = data.nextCursor != null ? '' + data.nextCursor : ''
+				outgoingHasMore.value = data.hasMore == true
+			}
+			return true
+		} catch (error: any) {
+			if (!isApplicationRequestCurrent(mutationVersion, requestVersion, requestSubjectKey, incoming)) return false
+			const message = error != null && error.message != null ? '' + error.message : '申请加载失败，请稍后重试'
+			if (incoming) {
+				incomingApplicationError.value = message
+				incomingApplicationErrorMode.value = reset ? 'reset' : 'more'
+			} else {
+				outgoingApplicationError.value = message
+				outgoingApplicationErrorMode.value = reset ? 'reset' : 'more'
+			}
+			return false
+		} finally {
+			if (isApplicationRequestCurrent(mutationVersion, requestVersion, requestSubjectKey, incoming)) {
+				if (incoming) incomingApplicationLoading.value = false
+				else outgoingApplicationLoading.value = false
+			}
+		}
+	}
+
+	const handleApplicationTabChange = (index: number) => {
+		applicationTab.value = index
+		if (index === 0 && incomingApplications.value.length === 0) loadApplicationPage('incoming', true)
+		if (index === 1 && outgoingApplications.value.length === 0) loadApplicationPage('outgoing', true)
+	}
+
+	const retryApplications = () => {
+		const incoming = applicationTab.value === 0
+		const reset = incoming
+			? incomingApplicationErrorMode.value == 'reset'
+			: outgoingApplicationErrorMode.value == 'reset'
+		loadApplicationPage(incoming ? 'incoming' : 'outgoing', reset)
+	}
+
+	const loadMoreApplications = () => {
+		loadApplicationPage(applicationTab.value === 0 ? 'incoming' : 'outgoing', false)
+	}
+
+	const openApplications = async () => {
+		if (!componentActive || !await ensureParentAccess() || !componentActive) return
+		appVisible.value = true
+		if (applications.value.length === 0) {
+			loadApplicationPage(applicationTab.value === 0 ? 'incoming' : 'outgoing', true)
+		}
+	}
+
+	const openPaperPlane = () => {
+		uni.navigateTo({ url: '/pages/community/paper-plane' })
+	}
+
+	const openMoments = () => {
+		uni.switchTab({ url: '/pages/community/community' })
+	}
+
+	const openEmotionLab = () => {
+		uni.navigateTo({ url: '/pagesSub/emotionLab/emotion-lab' })
+	}
+
+	const markAllRead = async () => {
+		if (!componentActive || markingAllRead.value || !canMarkAllRead.value) return
+		const sourceSubjectKey = subjectKey(activeMessageSubject.value)
+		const attemptId = markAllReadAttemptSequence + 1
+		markAllReadAttemptSequence = attemptId
+		markingAllRead.value = true
+		try {
+			if (!await ensureParentAccess()) return
+			if (!componentActive || attemptId != markAllReadAttemptSequence || !markingAllRead.value) return
+			const subject = activeMessageSubject.value
+			if (subject == null) return
+			const requestSubjectKey = subjectKey(subject)
+			if (sourceSubjectKey != '' && sourceSubjectKey != requestSubjectKey) return
+			if (!canMarkAllRead.value) return
+			const res = await markAllMessagesRead(subject)
+			if (handleSubjectUnauthorizedResponse(res, requestSubjectKey, '登录状态已失效，请重新登录')) return
+			if (
+				!componentActive ||
+				attemptId != markAllReadAttemptSequence ||
+				requestSubjectKey != subjectKey(activeMessageSubject.value)
+			) return
+			const result = res != null ? res.data : null
+			if (res == null || res.success != true || result == null || result.success != true) {
+				showToast(responseMessage(res, '全部已读失败，请重试'))
+				return
+			}
+			conversations.value.forEach((item: any) => {
+				item.unreadCount = 0
+			})
+			invalidateConversationRequests()
+			unreadTotal.value = 0
+			allReadConfirmed.value = true
+			showToast('消息已全部标为已读')
+		} catch (error) {
+			if (
+				componentActive &&
+				attemptId == markAllReadAttemptSequence &&
+				(sourceSubjectKey == '' || sourceSubjectKey == subjectKey(activeMessageSubject.value))
+			) {
+				showToast('全部已读失败，请重试')
+			}
+		} finally {
+			if (componentActive && attemptId == markAllReadAttemptSequence) {
+				markingAllRead.value = false
+			}
+		}
+	}
+
+	const openAllowedChat = async (userId: number, name: string) => {
+		if (!componentActive || !Number.isFinite(userId) || Math.floor(userId) != userId || userId <= 0 || navigatingUserId.value !== 0) return
+		const sourceSubjectKey = subjectKey(activeMessageSubject.value)
+		const attemptId = navigationAttemptSequence + 1
+		navigationAttemptSequence = attemptId
+		navigatingUserId.value = userId
+		try {
+			if (!await ensureParentAccess()) return
+			if (!componentActive || attemptId != navigationAttemptSequence || navigatingUserId.value != userId) return
+			const subject = activeMessageSubject.value
+			if (subject == null) return
+			const requestSubjectKey = subjectKey(subject)
+			if (sourceSubjectKey != '' && sourceSubjectKey != requestSubjectKey) return
+			const res = await getChatPermission(userId, subject)
+			if (handleSubjectUnauthorizedResponse(res, requestSubjectKey, '登录状态已失效，请重新登录')) return
+			if (
+				!componentActive ||
+				attemptId != navigationAttemptSequence ||
+				requestSubjectKey != subjectKey(activeMessageSubject.value)
+			) return
+			const permission = res != null ? res.data : null
+			if (res != null && res.success == true && permission != null && permission.canChat == true) {
+				uni.navigateTo({
+					url: '/pagesSub/chat/detail?userId=' + userId + '&userName=' + encodeURIComponent(name)
+				})
+				return
+			}
+			showToast(permission != null && permission.reason != null
+				? '' + permission.reason
+				: responseMessage(res, '双方同意后才能开始聊天'))
+		} catch (error) {
+			if (
+				componentActive &&
+				attemptId == navigationAttemptSequence &&
+				(sourceSubjectKey == '' || sourceSubjectKey == subjectKey(activeMessageSubject.value))
+			) {
+				showToast('暂时无法确认聊天权限，请稍后重试')
+			}
+		} finally {
+			if (
+				componentActive &&
+				attemptId == navigationAttemptSequence &&
+				navigatingUserId.value == userId
+			) navigatingUserId.value = 0
+		}
+	}
+
+	const handleMessageClick = async (message: any) => {
+		if (!componentActive) return
+		if (message.type === 'system') {
+			const sourceSubjectKey = subjectKey(activeMessageSubject.value)
+			if (!await ensureParentAccess() || !componentActive) return
+			if (sourceSubjectKey != '' && sourceSubjectKey != subjectKey(activeMessageSubject.value)) return
+			showToast(message.lastMessage != null ? '' + message.lastMessage : '系统消息')
+			return
+		}
+		openAllowedChat(message.userId, message.name != null ? '' + message.name : '聊天')
+	}
+
+	const replaceApplication = (updated: any) => {
+		incomingApplications.value = incomingApplications.value.map((item: any) => {
+			return item.id == updated.id ? updated : item
+		})
+	}
+
+	const getApplicationCommandId = (
+		applicationId: number,
+		action: string,
+		subject: MessageSubject
+	): string => {
+		const key = subjectKey(subject) + '-' + applicationId + '-' + action
+		const existing = applicationCommandIds.value[key]
+		if (existing != null && String(existing) != '') return String(existing)
+		const commandId = 'application-' + key
+		applicationCommandIds.value[key] = commandId
+		return commandId
+	}
+
+	const reconcileIncomingApplications = async (): Promise<boolean> => {
+		return await loadApplicationPage('incoming', true, true)
+	}
+
+	const isApplicationActionCurrent = (attemptId: number, requestSubjectKey: string): boolean => {
+		return componentActive &&
+			attemptId == applicationActionSequence &&
+			requestSubjectKey == subjectKey(activeMessageSubject.value)
+	}
+
+	const continueFromReconciledApplication = async (
+		item: any,
+		action: string,
+		attemptId: number,
+		requestSubjectKey: string
+	) => {
+		const reconciled = await reconcileIncomingApplications()
+		if (!isApplicationActionCurrent(attemptId, requestSubjectKey)) return
+		const finalApplication = incomingApplications.value.find((application: any) => application.id == item.id)
+		if (!reconciled || finalApplication == null) {
+			showToast('暂时无法确认申请最终状态，请重试')
+			return
+		}
+		if (finalApplication.status == 'accepted' && action == 'accept') {
+			showToast('申请状态已同步，正在确认聊天权限')
+			appVisible.value = false
+			await loadConversationPage(true, true)
+			if (isApplicationActionCurrent(attemptId, requestSubjectKey)) {
+				await openAllowedChat(item.userId, item.name != null ? '' + item.name : '聊天')
+			}
+			return
+		}
+		if (finalApplication.status == 'rejected') {
+			showToast('申请最终状态已同步为已拒绝')
+			return
+		}
+		if (finalApplication.status == 'accepted') {
+			showToast('申请最终状态已同步为已同意')
+			return
+		}
+		showToast('申请尚未处理，请重试')
+	}
+
+	const processApplication = async (item: any, action: string) => {
+		if (!componentActive || applicationActionId.value !== 0 || item.status !== 'pending') return
+		const sourceSubjectKey = subjectKey(activeMessageSubject.value)
+		const attemptId = applicationActionSequence + 1
+		applicationActionSequence = attemptId
+		applicationActionId.value = item.id
+		try {
+			if (!await ensureParentAccess()) return
+			if (!componentActive || attemptId != applicationActionSequence || applicationActionId.value != item.id) return
+			const subject = activeMessageSubject.value
+			if (subject == null) return
+			const requestSubjectKey = subjectKey(subject)
+			if (sourceSubjectKey != '' && sourceSubjectKey != requestSubjectKey) return
+			const currentItem = incomingApplications.value.find((application: any) => application.id == item.id)
+			if (currentItem == null || currentItem.status != 'pending') return
+			const mutationVersion = applicationMutationVersion.value
+			const clientCommandId = getApplicationCommandId(item.id, action, subject)
+			const res = await handleApplication(item.id, action, clientCommandId, subject)
+			if (handleSubjectUnauthorizedResponse(res, requestSubjectKey, '登录状态已失效，请重新登录')) return
+			if (
+				!isApplicationActionCurrent(attemptId, requestSubjectKey) ||
+				mutationVersion != applicationMutationVersion.value
+			) return
+			const result = res != null ? res.data : null
+			const expectedStatus = action == 'accept' ? 'accepted' : 'rejected'
+			const expectedCanChat = action == 'accept'
+			if (
+				res == null ||
+				res.success != true ||
+				result == null ||
+				result.success != true ||
+				result.application == null ||
+				result.application.status != expectedStatus ||
+				typeof result.canChat != 'boolean' ||
+				result.canChat != expectedCanChat
+			) {
+				showToast(responseMessage(res, '申请处理失败，正在同步最终状态'))
+				await continueFromReconciledApplication(item, action, attemptId, requestSubjectKey)
+				return
+			}
+			invalidateApplicationRequests()
+			replaceApplication(result.application)
+			incomingPendingCount.value = Math.max(0, incomingPendingCount.value - 1)
+			if (action === 'accept') {
+				showToast('已同意，正在确认聊天权限')
+				appVisible.value = false
+				await loadConversationPage(true, true)
+				if (isApplicationActionCurrent(attemptId, requestSubjectKey)) {
+					await openAllowedChat(item.userId, item.name != null ? '' + item.name : '聊天')
+				}
+			} else {
+				showToast('已拒绝，不扣除对方次数')
+			}
+		} catch (error) {
+			if (
+				componentActive &&
+				attemptId == applicationActionSequence &&
+				(sourceSubjectKey == '' || sourceSubjectKey == subjectKey(activeMessageSubject.value))
+			) {
+				showToast('申请处理结果未确认，正在同步最终状态')
+				const currentSubjectKey = subjectKey(activeMessageSubject.value)
+				if (currentSubjectKey != '') {
+					await continueFromReconciledApplication(item, action, attemptId, currentSubjectKey)
+				}
+			}
+		} finally {
+			if (componentActive && attemptId == applicationActionSequence && applicationActionId.value == item.id) {
+				applicationActionId.value = 0
+			}
+		}
+	}
+
+	const acceptApp = (item: any) => {
+		processApplication(item, 'accept')
+	}
+
+	const rejectApp = (item: any) => {
+		processApplication(item, 'reject')
+	}
+</script>
+
+<style scoped>
+	.message-center {
+		min-height: 100vh;
+		background: var(--canvas);
+	}
+
+	.scroller {
+		height: 100vh;
+		box-sizing: border-box;
+		padding: 14px 14px calc(88px + env(safe-area-inset-bottom));
+	}
+
+	.shortcuts {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 8px;
+		margin-bottom: 18px;
+	}
+
+	.parent-actions { margin-bottom: 18px; }
+
+	.parent-action {
+		min-height: 68px;
+		padding: 12px 14px;
+		border: 1px solid var(--line);
+		background: var(--surface);
+		border-radius: 8px;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.parent-action-copy {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		min-width: 0;
+	}
+
+	.parent-action-status {
+		font-size: 11px;
+		font-weight: 700;
+		flex-shrink: 0;
+	}
+
+	.shortcut {
+		min-height: 92px;
+		padding: 13px;
+		border: 1px solid var(--line);
+		background: var(--surface);
+		border-radius: 8px;
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
+		gap: 4px;
+	}
+
+	.sc-title {
+		font-size: 15px;
+		font-family: var(--serif);
+		font-weight: 700;
+		color: var(--ink);
+	}
+
+	.sc-desc { font-size: 10px; }
+
+	.section-head {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		margin: 8px 2px 12px;
+	}
+
+	.section-title {
+		font-size: 18px;
+		font-family: var(--serif);
+		font-weight: 700;
+	}
+
+	.section-action {
+		font-size: 11px;
+		font-weight: 700;
+	}
+
+	.section-action.disabled { opacity: 0.45; }
+
+	.app-card {
+		margin-bottom: 12px;
+		padding: 12px 14px;
+		border-radius: 8px;
+		background: var(--warm);
+		border: 1px solid var(--line);
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+		.app-title { font-size: 13px; font-weight: 800; }
+		.app-desc { font-size: 11px; }
+
+		.message-center.parent-mode {
+			min-height: 0;
+			background: transparent;
+		}
+
+		.parent-mode .scroller {
+			height: auto;
+			padding: 0 0 16px;
+		}
+
+		.parent-mode .parent-action {
+			min-height: 76px;
+			border-radius: 16px;
+			box-shadow: var(--shadow-sm);
+		}
+
+		.parent-mode .shortcut {
+			min-height: 96px;
+			border-radius: 16px;
+			box-shadow: var(--shadow-sm);
+		}
+
+		.parent-mode .sc-title,
+		.parent-mode .section-title {
+			font-size: 20px;
+		}
+
+		.parent-mode .sc-desc,
+		.parent-mode .parent-action-status,
+		.parent-mode .section-action,
+		.parent-mode .app-desc {
+			font-size: 14px;
+		}
+
+		.parent-mode .section-action {
+			min-height: 48px;
+			display: flex;
+			align-items: center;
+		}
+
+		.parent-mode .app-title {
+			font-size: 16px;
+		}
+
+		.parent-mode .app-card {
+			padding: 16px;
+			border-radius: 14px;
+		}
+	</style>

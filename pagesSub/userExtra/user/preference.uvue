@@ -182,7 +182,7 @@
 
 <script setup lang="uts">
 import { getOwnPreferences, updateOwnPreferences } from '@/api'
-import locationJson from '@/data/location.json'
+import { LOCATION_TREE as locationJson } from '../data/location.uts'
 
 const systemInfo = uni.getSystemInfoSync()
 const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20

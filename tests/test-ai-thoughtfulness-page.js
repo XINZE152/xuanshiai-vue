@@ -2,8 +2,8 @@ const fs = require('fs')
 const assert = require('assert')
 
 const page = fs.readFileSync('pagesSub/userExtra/user/edit.uvue', 'utf8')
-const card = fs.readFileSync('components/XsaProfileAiCard.uvue', 'utf8')
-const firstAnalysis = fs.readFileSync('components/XsaProfileAiFirstAnalysis.uvue', 'utf8')
+const card = fs.readFileSync('pagesSub/userExtra/components/XsaProfileAiCard.uvue', 'utf8')
+const firstAnalysis = fs.readFileSync('pagesSub/userExtra/components/XsaProfileAiFirstAnalysis.uvue', 'utf8')
 const api = fs.readFileSync('api/ai-profile.uts', 'utf8')
 const request = fs.readFileSync('api/request.uts', 'utf8')
 const editPageStyle = page.match(/\.edit-page\s*\{([^}]*)\}/s)?.[1] || ''

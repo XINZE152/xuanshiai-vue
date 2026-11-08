@@ -16,13 +16,13 @@
 		const currentPage = pages.length > 0 ? pages[pages.length - 1] : null
 		const route = currentPage != null && currentPage.route != null ? String(currentPage.route) : ''
 		if (
-			route == '' || route == 'pages/parent/parent' || route == 'pages/parent/user-detail' ||
+			route == '' || route == 'pagesSub/parent/parent' || route == 'pagesSub/parent/user-detail' ||
 			route == 'pagesSub/profileExtra/certification' || route == 'pagesSub/chat/detail' ||
 			route == 'pages/auth/login' || route == 'pages/auth/register' ||
 			route == 'pagesSub/userExtra/onboarding/profile'
 		) return
 		parentRouteRedirecting = true
-		uni.reLaunch({ url: '/pages/parent/parent', complete: () => { parentRouteRedirecting = false } })
+		uni.reLaunch({ url: '/pagesSub/parent/parent', complete: () => { parentRouteRedirecting = false } })
 	}
 
 	const tryAutoEnterFastApiCommunity = (): boolean => {

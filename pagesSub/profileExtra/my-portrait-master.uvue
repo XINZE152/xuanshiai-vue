@@ -270,12 +270,12 @@
 </template>
 
 <script setup lang="uts">
-import MoxiangMasterAvatar from '@/components/MoxiangMasterAvatar.uvue'
-import MoxiangEntryState from '@/components/moxiang/MoxiangEntryState.uvue'
-import MoxiangProgressPanel from '@/components/moxiang/MoxiangProgressPanel.uvue'
-import MoxiangBuildInviteCard from '@/components/moxiang/MoxiangBuildInviteCard.uvue'
-import MoxiangContinuousPanel from '@/components/moxiang/MoxiangContinuousPanel.uvue'
-import XsaMoxiangTrace from '@/components/XsaMoxiangTrace.uvue'
+import MoxiangMasterAvatar from '@/pagesSub/profileExtra/components/MoxiangMasterAvatar.uvue'
+import MoxiangEntryState from '@/pagesSub/profileExtra/components/moxiang/MoxiangEntryState.uvue'
+import MoxiangProgressPanel from '@/pagesSub/profileExtra/components/moxiang/MoxiangProgressPanel.uvue'
+import MoxiangBuildInviteCard from '@/pagesSub/profileExtra/components/moxiang/MoxiangBuildInviteCard.uvue'
+import MoxiangContinuousPanel from '@/pagesSub/profileExtra/components/moxiang/MoxiangContinuousPanel.uvue'
+import XsaMoxiangTrace from '@/pagesSub/profileExtra/components/XsaMoxiangTrace.uvue'
 import { MasterWS, MASTER_ROLE_NAME, ConfirmCardPayload, ConfirmCardItem, BuildInvitePayload, JourneyStage, JourneyProgress, ExtractionStatus, classifyMasterWSError } from '@/api/voice-master-ws.uts'
 import { resolveMediaUrl } from '@/api/config.uts'
 import { ProfileSubject, getProfileDraft, patchProfileDraft, fieldAction, getAiConsents, grantProfileTextConsent, synthesizeSpeech, genIdempotencyKey } from '@/api/ai-profile.uts'

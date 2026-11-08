@@ -5,10 +5,10 @@
  */
 
 const PORTRAIT = {
-  main: '/static/portraits/profile-woman-pose1.png',
-  alt: '/static/portraits/profile-woman-pose2.png',
-  community: '/static/portraits/profile-woman-pose3.png',
-  pose4: '/static/portraits/profile-woman-pose4.png',
+  main: '/static/portraits/profile-woman-pose1.webp',
+  alt: '/static/portraits/profile-woman-pose2.webp',
+  community: '/static/portraits/profile-woman-pose3.webp',
+  pose4: '/static/portraits/profile-woman-pose4.webp',
   man: '/static/portraits/profile-man-light.webp',
   sea: '/static/portraits/profile-man-sea.webp',
   manAlt: '/static/portraits/profile-man-alt.webp'

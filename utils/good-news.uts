@@ -1,12 +1,12 @@
 export const GOOD_NEWS_STAGES: any[] = [
-  { label: '牵手成功', icon: '/static/icons/good-news/holding-hands.png', tone: 'coral' },
-  { label: '恋爱生活', icon: '/static/icons/good-news/in-love.png', tone: 'sky' },
-  { label: '已见父母', icon: '/static/icons/good-news/meet-parents.png', tone: 'sage' },
-  { label: '已订婚', icon: '/static/icons/good-news/engaged.png', tone: 'plum' },
-  { label: '已领证', icon: '/static/icons/good-news/certificate.png', tone: 'pink' },
-  { label: '已办婚礼', icon: '/static/icons/good-news/wedding.png', tone: 'apricot' },
-  { label: '婚后生活', icon: '/static/icons/good-news/married-life.png', tone: 'mint' },
-  { label: '锦旗飘扬', icon: '/static/icons/good-news/pennant.png', tone: 'plum' }
+  { label: '牵手成功', icon: '/static/icons/good-news/holding-hands.webp', tone: 'coral' },
+  { label: '恋爱生活', icon: '/static/icons/good-news/in-love.webp', tone: 'sky' },
+  { label: '已见父母', icon: '/static/icons/good-news/meet-parents.webp', tone: 'sage' },
+  { label: '已订婚', icon: '/static/icons/good-news/engaged.webp', tone: 'plum' },
+  { label: '已领证', icon: '/static/icons/good-news/certificate.webp', tone: 'pink' },
+  { label: '已办婚礼', icon: '/static/icons/good-news/wedding.webp', tone: 'apricot' },
+  { label: '婚后生活', icon: '/static/icons/good-news/married-life.webp', tone: 'mint' },
+  { label: '锦旗飘扬', icon: '/static/icons/good-news/pennant.webp', tone: 'plum' }
 ]
 
 export const GOOD_NEWS_WISHES = ['祝福你们，愿往后的日子温暖相伴。', '愿你们彼此珍惜，一起经历更多美好。', '很高兴见证你们的新进展，送上祝福。']

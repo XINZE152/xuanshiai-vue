@@ -116,7 +116,7 @@
 </template>
 
 <script setup lang="uts">
-	import locationJson from '@/data/location.json'
+	import { LOCATION_TREE as locationJson } from '../data/location.uts'
 	import { updateOwnProfile } from '@/api/user.uts'
 	import { getProfileCompletion } from '@/api/auth.uts'
 	import { getContinuousMoxiangState } from '@/api/ai-moxiang.uts'
@@ -263,7 +263,7 @@
 		if (key === 'parent') {
 			uni.setStorageSync('xsa_onboarding_mode', 'parent')
 			uni.setStorageSync('xsa_onboarding_completed', true)
-			uni.reLaunch({ url: '/pages/parent/parent' })
+			uni.reLaunch({ url: '/pagesSub/parent/parent' })
 			return
 		}
 		if (key === 'matchmaker') {

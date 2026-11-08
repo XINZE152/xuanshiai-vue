@@ -4,7 +4,7 @@ const path = require('node:path')
 
 const frontendRoot = path.resolve(__dirname, '..')
 const messageSource = fs.readFileSync(path.join(frontendRoot, 'api/message.uts'), 'utf8')
-const messageCenterSource = fs.readFileSync(path.join(frontendRoot, 'components/XsaMessageCenter.uvue'), 'utf8')
+const messageCenterSource = fs.readFileSync(path.join(frontendRoot, 'pagesSub/parent/components/XsaMessageCenter.uvue'), 'utf8')
 // 跨仓路径统一走 tests/helpers/cross-repo.cjs；后端源码不可达时显式 SKIP
 // （runner 的 SKIP 协议），不静默假装通过。
 const { readBackend } = require('./helpers/cross-repo.cjs')

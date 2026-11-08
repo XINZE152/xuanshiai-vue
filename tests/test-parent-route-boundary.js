@@ -11,7 +11,7 @@ const detail = read('pagesSub/userExtra/user/detail.uvue')
 const parentApi = read('api/parent.uts')
 
 assert.ok(detail.includes('const redirectParentRoute = (): boolean =>'), 'ordinary detail defines a parent-route guard')
-assert.ok(detail.includes("uni.reLaunch({ url: '/pages/parent/parent' })"), 'ordinary detail redirects a parent role to the parent shell')
+assert.ok(detail.includes("uni.reLaunch({ url: '/pagesSub/parent/parent' })"), 'ordinary detail redirects a parent role to the parent shell')
 assert.ok(detail.includes('onMounted(async () => {\n\tif (redirectParentRoute()) return'), 'ordinary detail checks the role before initial data loading')
 assert.ok(detail.includes('onShow(async () => {\n\tif (redirectParentRoute()) return'), 'ordinary detail checks the role before refresh')
 assert.ok(parentApi.includes('function toParentCandidateList(source: any[], forceLiked: boolean = false)'), 'candidate list adapter exists')

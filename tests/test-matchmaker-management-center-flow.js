@@ -37,7 +37,7 @@ expect(accessPage, 'getMatchmakerManagementCenterSnapshot', 'entry loads dashboa
 expect(accessPage, '<MatchmakerPendingReview', 'pending review workbench mounted')
 expectAbsent(accessPage, '完成服务开通付款', 'payment is not an entry gate')
 
-const review = read('components/MatchmakerPendingReview.uvue')
+const review = read('pagesSub/matchmaker/components/MatchmakerPendingReview.uvue')
 for (const apiName of [
   'getMatchmakerReviewMembers',
   'updateMatchmakerReviewMember',

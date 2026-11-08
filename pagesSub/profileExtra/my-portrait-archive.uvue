@@ -30,8 +30,8 @@
 
 <script lang="uts">
 import { getMoxiangArchive, getContinuousMoxiangState, buildContinuousPortrait, type MoxiangArchiveResponse, type ArchiveSubject, type ContinuousMoxiangState, type ContinuousSubjectState } from '@/api/ai-moxiang.uts'
-import MemoryManagementSheet from '@/components/MemoryManagementSheet.uvue'
-import MoxiangContinuousPanel from '@/components/moxiang/MoxiangContinuousPanel.uvue'
+import MemoryManagementSheet from '@/pagesSub/profileExtra/components/MemoryManagementSheet.uvue'
+import MoxiangContinuousPanel from '@/pagesSub/profileExtra/components/moxiang/MoxiangContinuousPanel.uvue'
 
 type PendingContinuousBuild = { refresh: boolean, key: string }
 

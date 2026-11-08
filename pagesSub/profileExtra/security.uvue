@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="uts">
-import XsaCard from '@/components/XsaCard.uvue'
+import XsaCard from '@/pagesSub/profileExtra/components/XsaCard.uvue'
 import XsaButton from '@/components/XsaButton.uvue'
 import XsaEmpty from '@/components/XsaEmpty.uvue'
 import { getSecurityCenterData, getBlockedUsers, unblockUser, getMyReports, getMyReportAppeals } from '@/api'

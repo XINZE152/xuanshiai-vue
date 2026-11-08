@@ -3,7 +3,7 @@
  * 绘制完成后由调用方决定保存到相册或上传至锦旗审核接口。
  */
 
-const PENNANT_BG = '/static/generated/pennant-blank-bg.jpg'
+const PENNANT_BG = '/static/generated/pennant-blank-bg.webp'
 const GOLD = '#F7D66E'
 // 底图实测的可用红面：x 约 0.15~0.85、y 约 0.11~0.70，0.70 往下是波浪金穗边，字不能压上去。
 const BIG_TOP = 0.14

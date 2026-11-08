@@ -23,7 +23,7 @@
 </template>
 
 <script setup lang="uts">
-import PosterTemplate from '@/components/PosterTemplate.uvue'
+import PosterTemplate from '@/pagesSub/profileExtra/components/PosterTemplate.uvue'
 import { getOwnProfile, getUserDetail } from '@/api/user.uts'
 import { defaultPosterProfile, normalizePosterProfile } from '@/utils/poster-profile.uts'
 import type { PosterProfile } from '@/utils/poster-profile.uts'

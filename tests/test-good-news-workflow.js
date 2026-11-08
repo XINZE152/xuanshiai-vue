@@ -26,7 +26,7 @@ assert.equal(item.images[0],'http://127.0.0.1:8000/storage/photo.webp')
 assert.equal(item.public,false)
 const events=[]
 let detailReply = async ()=>({success:true,data:item})
-const ui = compile('components/MatchmakerGoodNews.uvue', name=>{
+const ui = compile('pagesSub/matchmaker/components/MatchmakerGoodNews.uvue', name=>{
   if(name==='vue') return {ref:value=>({value}),computed:fn=>({get value(){return fn()}}),onMounted:()=>{},getCurrentInstance:()=>({proxy:{}}),nextTick:async()=>{}}
   if(name.includes('api/workspace-good-news')) return {...api,getGoodNewsDetail:(...args)=>detailReply(...args)}
   if(name.includes('api/matchmaker')) return {getMatchmakerWorkspaceGoodNews:async()=>({success:true,data:{items:[],hasMore:false}}),getMatchmakerWorkspaceGoodNewsPennants:async()=>({success:true,data:{items:[],hasMore:false}})}
@@ -49,7 +49,7 @@ async function run() {
   }}})
   await drawer.renderPennant('canvas',{ $scope:nativeComponent },{giver:'李先生',receiver:'服务红娘',leftWords:'感谢牵线',rightWords:'成就姻缘',dateText:'2026年'})
   assert(painted,'the preview must draw its background')
-  assert.match(fs.readFileSync(path.join(root,'components/GoodNewsPennantCanvas.uvue'),'utf8'),/<canvas[^>]+type="2d"/)
+  assert.match(fs.readFileSync(path.join(root,'pagesSub/matchmaker/components/GoodNewsPennantCanvas.uvue'),'utf8'),/<canvas[^>]+type="2d"/)
   response={success:true,data:{id:7,stage:'恋爱生活'}}
   await api.getGoodNewsDetail('7','news')
   assert.equal(calls.at(-1).url,'/matchmaker/workbench/good-news/7')

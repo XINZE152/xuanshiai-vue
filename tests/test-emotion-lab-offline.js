@@ -20,7 +20,7 @@ function read(relativePath) {
 const configSource = read('api/config.uts')
 const apiSource = read('api/emotionLab.uts')
 const indexSource = read('api/index.uts')
-const pageSource = read('pages/emotion-lab/emotion-lab.uvue')
+const pageSource = read('pagesSub/emotionLab/emotion-lab.uvue')
 
 // 1. 开关集中在 config.uts，且为 true
 assert.match(

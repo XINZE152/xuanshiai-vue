@@ -361,8 +361,8 @@ expectAbsent(api, 'likeUser(candidateId, parentInternalMockScope(context))', 'or
 expect(apiIndex, 'getParentLikedCandidates,', 'unified API exports the parent like list')
 console.log('PASS parent internal mock remains isolated from ordinary APIs')
 
-const bottomNav = read('components/ParentBottomNav.uvue')
-const parentIcon = read('components/XsaIcon.uvue')
+const bottomNav = read('pagesSub/parent/components/ParentBottomNav.uvue')
+const parentIcon = read('pagesSub/parent/components/XsaIcon.uvue')
 expect(bottomNav, "key: 'home'", 'parent home nav item')
 expect(bottomNav, "key: 'matchmaker'", 'parent matchmaker nav item')
 expect(bottomNav, "key: 'message'", 'parent message nav item')
@@ -377,7 +377,7 @@ expect(parentIcon, 'xsa-icon-matchmaker:before', 'parent matchmaker icon glyph')
 expect(parentIcon, 'xsa-icon-message:before', 'parent message icon glyph')
 expect(parentIcon, 'xsa-icon-profile:before', 'parent profile icon glyph')
 
-const candidateCard = read('components/ParentCandidateCard.uvue')
+const candidateCard = read('pagesSub/parent/components/ParentCandidateCard.uvue')
 expect(candidateCard, '<XsaIcon name="profile" size="large" />', 'candidate photo uses the shared protected profile icon')
 expect(candidateCard, '照片已保护', 'candidate privacy state is explicit')
 expectAbsent(candidateCard, ':src="candidate.avatar"', 'candidate list never binds a clear ordinary-user avatar')
@@ -387,11 +387,11 @@ expect(candidateCard, 'font-size: 14px', 'candidate body type scale')
 expect(candidateCard, 'border-radius: 18px', 'candidate card uses the parent surface radius')
 expect(candidateCard, 'min-height: 48px', 'candidate action target')
 
-const gateNotice = read('components/ParentGateNotice.uvue')
+const gateNotice = read('pagesSub/parent/components/ParentGateNotice.uvue')
 expect(gateNotice, '父母实名认证', 'parent gate copy')
 expect(gateNotice, '子女授权', 'child authorization copy')
 
-const applySheet = read('components/ParentApplySheet.uvue')
+const applySheet = read('pagesSub/parent/components/ParentApplySheet.uvue')
 expect(applySheet, ':large-text="true"', 'parent application sheet uses the accessibility variant')
 expect(applySheet, '申请附言', 'parent application requires a written note')
 expect(applySheet, '对方本人同意后才能开始聊天', 'parent application explains mutual consent')
@@ -404,7 +404,7 @@ expect(applySheet, "uni.getStorageSync('xsa_onboarding_mode')", 'parent applicat
 expect(applySheet, 'applyParentIntroduction(props.parentContext, props.candidateId, note)', 'parent application submits through the parent API')
 expect(applySheet, 'min-height: 48px', 'parent application actions meet the touch target')
 
-const parentPage = read('pages/parent/parent.uvue')
+const parentPage = read('pagesSub/parent/parent.uvue')
 expect(parentPage, 'header-kicker', 'parent shell exposes a compact identity header')
 expect(parentPage, 'padding-bottom: calc(112px + env(safe-area-inset-bottom))', 'parent content reserves the fixed navigation area')
 expect(parentPage, 'profile-panel', 'parent profile uses the dedicated layout variant')
@@ -534,7 +534,7 @@ expectAbsent(
 	'parent role monitor is not nested inside the expiry scheduler',
 )
 
-const detailPage = read('pages/parent/user-detail.uvue')
+const detailPage = read('pagesSub/parent/user-detail.uvue')
 expect(detailPage, 'getParentAccessGate', 'detail enforces parent gate')
 expect(detailPage, "const parentContext = ref(null as ParentContext | null)", 'detail uses the ParentContext contract')
 expect(detailPage, 'candidate.canViewClearPhoto', 'detail photo visibility is data gated')
@@ -610,20 +610,20 @@ expectAbsent(
 )
 
 for (const [file, content] of [
-  ['components/ParentBottomNav.uvue', bottomNav],
-  ['components/ParentCandidateCard.uvue', candidateCard],
-  ['components/ParentGateNotice.uvue', gateNotice],
-	['components/ParentApplySheet.uvue', applySheet],
-  ['pages/parent/parent.uvue', parentPage],
-  ['pages/parent/user-detail.uvue', detailPage]
+  ['pagesSub/parent/components/ParentBottomNav.uvue', bottomNav],
+  ['pagesSub/parent/components/ParentCandidateCard.uvue', candidateCard],
+  ['pagesSub/parent/components/ParentGateNotice.uvue', gateNotice],
+	['pagesSub/parent/components/ParentApplySheet.uvue', applySheet],
+  ['pagesSub/parent/parent.uvue', parentPage],
+  ['pagesSub/parent/user-detail.uvue', detailPage]
 ]) {
   expectNoLiteralColors(content, file)
 }
 
 for (const [file, content] of [
-	['pages/parent/parent.uvue', parentPage],
-	['pages/parent/user-detail.uvue', detailPage],
-	['components/ParentApplySheet.uvue', applySheet],
+	['pagesSub/parent/parent.uvue', parentPage],
+	['pagesSub/parent/user-detail.uvue', detailPage],
+	['pagesSub/parent/components/ParentApplySheet.uvue', applySheet],
 	['components/XsaReportSheet.uvue', read('components/XsaReportSheet.uvue')]
 ]) {
 	for (const forbiddenCopy of ['Mock', 'mock', '测试', '内部演示', '流程审校', '仅供审校', '不会影响真实用户', '不代表已向真实用户', '测试数据']) {

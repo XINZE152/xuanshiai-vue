@@ -8,16 +8,16 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
 const pages = JSON.parse(read('pages.json'))
 const paths = pages.pages.map((item) => item.path)
 const expectedNewRoutes = [
-  'pages/parent/parent',
-  'pages/parent/user-detail',
-  'pages/emotion-lab/emotion-lab',
+  'pagesSub/parent/parent',
+  'pagesSub/parent/user-detail',
+  'pagesSub/emotionLab/emotion-lab',
 ]
 
 for (const route of expectedNewRoutes) {
   assert.ok(paths.includes(route), `pages.json should register ${route}`)
 }
 
-const parentDetailRoute = pages.pages.find((item) => item.path === 'pages/parent/user-detail')
+const parentDetailRoute = pages.pages.find((item) => item.path === 'pagesSub/parent/user-detail')
 assert.strictEqual(
   parentDetailRoute.style.navigationStyle,
   'custom',
@@ -43,7 +43,7 @@ assert.ok(
   'parent selection should persist parent mode immediately',
 )
 assert.ok(
-  onboarding.includes("url: '/pages/parent/parent'"),
+  onboarding.includes("url: '/pagesSub/parent/parent'"),
   'parent selection should enter the parent shell',
 )
 assert.ok(
@@ -57,11 +57,11 @@ assert.ok(indexPage.includes('routeParentMode'), 'home should enforce stored par
 const appPage = read('App.uvue')
 assert.ok(appPage.includes('enforceParentRoute'), 'app resume should enforce parent-mode routing')
 assert.ok(
-  appPage.includes("route == 'pages/parent/parent'") && appPage.includes("route == 'pages/parent/user-detail'"),
+  appPage.includes("route == 'pagesSub/parent/parent'") && appPage.includes("route == 'pagesSub/parent/user-detail'"),
   'app route guard should allow the parent shell and parent detail page',
 )
 assert.ok(
-  appPage.includes("url: '/pages/parent/parent'"),
+  appPage.includes("url: '/pagesSub/parent/parent'"),
   'app route guard should return parent mode to the parent shell',
 )
 assert.ok(
@@ -115,7 +115,7 @@ assert.ok(
 const profilePage = read('pages/profile/profile.uvue')
 assert.ok(profilePage.includes('情感实验室'), 'normal profile should expose the emotion lab')
 assert.ok(
-  profilePage.includes("/pages/emotion-lab/emotion-lab"),
+  profilePage.includes("/pagesSub/emotionLab/emotion-lab"),
   'normal profile emotion-lab entry should use the registered route',
 )
 assert.ok(profilePage.includes('onSwitchToParent'), 'normal profile should expose the parent identity switch')
@@ -129,11 +129,11 @@ assert.ok(
   'parent identity switch should persist parent mode',
 )
 assert.ok(
-  profilePage.includes("uni.reLaunch({ url: '/pages/parent/parent' })"),
+  profilePage.includes("uni.reLaunch({ url: '/pagesSub/parent/parent' })"),
   'parent identity switch should enter the parent shell',
 )
 
-const parentPage = read('pages/parent/parent.uvue')
+const parentPage = read('pagesSub/parent/parent.uvue')
 assert.ok(parentPage.includes('切换为普通身份'), 'parent profile should expose a clear standard-role switch')
 assert.ok(
   parentPage.includes("uni.setStorageSync('xsa_onboarding_mode', 'self')"),
@@ -144,7 +144,7 @@ assert.ok(
   'switching roles should replace the parent page stack',
 )
 
-for (const file of ['pages/parent/parent.uvue', 'pages/parent/user-detail.uvue']) {
+for (const file of ['pagesSub/parent/parent.uvue', 'pagesSub/parent/user-detail.uvue']) {
   const source = read(file)
   assert.ok(source.includes('const ensureParentRole'), `${file} should guard direct parent-route entry`)
   assert.ok(source.includes('getParentAuthenticationGate'), `${file} should require an authenticated account`)
@@ -180,10 +180,10 @@ for (const name of [
 }
 
 for (const file of [
-  'pages/parent/parent.uvue',
-  'pages/parent/user-detail.uvue',
-  'pages/emotion-lab/emotion-lab.uvue',
-  'components/XsaMessageCenter.uvue',
+  'pagesSub/parent/parent.uvue',
+  'pagesSub/parent/user-detail.uvue',
+  'pagesSub/emotionLab/emotion-lab.uvue',
+  'pagesSub/parent/components/XsaMessageCenter.uvue',
   'pagesSub/chat/detail.uvue',
 ]) {
   const source = read(file)

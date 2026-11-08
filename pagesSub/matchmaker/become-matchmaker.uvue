@@ -208,7 +208,7 @@
 								<view class="workspace-match-confetti dot mc-19"></view>
 								<!-- 心形必须排在两列之后：微信小程序里它原先夹在两列之间，会被右侧头像压掉一半。 -->
 								<!-- 交握的心：设计图原样（两个相叠色块 + 两手收尖手指互穿），排在两列之后才压得住照片。 -->
-								<image class="workspace-match-heart" src="/static/generated/matchmaker-clasp-heart.png" mode="aspectFit"></image>
+								<image class="workspace-match-heart" src="/static/generated/matchmaker-clasp-heart.webp" mode="aspectFit"></image>
 							</view>
 							<!-- 双方有效电话均查看后，由后端推进牵线中；查看单方或只有微信不会推进。 -->
 							<view class="workspace-match-contact-row">
@@ -685,7 +685,7 @@
 						<text class="qr-title">微信扫码咨询</text>
 						<text class="qr-subtitle">添加客服微信，备注"红娘入驻咨询"</text>
 						<view class="qr-image-wrap">
-							<image class="qr-image" src="/static/qrcodes/kefu-wechat.png" mode="aspectFit"></image>
+							<image class="qr-image" src="/static/qrcodes/kefu-wechat.webp" mode="aspectFit"></image>
 						</view>
 						<text class="qr-tip">长按识别二维码添加</text>
 					</view>
@@ -1031,11 +1031,11 @@
 <script setup lang="uts">
 import XsaToast from '@/components/XsaToast.uvue'
 import XsaSheet from '@/components/XsaSheet.uvue'
-import MatchmakerManagementCenter from '@/components/MatchmakerManagementCenter.uvue'
-import MatchmakerGoodNews from '@/components/MatchmakerGoodNews.uvue'
+import MatchmakerManagementCenter from '@/pagesSub/matchmaker/components/MatchmakerManagementCenter.uvue'
+import MatchmakerGoodNews from '@/pagesSub/matchmaker/components/MatchmakerGoodNews.uvue'
 import { onShareAppMessage } from '@dcloudio/uni-app'
-import MatchmakerPendingReview from '@/components/MatchmakerPendingReview.uvue'
-import MatchmakerServiceNavSheet from '@/components/MatchmakerServiceNavSheet.uvue'
+import MatchmakerPendingReview from '@/pagesSub/matchmaker/components/MatchmakerPendingReview.uvue'
+import MatchmakerServiceNavSheet from '@/pagesSub/matchmaker/components/MatchmakerServiceNavSheet.uvue'
 import {
 	getMatchmakerManagementCenterAccess,
 	getMatchmakerManagementCenterSnapshot,
@@ -2380,10 +2380,10 @@ const getIntroductionFallbackAvatar = (memberId: any, gender: string, memberName
 	const femaleAvatars: string[] = []
 	for (let i = 1; i <= 41; i++) {
 		const padded = i < 10 ? '00' + String(i) : (i < 100 ? '0' + String(i) : String(i))
-		maleAvatars.push('/static/avatars/matchmaking-anime-' + padded + '.jpg')
+		maleAvatars.push('/static/avatars/matchmaking-anime-' + padded + '.webp')
 		const fj = i + 41
 		const fpadded = fj < 100 ? '0' + String(fj) : String(fj)
-		femaleAvatars.push('/static/avatars/matchmaking-anime-' + fpadded + '.jpg')
+		femaleAvatars.push('/static/avatars/matchmaking-anime-' + fpadded + '.webp')
 	}
 	const neutralAvatars = maleAvatars.concat(femaleAvatars)
 	const normalizedGender = String(gender || '')

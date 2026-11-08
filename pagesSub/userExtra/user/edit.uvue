@@ -356,13 +356,13 @@
 <script setup lang="uts">
 	import { getOwnProfile, updateOwnProfile, updateOwnNickname, getOwnPreferences, uploadUserProfileMedia, deleteUserProfilePhoto, getMeProfile, getUserCertifications, getProfileCompletion, getAgreementVersions, acceptAgreement, getMatchmakerMemberProfile, updateMatchmakerMemberProfile, getMatchmakerMemberPreferences, getMatchmakerMemberCompletion, updateMatchmakerMemberNickname, uploadMatchmakerMemberMedia, deleteMatchmakerMemberPhoto } from '@/api'
 	import { getLatestThoughtfulness, analyzeProfileThoughtfulness, normalizeThoughtfulness, polishPaperPlaneText, ThoughtfulnessResult } from '@/api/ai-profile.uts'
-	import XsaProfileAiCard from '@/components/XsaProfileAiCard.uvue'
-	import XsaProfileAiFirstAnalysis from '@/components/XsaProfileAiFirstAnalysis.uvue'
+	import XsaProfileAiCard from '@/pagesSub/userExtra/components/XsaProfileAiCard.uvue'
+	import XsaProfileAiFirstAnalysis from '@/pagesSub/userExtra/components/XsaProfileAiFirstAnalysis.uvue'
 	import { resolveMediaUrl, CURRENT_USER_ID_KEY } from '@/api/config.uts'
 	import { sleep } from '@/utils/sleep.uts'
 	import { USER_EDUCATION_OPTIONS } from '@/utils/profile-field-display.uts'
 	import { aiFailureNotice } from '@/utils/ai-error.uts'
-	import locationJson from '@/data/location.json'
+	import { LOCATION_TREE as locationJson } from '../data/location.uts'
 
 	const loading = ref(true)
 	const refreshing = ref(false)

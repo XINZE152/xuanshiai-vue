@@ -45,26 +45,6 @@
         "navigationBarTitleText": "注册",
         "navigationStyle": "custom"
       }
-    },
-    {
-      "path": "pages/parent/parent",
-      "style": {
-        "navigationBarTitleText": "父母端",
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/parent/user-detail",
-      "style": {
-        "navigationBarTitleText": "资料详情",
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/emotion-lab/emotion-lab",
-      "style": {
-        "navigationBarTitleText": "情感实验室"
-      }
     }
   ],
   "globalStyle": {
@@ -104,6 +84,36 @@
   },
   "uniIdRouter": {},
   "subPackages": [
+    {
+      "root": "pagesSub/emotionLab",
+      "pages": [
+        {
+          "path": "emotion-lab",
+          "style": {
+            "navigationBarTitleText": "情感实验室"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pagesSub/parent",
+      "pages": [
+        {
+          "path": "parent",
+          "style": {
+            "navigationBarTitleText": "父母端",
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "user-detail",
+          "style": {
+            "navigationBarTitleText": "资料详情",
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
     {
       "root": "pagesSub/community",
       "pages": [

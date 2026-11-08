@@ -5,7 +5,7 @@ const vm = require('vm')
 
 const root = path.resolve(__dirname, '..')
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n')
-const messageCenter = read('components/XsaMessageCenter.uvue')
+const messageCenter = read('pagesSub/parent/components/XsaMessageCenter.uvue')
 const chatDetail = read('pagesSub/chat/detail.uvue')
 const messageApi = read('api/message.uts')
 const requestApi = read('api/request.uts')

@@ -3,7 +3,7 @@ const assert = require('assert')
 
 const pagePath = 'pagesSub/profileExtra/my-portrait-master.uvue'
 const source = fs.readFileSync(pagePath, 'utf8')
-const progressSource = fs.readFileSync('components/moxiang/MoxiangProgressPanel.uvue', 'utf8')
+const progressSource = fs.readFileSync('pagesSub/profileExtra/components/moxiang/MoxiangProgressPanel.uvue', 'utf8')
 
 function test(name, check) {
   check()

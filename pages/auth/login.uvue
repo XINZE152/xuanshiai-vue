@@ -148,7 +148,7 @@
 		}
 		const storedMode = uni.getStorageSync('xsa_onboarding_mode')
 		if (storedMode != null && String(storedMode) == 'parent') {
-			uni.reLaunch({ url: '/pages/parent/parent' })
+			uni.reLaunch({ url: '/pagesSub/parent/parent' })
 			return
 		}
 		let needsOnboarding = false

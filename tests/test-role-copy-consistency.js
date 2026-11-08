@@ -139,7 +139,7 @@ assert.ok(visibleText(result).includes('期待的长期关系'), '画像结果�
 // 品牌标识按 DESIGN.md 保留，不得被文案清扫误删
 const detail = read('pagesSub', 'userExtra', 'user', 'detail.uvue')
 assert.ok(detail.includes('知遇墨相 · 灵魂底色'), 'DESIGN.md 登记的「知遇墨相」卡片标识须保留')
-assert.ok(read('components', 'moxiang', 'MoxiangPosterSheet.uvue').includes('墨相心帖'), '海报标题「墨相心帖」须保留')
+assert.ok(read('pagesSub', 'profileExtra', 'components', 'moxiang', 'MoxiangPosterSheet.uvue').includes('墨相心帖'), '海报标题「墨相心帖」须保留')
 assert.ok(read('utils', 'moxiang-poster-drawer.uts').includes('墨相'), '海报印章文案须保留')
 
 // ── 5. 与 PRODUCT.md 对齐（文档是判据，不一致即为回归）────────────────

@@ -98,7 +98,7 @@ const dates: DateItem[] = [
 		weekText: '周日 15:00',
 		title: '咖啡馆慢聊',
 		partnerName: '沈亦舟',
-		partnerAvatar: '/static/avatars/matchmaking-anime-034.jpg',
+		partnerAvatar: '/static/avatars/matchmaking-anime-034.webp',
 		location: '滨江 · 天目里 B 区',
 		metValue: '线下见面',
 		metClass: 'met-offline'
@@ -112,7 +112,7 @@ const dates: DateItem[] = [
 		weekText: '周六 14:00',
 		title: '美术馆同行',
 		partnerName: '温知意',
-		partnerAvatar: '/static/avatars/matchmaking-anime-047.jpg',
+		partnerAvatar: '/static/avatars/matchmaking-anime-047.webp',
 		location: '南山路 · 浙江美术馆',
 		metValue: '线下见面',
 		metClass: 'met-offline'
@@ -126,7 +126,7 @@ const dates: DateItem[] = [
 		weekText: '周六 19:00',
 		title: '晚餐约会',
 		partnerName: '苏窈',
-		partnerAvatar: '/static/avatars/matchmaking-anime-058.jpg',
+		partnerAvatar: '/static/avatars/matchmaking-anime-058.webp',
 		location: '湖滨 · 银泰 in77',
 		metValue: '线下见面',
 		metClass: 'met-offline'
@@ -140,7 +140,7 @@ const dates: DateItem[] = [
 		weekText: '周六 19:30',
 		title: '江边散步',
 		partnerName: '林清欢',
-		partnerAvatar: '/static/avatars/matchmaking-anime-063.jpg',
+		partnerAvatar: '/static/avatars/matchmaking-anime-063.webp',
 		location: '钱塘江滨江步道',
 		metValue: '线下见面',
 		metClass: 'met-offline'
@@ -154,7 +154,7 @@ const dates: DateItem[] = [
 		weekText: '周日 13:00',
 		title: '视频初见',
 		partnerName: '宋轻语',
-		partnerAvatar: '/static/avatars/matchmaking-anime-071.jpg',
+		partnerAvatar: '/static/avatars/matchmaking-anime-071.webp',
 		location: '线上 · 视频通话',
 		metValue: '视频约会',
 		metClass: 'met-online'
@@ -168,7 +168,7 @@ const dates: DateItem[] = [
 		weekText: '周日 16:00',
 		title: '公园漫步',
 		partnerName: '韩星河',
-		partnerAvatar: '/static/avatars/matchmaking-anime-019.jpg',
+		partnerAvatar: '/static/avatars/matchmaking-anime-019.webp',
 		location: '西湖景区 · 曲院风荷',
 		metValue: '线下见面',
 		metClass: 'met-offline'

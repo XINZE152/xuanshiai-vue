@@ -21,7 +21,7 @@ const index = read('pages/index/index.uvue')
 const detail = read('pagesSub/userExtra/user/detail.uvue')
 const api = read('api/spotlight.uts')
 const mock = read('mock/spotlight.uts')
-const success = read('components/XsaSpotlightSuccessSheet.uvue')
+const success = read('pagesSub/userExtra/components/XsaSpotlightSuccessSheet.uvue')
 
 // —— 首页：爆灯不得成为主路径，首页不应有任何爆灯入口或状态
 reject(index, 'vip-card-spotlight', 'homepage has no spotlight button')

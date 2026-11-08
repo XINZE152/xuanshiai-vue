@@ -233,7 +233,7 @@
 	import { summarizeProfileCard, getProfileCardDraft, applyProfileCardDraft, isProfileCardVersionConflict, waitForProfileCardTask, createProfileCardIdempotencyKey } from '@/api/ai-profile-card.uts'
 	import { getMeProfile, getOwnProfile } from '@/api/user.uts'
 	import { getPublicProfileCardExport } from '@/api/ai-profile.uts'
-	import MoxiangPosterSheet from '@/components/moxiang/MoxiangPosterSheet.uvue'
+	import MoxiangPosterSheet from '@/pagesSub/profileExtra/components/moxiang/MoxiangPosterSheet.uvue'
 	import { displayFieldValue } from '@/utils/profile-field-display.uts'
 	import type { MoxiangPosterData } from '@/utils/moxiang-poster-drawer.uts'
 

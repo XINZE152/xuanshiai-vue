@@ -1,0 +1,202 @@
+﻿<template>
+  <XsaSheet :visible="visible" title="知遇 · 回复建议" :tall="true" @close="closeSheet">
+    <view class="advisor-sheet">
+      <view class="advisor-intro">
+        <text class="advisor-kicker">知遇的建议仅供参考</text>
+        <text class="advisor-summary">根据你的表达习惯给出回复方向，不会替你发送消息，也不替你做决定。</text>
+      </view>
+      <view class="advisor-section">
+        <text class="advisor-label">沟通场景</text>
+        <view class="option-grid">
+				<view v-for="item in scenarios" :key="item.value" class="option-chip" :class="{ active: scenario == item.value }" @click="onScenarioChange(item.value)"><text>{{ item.label }}</text></view>
+        </view>
+      </view>
+      <view class="advisor-section">
+        <text class="advisor-label">希望达到什么效果（选填）</text>
+        <input class="advisor-input" type="text" :value="goal" maxlength="300" placeholder="例如：自然地延续话题，不显得着急" confirm-type="done" cursor-spacing="20" @input="onGoalInput" />
+      </view>
+      <view class="advisor-section">
+        <text class="advisor-label">对方刚刚说了什么</text>
+        <textarea class="advisor-textarea" :value="incomingMessage" maxlength="2000" placeholder="粘贴或输入对方的最新消息" :auto-height="true" @input="onMessageInput" />
+      </view>
+      <view class="advisor-section">
+        <text class="advisor-label">回复语气</text>
+        <view class="tone-row">
+				<view v-for="item in tones" :key="item.value" class="tone-chip" :class="{ active: tone == item.value }" @click="onToneChange(item.value)"><text>{{ item.label }}</text></view>
+        </view>
+        <view class="history-row">
+          <view class="history-copy"><text class="history-title">结合这段聊天记录理解上下文</text><text class="history-note">只读取当前聊天的最近文本消息</text></view>
+          <switch :checked="includeHistory" color="#2D7C72" @change="onHistoryChange" />
+        </view>
+      </view>
+      <view class="advisor-error" v-if="errorMessage.length > 0"><text>{{ errorMessage }}</text></view>
+      <button class="advisor-generate" :disabled="generating" @click="generateAdvice">{{ generating ? '正在整理建议…' : '生成回复建议' }}</button>
+      <view class="advisor-result" v-if="advice != null">
+        <view class="result-heading"><text class="result-title">军师建议</text><text class="risk-badge" :class="advice.risk_level">{{ riskLabel(advice.risk_level) }}</text></view>
+        <text class="analysis-text">{{ advice.analysis }}</text>
+        <view class="suggestion-card" v-for="(item, index) in advice.suggestions" :key="index">
+          <view class="suggestion-top"><text class="suggestion-index">建议 {{ index + 1 }}</text><text class="suggestion-style">{{ toneLabel(item.style) }}</text></view>
+          <text class="suggestion-content">{{ item.content }}</text>
+          <text class="suggestion-reason">{{ item.reason }}</text>
+          <view class="suggestion-actions"><button class="copy-button" @click="copySuggestion(item.content)">复制</button><button class="feedback-button" @click="adoptSuggestion(item.content)">填入输入框</button><button class="feedback-button" @click="recordFeedback('not_useful')">不合适</button></view>
+        </view>
+        <view class="risk-notice" v-if="advice.risk_notice != null && advice.risk_notice.length > 0"><text>{{ advice.risk_notice }}</text></view>
+        <text class="next-step" v-if="advice.next_step != null && advice.next_step.length > 0">下一步：{{ advice.next_step }}</text>
+        <text class="disclaimer">{{ advice.disclaimer }}</text>
+      </view>
+    </view>
+  </XsaSheet>
+</template>
+
+<script setup lang="uts">
+import XsaSheet from '@/components/XsaSheet.uvue'
+import { ADVISOR_SCENARIOS, ADVISOR_TONES, advisorErrorMessage, createAdvisorSession, getAdvisorAdvice, getAdvisorSessions, submitAdvisorFeedback } from '@/api/ai-advisor.uts'
+import { getChatSessionId } from '@/api/message.uts'
+
+interface Props { visible: boolean; targetUserId: number; initialMessage?: string }
+const props = withDefaults(defineProps<Props>(), { initialMessage: '' })
+const emit = defineEmits<{ close: []; adopt: [content: string, messageId?: number] }>()
+const scenarios = ADVISOR_SCENARIOS
+const tones = ADVISOR_TONES
+let scenario = ref('reply')
+let tone = ref('natural')
+let goal = ref('')
+let incomingMessage = ref('')
+let includeHistory = ref(false)
+let generating = ref(false)
+let errorMessage = ref('')
+let advice = ref<any>(null)
+let chatSessionId = ref(0)
+let advisorSessionId = ref(0)
+let adviceIdempotencyKey = ref('')
+let requestSequence = 0
+
+const resetAdvisorContext = () => {
+  requestSequence += 1
+  advice.value = null
+  advisorSessionId.value = 0
+  adviceIdempotencyKey.value = ''
+  errorMessage.value = ''
+  chatSessionId.value = 0
+  generating.value = false
+}
+const isCurrent = (sequence: number, targetUserId: number, sessionId: number = 0): boolean => sequence == requestSequence && props.visible && props.targetUserId == targetUserId && (sessionId == 0 || chatSessionId.value == sessionId)
+
+watch(() => props.visible, async (opened: boolean) => { if (opened) await prepareAdvisor(); else resetAdvisorContext() })
+watch(() => props.targetUserId, async () => { if (props.visible) await prepareAdvisor(); else resetAdvisorContext() })
+
+const prepareAdvisor = async () => {
+  const sequence = requestSequence + 1
+  requestSequence = sequence
+  const targetUserId = Number(props.targetUserId)
+  advice.value = null
+  advisorSessionId.value = 0
+  adviceIdempotencyKey.value = ''
+  errorMessage.value = ''
+  chatSessionId.value = 0
+  generating.value = false
+  incomingMessage.value = props.initialMessage
+  if (targetUserId <= 0) { errorMessage.value = '当前聊天对象无效，无法读取聊天上下文。'; return }
+  const chatRes = await getChatSessionId(targetUserId)
+  if (!isCurrent(sequence, targetUserId) || !props.visible) return
+  if (!chatRes.success || chatRes.data == null || Number(chatRes.data.id) <= 0) { errorMessage.value = '当前聊天会话暂时不可用，无法读取聊天上下文。'; return }
+  const resolvedChatSessionId = Number(chatRes.data.id)
+  chatSessionId.value = resolvedChatSessionId
+  const sessionsRes = await getAdvisorSessions(1, 50)
+  if (!isCurrent(sequence, targetUserId, resolvedChatSessionId)) return
+  if (!sessionsRes.success) { errorMessage.value = advisorErrorMessage(Number(sessionsRes.code), String(sessionsRes.message)); return }
+  const items = sessionsRes.data != null && Array.isArray(sessionsRes.data.items) ? sessionsRes.data.items as any[] : []
+  for (let index = 0; index < items.length; index++) if (Number(items[index].chat_session_id) == resolvedChatSessionId) { advisorSessionId.value = Number(items[index].id); return }
+}
+
+const ensureAdvisorSession = async (sequence: number, targetUserId: number, resolvedChatSessionId: number): Promise<boolean> => {
+  if (!isCurrent(sequence, targetUserId, resolvedChatSessionId) || resolvedChatSessionId <= 0) return false
+  if (advisorSessionId.value > 0) return true
+  const sessionRes = await createAdvisorSession('聊天回复建议', resolvedChatSessionId)
+  if (!isCurrent(sequence, targetUserId, resolvedChatSessionId)) return false
+  // 建会话的 422 是请求参数问题（缺/短 Idempotency-Key），不能复用「内容不适合」的文案。
+  if (!sessionRes.success || sessionRes.data == null || Number(sessionRes.data.id) <= 0) { errorMessage.value = Number(sessionRes.code) == 422 ? '军师会话创建失败：请求参数异常，请重新打开军师' : advisorErrorMessage(Number(sessionRes.code), String(sessionRes.message)); return false }
+  advisorSessionId.value = Number(sessionRes.data.id)
+  return true
+}
+const generateAdvice = async () => {
+  if (generating.value) return
+  if (incomingMessage.value.trim().length == 0) { errorMessage.value = '请先输入或粘贴对方的最新消息。'; return }
+  const targetUserId = Number(props.targetUserId)
+  const resolvedChatSessionId = Number(chatSessionId.value)
+  const requestScenario = scenario.value
+  const requestTone = tone.value
+  const requestIncomingMessage = incomingMessage.value.trim()
+  const requestGoal = goal.value.trim().length > 0 ? goal.value.trim() : null
+  const requestIncludeHistory = includeHistory.value
+  const sequence = requestSequence + 1
+  requestSequence = sequence
+  errorMessage.value = ''
+  generating.value = true
+  if (adviceIdempotencyKey.value.length == 0) adviceIdempotencyKey.value = 'advisor-' + Date.now().toString() + '-' + Math.floor(Math.random() * 1000000).toString()
+  try {
+    if (!await ensureAdvisorSession(sequence, targetUserId, resolvedChatSessionId)) return
+    const response = await getAdvisorAdvice(advisorSessionId.value, { scenario: requestScenario, goal: requestGoal, incoming_message: requestIncomingMessage, tone: requestTone, chat_session_id: resolvedChatSessionId, include_history: requestIncludeHistory, max_suggestions: 3 }, adviceIdempotencyKey.value)
+    if (!isCurrent(sequence, targetUserId, resolvedChatSessionId)) return
+    if (!response.success || response.data == null) { errorMessage.value = advisorErrorMessage(Number(response.code), String(response.message)); return }
+    advice.value = response.data
+    adviceIdempotencyKey.value = ''
+  } catch (error) {
+    if (isCurrent(sequence, targetUserId, resolvedChatSessionId)) errorMessage.value = '网络连接不可用，请检查网络后重试。'
+  } finally { if (sequence == requestSequence) generating.value = false }
+}
+
+const copySuggestion = (content: string) => { uni.setClipboardData({ data: content, success: () => { uni.showToast({ title: '建议已复制，请确认后再发送', icon: 'none' }); recordFeedback('copied') }, fail: () => { uni.showToast({ title: '复制失败，请长按文本复制', icon: 'none' }) } }) }
+const adoptSuggestion = (content: string) => {
+  const text = content != null ? String(content).trim() : ''
+  if (text.length == 0 || advice.value == null) return
+  const messageId = advice.value.id != null ? Number(advice.value.id) : 0
+  emit('adopt', text, messageId > 0 ? messageId : undefined)
+}
+const recordFeedback = async (feedbackType: string) => {
+  if (advice.value == null || advice.value.id == null) return
+  const result = await submitAdvisorFeedback(Number(advice.value.id), feedbackType)
+  if (result.success && feedbackType != 'copied') uni.showToast({ title: '感谢你的反馈', icon: 'none' })
+}
+	const onScenarioChange = (value: string) => { scenario.value = value; requestSequence += 1; generating.value = false; adviceIdempotencyKey.value = ''; advice.value = null }
+	const onToneChange = (value: string) => { tone.value = value; requestSequence += 1; generating.value = false; adviceIdempotencyKey.value = ''; advice.value = null }
+	const onGoalInput = (event: any) => { goal.value = event.detail.value; requestSequence += 1; generating.value = false; adviceIdempotencyKey.value = ''; advice.value = null }
+	const onMessageInput = (event: any) => { incomingMessage.value = event.detail.value; requestSequence += 1; generating.value = false; adviceIdempotencyKey.value = ''; advice.value = null }
+	const onHistoryChange = (event: any) => { includeHistory.value = event.detail.value; requestSequence += 1; generating.value = false; adviceIdempotencyKey.value = ''; advice.value = null }
+const closeSheet = () => { requestSequence += 1; generating.value = false; emit('close') }
+const toneLabel = (value: string): string => { for (let index = 0; index < tones.length; index++) if (tones[index].value == value) return tones[index].label; return '自然' }
+const riskLabel = (value: string): string => value == 'high' ? '注意风险' : (value == 'medium' ? '谨慎表达' : (value == 'low' ? '轻度提醒' : '可参考'))
+</script>
+
+<style scoped>
+.advisor-sheet { display: flex; flex-direction: column; gap: 18px; }
+.advisor-intro { padding: 14px; border-radius: 14px; background: var(--accent-bg); display: flex; flex-direction: column; gap: 5px; }
+.advisor-kicker { color: var(--accent2); font-size: 14px; font-weight: 700; }
+.advisor-summary, .history-note, .suggestion-reason, .disclaimer { color: var(--muted); font-size: 12px; line-height: 1.55; }
+.advisor-section { display: flex; flex-direction: column; gap: 10px; }
+.advisor-label, .result-title { color: var(--ink); font-size: 15px; font-weight: 700; }
+.option-grid, .tone-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.option-chip, .tone-chip { padding: 8px 11px; border: 1px solid var(--line); border-radius: 16px; color: var(--ink2); font-size: 13px; background: var(--surface); }
+.option-chip.active, .tone-chip.active { border-color: var(--accent); background: var(--accent-bg); color: var(--accent2); font-weight: 700; }
+.advisor-input, .advisor-textarea { width: 100%; box-sizing: border-box; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; color: var(--ink); font-size: 14px; padding: 12px; }
+.advisor-input { height: 44px; line-height: 20px; }
+.advisor-textarea { min-height: 86px; line-height: 1.55; }
+.history-row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; }
+.history-copy { display: flex; flex: 1; flex-direction: column; gap: 3px; }
+.history-title { color: var(--ink2); font-size: 13px; }
+.advisor-error, .risk-notice { padding: 11px; border-radius: 10px; background: var(--warm); color: var(--ink2); font-size: 13px; line-height: 1.5; }
+.advisor-generate { width: 100%; border: 0; border-radius: 12px; background: var(--accent); color: var(--text-invert); font-size: 16px; font-weight: 700; padding: 13px; }
+.advisor-generate[disabled] { opacity: 0.6; }
+.advisor-result { display: flex; flex-direction: column; gap: 12px; padding-top: 2px; }
+.result-heading, .suggestion-top, .suggestion-actions { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; }
+.risk-badge { padding: 4px 8px; border-radius: 10px; background: var(--accent-bg); color: var(--accent2); font-size: 11px; }
+.risk-badge.medium, .risk-badge.high { background: var(--warm); color: var(--ink2); }
+.analysis-text, .suggestion-content, .next-step { color: var(--ink2); font-size: 14px; line-height: 1.65; }
+.suggestion-card { display: flex; flex-direction: column; gap: 9px; border: 1px solid var(--line); border-radius: 14px; padding: 13px; background: var(--surface); }
+.suggestion-index { color: var(--accent2); font-size: 13px; font-weight: 700; }
+.suggestion-style { color: var(--muted); font-size: 12px; }
+.suggestion-actions { justify-content: flex-start; }
+.copy-button, .feedback-button { margin: 0; padding: 6px 11px; border-radius: 8px; font-size: 12px; line-height: 1.35; }
+.copy-button { background: var(--accent); color: var(--text-invert); border: 0; }
+.feedback-button { background: var(--paper); color: var(--ink2); border: 1px solid var(--line); }
+</style>

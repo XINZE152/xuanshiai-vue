@@ -7,7 +7,7 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 
 const ws = read('api/voice-master-ws.uts')
 const page = read('pagesSub/profileExtra/my-portrait-master.uvue')
-const panel = read('components/moxiang/MoxiangProgressPanel.uvue')
+const panel = read('pagesSub/profileExtra/components/moxiang/MoxiangProgressPanel.uvue')
 
 assert.match(ws, /onExtractionStatus\?:/, 'journey client must expose extraction status')
 assert.match(ws, /onJourneyProgress\?:/, 'journey client must expose six-dimension progress')

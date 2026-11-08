@@ -109,7 +109,7 @@ async function main() {
   //    零字段采用——已有自我介绍默认不替换，全跳过时 written 为空）。
   //    此时 renderPoster 直接早返回，重试永远不会成功，必须说明原因并给出口。
   {
-    const SHEET = 'components/moxiang/MoxiangPosterSheet.uvue'
+    const SHEET = 'pagesSub/profileExtra/components/moxiang/MoxiangPosterSheet.uvue'
     const sheetSrc = read(SHEET)
     const parsed = sfc.parse(sheetSrc)
     assert.deepEqual(parsed.errors, [])

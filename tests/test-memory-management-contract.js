@@ -14,7 +14,7 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8').re
 
 const memoryApi = read('api/ai-memory.uts')
 const memoryMock = read('mock/ai-memory.uts')
-const memorySheet = read('components/MemoryManagementSheet.uvue')
+const memorySheet = read('pagesSub/profileExtra/components/MemoryManagementSheet.uvue')
 const archivePage = read('pagesSub/profileExtra/my-portrait-archive.uvue')
 const avatarApi = read('api/ai-avatar.uts')
 const chatPage = read('pagesSub/chat/detail.uvue')

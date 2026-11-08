@@ -90,7 +90,7 @@
 import { getTopPlacementStatus, getTopPlacementPackages, payTopPlacement, TopPlacementPlan, TopPlacementOrder } from '@/api/top-placement.uts'
 import { getDiscoveryPlaza } from '@/api'
 import { resolveMediaUrl } from '@/api/config.uts'
-import XsaPaymentSheet from '@/components/XsaPaymentSheet.uvue'
+import XsaPaymentSheet from '@/pagesSub/userExtra/components/XsaPaymentSheet.uvue'
 
 const plans = ref<TopPlacementPlan[]>([])
 const benefits = [

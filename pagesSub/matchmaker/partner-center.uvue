@@ -221,7 +221,7 @@
 		</scroll-view>
 
 		<view v-if="teamNameVisible" class="overlay" @click="teamNameVisible = false"><view class="dialog" @click.stop><view class="dialog-head"><text>修改团队名称</text><text @click="teamNameVisible = false">关闭</text></view><input class="dialog-input" :value="teamNameDraft" maxlength="20" @input="onTeamName"/><view class="gradient-button" @click="saveTeamName"><text>提交</text></view></view></view>
-		<view v-if="contactVisible" class="overlay" @click="contactVisible = false"><view class="contact-wrap" @click.stop><view class="contact-dialog"><view class="contact-hero"><view class="contact-badge"><text>客服</text></view><text class="contact-head-title">联系客服</text><view class="contact-hero-arc"></view></view><view class="contact-body"><view class="contact-qr-card"><image class="contact-qr" src="/static/qrcodes/kefu-wechat.png" mode="aspectFit"></image></view><view class="contact-quote"><text class="quote-mark">“</text><text class="contact-copy">您有任何疑问请联系我们的工作人员，截图扫码添加客服微信。</text><text class="quote-mark">”</text></view></view></view><view class="contact-close" @click="contactVisible = false"><text>✕</text></view></view></view>
+		<view v-if="contactVisible" class="overlay" @click="contactVisible = false"><view class="contact-wrap" @click.stop><view class="contact-dialog"><view class="contact-hero"><view class="contact-badge"><text>客服</text></view><text class="contact-head-title">联系客服</text><view class="contact-hero-arc"></view></view><view class="contact-body"><view class="contact-qr-card"><image class="contact-qr" src="/static/qrcodes/kefu-wechat.webp" mode="aspectFit"></image></view><view class="contact-quote"><text class="quote-mark">“</text><text class="contact-copy">您有任何疑问请联系我们的工作人员，截图扫码添加客服微信。</text><text class="quote-mark">”</text></view></view></view><view class="contact-close" @click="contactVisible = false"><text>✕</text></view></view></view>
 		<view v-if="accountEditVisible" class="overlay" @click="accountEditVisible = false"><view class="dialog" @click.stop><view class="dialog-head"><text>修改账号资料</text><text @click="accountEditVisible = false">关闭</text></view><input class="dialog-input" :value="accountNickname" placeholder="输入昵称" @input="onAccountNickname"/><input class="dialog-input" type="number" :value="accountPhone" placeholder="输入手机号" @input="onAccountPhone"/><view class="gradient-button" @click="saveAccount"><text>保存</text></view></view></view>
 		<XsaToast :visible="toastVisible" :message="toastMessage" @hide="toastVisible = false" />
 		<MatchmakerServiceNavSheet :visible="serviceNavVisible" @close="serviceNavVisible = false" @select="onServiceNavSelect" />
@@ -229,9 +229,9 @@
 </template>
 
 <script setup lang="uts">
-import MatchmakerRemoteServices from '@/components/MatchmakerRemoteServices.uvue'
+import MatchmakerRemoteServices from '@/pagesSub/matchmaker/components/MatchmakerRemoteServices.uvue'
 import XsaToast from '@/components/XsaToast.uvue'
-import MatchmakerServiceNavSheet from '@/components/MatchmakerServiceNavSheet.uvue'
+import MatchmakerServiceNavSheet from '@/pagesSub/matchmaker/components/MatchmakerServiceNavSheet.uvue'
 import { createPartnerTeamInvite, createPartnerTeamQrcode, getPartnerCenterSnapshot, getPartnerJoinRequests, reviewPartnerJoinRequest, updatePartnerTeamName, updatePartnerAccountProfile, createPartnerWithdrawal } from '@/api'
 
 const loading = ref(true)

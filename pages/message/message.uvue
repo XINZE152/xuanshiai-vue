@@ -164,7 +164,7 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 	})
 
 	const openEmotionLab = () => {
-		uni.navigateTo({ url: '/pages/emotion-lab/emotion-lab' })
+		uni.navigateTo({ url: '/pagesSub/emotionLab/emotion-lab' })
 	}
 
 	const showToast = (message: string) => {

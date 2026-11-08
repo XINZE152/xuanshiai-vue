@@ -177,7 +177,7 @@
 
 <script setup lang="uts">
 	import XsaSheet from '@/components/XsaSheet.uvue'
-	import XsaTag from '@/components/XsaTag.uvue'
+	import XsaTag from '@/pagesSub/profileExtra/components/XsaTag.uvue'
 	import { getOwnProfile, getEmotionLabSummary, setMyMbtiType, getDiscoveryRecommendations, createSearchDraft, getSearchDraft, patchSearchDraft, confirmSearchDraft, waitForSearchTask, getSearchSnapshotResults, getSearchSuggestions, generateSearchSuggestions, searchResultItems, searchNextCursor, searchDraftConditions, searchDraftUnknown, searchDraftConflicts, searchDraftRevision } from '@/api'
 
 	const systemInfo = uni.getSystemInfoSync()
@@ -1067,7 +1067,7 @@
 	const onOwnMbtiInput = (event: any) => { ownMbtiDraft.value = toText(event.detail.value).toUpperCase() }
 	const goAssessment = () => {
 		closeMbtiSheet()
-		uni.navigateTo({ url: '/pages/emotion-lab/emotion-lab' })
+		uni.navigateTo({ url: '/pagesSub/emotionLab/emotion-lab' })
 	}
 	const saveOwnMbti = async () => {
 		const value = ownMbtiDraft.value.trim().toUpperCase()

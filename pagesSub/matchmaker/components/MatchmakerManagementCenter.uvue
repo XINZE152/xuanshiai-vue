@@ -1,0 +1,337 @@
+<template>
+	<scroll-view scroll-y class="management-center" :show-scrollbar="false">
+		<view class="center-content">
+			<view class="welcome-section" :class="{ 'is-lit': welcomeLit }" @touchstart="welcomeLit = true" @touchend="welcomeLit = false" @touchcancel="welcomeLit = false">
+				<view class="welcome-aurora"></view>
+				<view class="welcome-glow"></view>
+				<view class="welcome-glow welcome-glow-b"></view>
+				<view class="welcome-avatar">
+					<image v-if="avatarSource != ''" class="welcome-avatar-image" :src="avatarSource" mode="aspectFill"></image>
+					<text v-else>人</text>
+				</view>
+				<view class="welcome-copy">
+					<view class="welcome-eyebrow"><text class="welcome-eyebrow-dot"></text><text class="welcome-eyebrow-text">{{ greeting }}</text></view>
+					<view class="welcome-title-row" :class="{ 'is-bounce': introBounce }"><text class="welcome-title">{{ displayName }}</text><view class="welcome-lockup"><text class="welcome-title-sep">·</text><text class="welcome-brand">宣誓爱</text></view></view>
+					<text class="welcome-subtitle">牵线搭桥，成就美好姻缘</text>
+				</view>
+				<view class="role-badge" @click="emit('identity')"><text>{{ roleName }}</text></view>
+			</view>
+
+			<view class="store-brief">
+				<view class="brief-heading">
+					<text class="brief-title">待处理业务</text>
+					<text class="brief-copy" @click="emit('refresh')">刷新数据</text>
+				</view>
+				<view class="metric-grid">
+					<view v-for="(item, index) in briefMetrics" :key="item.key" class="metric-item" :class="{ 'metric-sep': index > 0 }" @click="onMetricAction(item)">
+						<view class="metric-value"><text v-if="item.valuePrefix" class="metric-currency">{{ item.valuePrefix }}</text><text>{{ item.value }}</text></view>
+						<text class="metric-label">{{ item.label }}</text>
+					</view>
+				</view>
+			</view>
+
+			<!-- 数据看板：仿参考稿的白卡 + 2×2 浅底小格（彩点 + 标签 + 大号数字），点击直达对应列表 -->
+			<view class="dashboard-panel">
+				<view class="dashboard-heading">
+					<text class="dashboard-title">数据看板</text>
+					<text class="dashboard-copy">会员与业绩动态，点击查看明细</text>
+				</view>
+				<view class="dashboard-grid">
+					<view v-for="item in dashboardItems" :key="item.key" class="dashboard-tile" @click="emit('action', item.action)">
+						<view class="dashboard-tile-head">
+							<view class="dashboard-dot" :class="item.tone"></view>
+							<text class="dashboard-tile-label">{{ item.label }}</text>
+						</view>
+						<view class="dashboard-tile-value"><text v-if="item.valuePrefix" class="dashboard-tile-currency">{{ item.valuePrefix }}</text><text>{{ item.value }}</text></view>
+					</view>
+				</view>
+			</view>
+
+			<view class="quick-actions">
+				<view v-for="item in quickActions" :key="item.key" class="quick-action" @click="emit('action', item.action)">
+					<view class="quick-action-icon"><image class="quick-action-image" :src="item.iconSrc" mode="aspectFit"></image></view>
+					<text class="quick-action-label">{{ item.label }}</text>
+				</view>
+			</view>
+
+			<view class="promotion-panel">
+				<text class="promotion-title">专属推广工具</text>
+				<text class="promotion-copy">推广链接与海报由服务端配置后开放。</text>
+				<view class="promotion-actions">
+					<view class="promotion-action" @click="emit('action', '复制我的专属推广链接')"><text>复制推广链接</text></view>
+					<view class="promotion-action" @click="emit('action', '下载我的专属推广海报')"><text>下载推广海报</text></view>
+				</view>
+			</view>
+
+			<view class="function-section">
+				<view class="function-head">
+					<text class="function-head-title">功能导航</text>
+					<text class="function-head-sub">常用管理入口</text>
+				</view>
+				<view class="function-list">
+					<view v-for="item in navigationItems" :key="item.key" class="function-row" @click="emit('action', item.action)">
+						<view class="function-icon" :class="item.tone"><text>{{ item.icon }}</text></view>
+						<view class="function-copy">
+							<text class="function-label">{{ item.label }}</text>
+							<text v-if="item.value" class="function-value">{{ item.value }}</text>
+						</view>
+						<view class="function-arrow"><text class="function-arrow-glyph">›</text></view>
+					</view>
+				</view>
+			</view>
+
+			<view class="logout-action" @click="emit('exit')"><text>退出登录</text></view>
+		</view>
+	</scroll-view>
+</template>
+
+<script setup lang="uts">
+import { ref, onMounted } from 'vue'
+import { resolveMediaUrl } from '@/api/config.uts'
+
+interface Props {
+	snapshot: any;
+}
+
+const props = defineProps<Props>()
+
+const emit = defineEmits<{
+	exit: [];
+	refresh: [];
+	identity: [];
+	action: [name: string];
+}>()
+
+const identity = computed(() => {
+	if (props.snapshot != null && props.snapshot.identity != null) return props.snapshot.identity
+	return {}
+})
+
+const greeting = computed(() => identity.value.greeting || '你好')
+const displayName = computed(() => identity.value.name || '服务红娘')
+const roleName = computed(() => identity.value.roleName || '服务红娘')
+// 欢迎卡头像 = 红娘主页头像（服务端 identity.avatar 就是 users.avatar），没设置时保留「人」字占位
+const avatarSource = computed(() => resolveMediaUrl(identity.value.avatar))
+
+// 按压时点亮光斑（小程序无 :hover，用 touch 模拟 meoo 的虚化发光）
+const welcomeLit = ref(false)
+
+// 标题「灵动跳动」：仅进入页面时弹跳一次（meoo bounce 手法）
+const introBounce = ref(false)
+onMounted(() => {
+	// 下一帧再触发，确保首帧渲染后再起跳，避免动画被吞
+	setTimeout(() => { introBounce.value = true }, 120)
+	setTimeout(() => { introBounce.value = false }, 1500)
+})
+
+const defaultMetrics = [
+	{ key: 'pending_review', label: '资料待审', value: '0', action: '资料待审', valuePrefix: '' },
+	{ key: 'served_members', label: '我服务的', value: '0', action: '我服务的', valuePrefix: '' },
+	{ key: 'online_commission', label: '线上分成', value: '--', action: '分成明细', valuePrefix: '￥' },
+	{ key: 'offline_performance', label: '线下业绩', value: '--', action: '财务明细', valuePrefix: '￥' },
+	{ key: 'pending_introduction', label: '待我牵线', value: '0', action: '牵线记录', valuePrefix: '' },
+	{ key: 'introduction_succeeded', label: '牵线成功', value: '0', action: '牵线记录', valuePrefix: '' },
+	{ key: 'meeting_requests', label: '约见申请', value: '0', action: '约见申请', valuePrefix: '' },
+	{ key: 'pending_meeting', label: '等待见面', value: '0', action: '约会管理', valuePrefix: '' }
+]
+
+// 四项业务指标（待我牵线 / 牵线成功 / 约见申请 / 等待见面）全部取服务端计数，本地没有记录就显示 0，
+// 不再用演示兜底把空工作台伪装成有待办——数字对不上比数字是 0 更难解释。
+const storeMetrics = computed(() => {
+	if (props.snapshot != null && Array.isArray(props.snapshot.storeMetrics) && props.snapshot.storeMetrics.length > 0) {
+		return defaultMetrics.map((item: any) => props.snapshot.storeMetrics.find((row: any) => row.key == item.key) || item)
+	}
+	return defaultMetrics
+})
+
+// 「待处理业务」简报只展示四类待办；其余指标（我服务的 / 线上分成 / 线下业绩 / 牵线成功）
+// 仍完整保留在 storeMetrics 中，供功能导航的 metricValue 取数，所以这里只做过滤、不删源数据。
+// 顺序按 key 显式指定，不依赖后端返回顺序。
+const briefMetricKeys = ['pending_review', 'pending_introduction', 'meeting_requests', 'pending_meeting']
+
+const briefMetrics = computed(() => {
+	const all: any = storeMetrics.value
+	const out: any[] = []
+	briefMetricKeys.forEach((key: string) => {
+		const found: any = all.find((item: any): boolean => String(item.key) == key)
+		if (found != null) {
+			// 展示名与「牵线」「约见」两个模块的口径对齐后统一为「等待见面」
+			out.push(key == 'pending_meeting' ? { ...found, label: '等待见面' } : found)
+		}
+	})
+	return out
+})
+
+const onMetricAction = (item: any) => {
+	if (item != null && (item.key == 'pending_introduction' || item.key == 'introduction_succeeded' || item.key == 'meeting_requests' || item.key == 'pending_meeting')) {
+		emit('action', 'metric:' + String(item.key))
+		return
+	}
+	emit('action', item != null && item.action != null ? String(item.action) : '')
+}
+
+const quickActions = [
+	{ key: 'lead', label: '录入线索', iconSrc: '/static/icons/action-lead.webp', action: '录入线索' },
+	{ key: 'member', label: '录入会员', iconSrc: '/static/icons/action-member.webp', action: '录入会员' },
+	{ key: 'introduction', label: '添加牵线', iconSrc: '/static/icons/action-introduction.webp', action: '添加牵线' },
+	{ key: 'meeting', label: '安排约见', iconSrc: '/static/icons/action-meeting.webp', action: '安排约见' },
+	{ key: 'activity', label: '活动报名', iconSrc: '/static/icons/action-activity.webp', action: '活动报名' }
+]
+
+const metricValue = (key: string): string => {
+	const found = storeMetrics.value.find((item: any): boolean => item.key == key)
+	return found != null && found.value != null ? String(found.value) : '0'
+}
+
+// 数据看板四项：数值与「待处理业务」「功能导航」同源（storeMetrics），点击动作交给页面路由。
+const dashboardItems = computed(() => {
+	return [
+		{ key: 'my_members', label: '我的会员', value: metricValue('served_members'), valuePrefix: '', tone: 'dot-member', action: 'metric:my_members' },
+		{ key: 'introduction_succeeded', label: '牵线成功', value: metricValue('introduction_succeeded'), valuePrefix: '', tone: 'dot-success', action: 'metric:introduction_succeeded' },
+		{ key: 'online_commission', label: '线上分成', value: '--', valuePrefix: '', tone: 'dot-commission', action: 'metric:online_commission' },
+		{ key: 'offline_performance', label: '线下业绩', value: '--', valuePrefix: '', tone: 'dot-finance', action: 'metric:offline_performance' }
+	]
+})
+
+// 功能导航：竖排列表卡（仿参考截图：圆角色块图标 + 标题 + 计数小字 + 右箭头）
+// 计数是红娘真正要一眼看到的信息，放在标题下方做灰色小字；不再用胶囊 CTA。
+const navigationItems = computed(() => {
+	const base = [
+		{ key: 'leads', label: '客源线索', icon: '线', tone: 'tone-one', action: '查看客源线索', value: '' },
+		{ key: 'members', label: '全部会员', icon: '会', tone: 'tone-two', action: '查看全部会员', value: '' },
+		{ key: 'served', label: '我服务的', icon: '我', tone: 'tone-three', action: '查看我服务的', value: metricValue('served_members') + ' 位会员' },
+		{ key: 'introductions', label: '牵线记录', icon: '牵', tone: 'tone-four', action: '查看牵线记录', value: '成功 ' + metricValue('introduction_succeeded') },
+		{ key: 'requests', label: '约见申请', icon: '约', tone: 'tone-five', action: '查看约见申请', value: metricValue('meeting_requests') + ' 条待处理' },
+		{ key: 'meetings', label: '约会管理', icon: '会', tone: 'tone-one', action: '查看约会管理', value: '等待见面 ' + metricValue('pending_meeting') },
+		{ key: 'commission', label: '分成明细', icon: '分', tone: 'tone-three', action: '查看分成明细', value: '--' },
+		{ key: 'finance', label: '财务明细', icon: '财', tone: 'tone-five', action: '查看财务明细', value: '--' },
+		{ key: 'account', label: '我的账号', icon: '账', tone: 'tone-four', action: '查看我的账号', value: '' }
+	]
+	return base
+})
+</script>
+
+<style scoped>
+/* 墨绿 + 暖米白主题：作用域覆盖全局 token，只在本组件生效，不动 App.uvue。
+ * 主色压到墨绿 #154A45（复用项目已有 match-deep），冷白底换暖米白，米白底带来纸的厚重感。
+ * 金色点缀（流光标题字/品牌字/光斑/眉点）刻意保留，墨绿配金更显稳重贵气。 */
+.management-center {
+	--canvas: #F1ECE3;
+	--paper: #FAF7F0;
+	--accent: #3A6B62;
+	--accent2: #154A45;
+	--soft: #557F75;
+	--sage-soft: #DCE7E2;
+	--accent-bg: #B8D5CD;
+	--match-deep: #154A45;
+	--ink: #1E2320;
+	--ink2: #4E544F;
+	--muted: #7C8078;
+	--line: #DED8CC;
+	/* 待处理业务数字专用色（用户指定取色 #E8433C） */
+	--metric-num: #E8433C;
+	/* 四列分隔线专用色：比 --line 深，保证 1rpx 细线在肉眼可辨
+	 * （按墨量对齐原「14│8」那条的视觉重量） */
+	--metric-div: #C0B7A8;
+	flex: 1; height: 0; background: var(--canvas);
+}
+.center-content { padding: 32rpx 28rpx calc(env(safe-area-inset-bottom) + 46rpx); display: flex; flex-direction: column; gap: 22rpx; }
+.welcome-section { position: relative; overflow: hidden; padding: 30rpx 28rpx; border-radius: 26rpx; background: linear-gradient(120deg, #0F3A36 0%, #154A45 58%, #22635B 100%); box-shadow: var(--shadow-md); display: flex; flex-direction: row; align-items: center; gap: 20rpx; transition: transform .32s cubic-bezier(.22, .61, .36, 1), box-shadow .32s ease; }
+.welcome-section.is-lit { transform: scale(1.015); box-shadow: 0 12px 36px rgba(15, 50, 45, 0.30); }
+/* 极光扫光：hover/touch 时淡入的柔光带（meoo radial-gradient + blur 手法） */
+.welcome-aurora { position: absolute; top: -60%; left: -30%; width: 120%; height: 220%; background: radial-gradient(60% 60% at 30% 40%, rgba(255, 217, 160, 0.28) 0%, rgba(255, 255, 255, 0.0) 70%); opacity: 0; transition: opacity .4s ease; pointer-events: none; }
+.welcome-section.is-lit .welcome-aurora { opacity: 1; }
+.welcome-glow { position: absolute; top: -90rpx; right: -70rpx; width: 260rpx; height: 260rpx; border-radius: 50%; background: rgba(255, 255, 255, 0.10); transition: opacity .4s ease, transform .6s ease; }
+.welcome-glow-b { top: auto; bottom: -140rpx; right: 40rpx; width: 320rpx; height: 320rpx; background: radial-gradient(circle, rgba(255, 201, 166, 0.35) 0%, rgba(255, 201, 166, 0) 70%); }
+.welcome-section.is-lit .welcome-glow { opacity: 1; transform: scale(1.22); }
+.welcome-section.is-lit .welcome-glow-b { opacity: 1; transform: scale(1.12); }
+.welcome-avatar { position: relative; width: 96rpx; height: 96rpx; border-radius: 50%; background: rgba(255, 255, 255, 0.16); border: 2rpx solid rgba(255, 255, 255, 0.36); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform .4s cubic-bezier(.22, .61, .36, 1); }
+.welcome-section.is-lit .welcome-avatar { transform: scale(1.06); }
+.welcome-avatar text { color: #FFFFFF; font-size: 34rpx; font-weight: 800; }
+.welcome-avatar-image { width: 100%; height: 100%; border-radius: 50%; }
+.welcome-copy { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8rpx; }
+.welcome-eyebrow { display: flex; flex-direction: row; align-items: center; gap: 10rpx; }
+.welcome-eyebrow-dot { width: 12rpx; height: 12rpx; border-radius: 50%; background: #FFC9A6; }
+.welcome-eyebrow-text { color: rgba(255, 255, 255, 0.74); font-size: 21rpx; letter-spacing: 4rpx; }
+.welcome-title-row { display: flex; flex-direction: row; align-items: baseline; flex-wrap: wrap; }
+.welcome-title-row.is-bounce { animation: welcome-bounce .9s cubic-bezier(.28, .84, .42, 1) 2; }
+.welcome-lockup { display: flex; flex-direction: row; align-items: baseline; }
+.welcome-title { color: transparent; background: linear-gradient(100deg, #FFFFFF 0%, #FFD9A0 32%, #FFF7E6 50%, #FFD9A0 68%, #FFFFFF 100%); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; font-family: var(--serif); font-size: 46rpx; line-height: 1.16; font-weight: 700; letter-spacing: 1rpx; animation: welcome-shimmer 3.2s linear infinite; }
+.welcome-title-sep { margin: 0 10rpx; color: rgba(255, 255, 255, 0.5); font-family: var(--serif); font-size: 34rpx; }
+.welcome-brand { color: #FFD9A0; font-size: 25rpx; font-weight: 800; letter-spacing: 3rpx; }
+.welcome-subtitle { color: rgba(255, 255, 255, 0.78); font-size: 23rpx; line-height: 1.45; letter-spacing: 2rpx; }
+.role-badge { position: relative; padding: 12rpx 20rpx; border-radius: 999rpx; background: rgba(255, 255, 255, 0.18); border: 2rpx solid rgba(255, 255, 255, 0.42); color: #FFFFFF; font-size: 21rpx; font-weight: 800; white-space: nowrap; }
+/* 待处理业务：一张大卡包住四个部分（标题在卡内做卡头）。
+ * 内部四项沿用参考图的层级：大号粗体数字在上、灰色小字标签在下，无图标；
+ * 四列之间用细分隔线划出「四个部分」，不再各自独立成卡。 */
+.store-brief { display: flex; flex-direction: column; gap: 16rpx; padding: 22rpx 16rpx 26rpx; border-radius: 20rpx; background: var(--surface); box-shadow: var(--shadow-sm); }
+.brief-heading { padding: 0 8rpx; display: flex; flex-direction: row; align-items: baseline; justify-content: space-between; }
+.brief-title { color: var(--ink); font-size: 26rpx; font-weight: 800; }
+.brief-copy { color: var(--muted); font-size: 21rpx; }
+/* 四个部分：四等分。分隔线改用「第二列起加 border-left」而不是伪元素画背景条：
+ * 伪元素画的 1rpx/2rpx 细条在 3x 屏上是 1.56/3.12 设备像素（非整数），
+ * 渲染器会按每列各自的小数相位量化为 1 或 2 列，肉眼看到「粗细不一」。
+ * 边框走的是盒子绘制路径，随整数布局边界走，三条才一致。 */
+.metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.metric-item { box-sizing: border-box; padding: 10rpx 6rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9rpx; }
+.metric-sep { border-left: 1rpx solid var(--metric-div); }
+.metric-value { position: relative; min-height: 54rpx; display: flex; flex-direction: row; align-items: baseline; color: var(--metric-num); font-family: var(--serif); font-size: 54rpx; line-height: 1; font-weight: 700; }.metric-currency { margin-right: 3rpx; font-family: var(--sans); font-size: 24rpx; font-weight: 700; }
+.metric-label { color: var(--muted); font-size: 22rpx; line-height: 1.3; text-align: center; }
+/* 数据看板：与「待处理业务」并列的第二张大卡，照参考稿做卡头（粗标题 + 灰副标题）+ 2×2 浅底小格。
+ * 格内彩点与标签同排、数字单独占一行：半宽格只有 267rpx 可用，数字若与标签同排，
+ * 「￥10,820.00」这类金额会被挤出格；分行后金额再长也完整显示。 */
+.dashboard-panel { display: flex; flex-direction: column; gap: 18rpx; padding: 26rpx 24rpx; border-radius: 24rpx; background: var(--surface); box-shadow: var(--shadow-sm); }
+.dashboard-heading { padding: 0 4rpx; display: flex; flex-direction: column; gap: 8rpx; }
+.dashboard-title { color: var(--ink); font-size: 28rpx; font-weight: 800; }
+.dashboard-copy { color: var(--muted); font-size: 22rpx; line-height: 1.4; }
+.dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14rpx; }
+.dashboard-tile { min-height: 128rpx; padding: 20rpx 22rpx; border-radius: 20rpx; background: #F4EFE6; display: flex; flex-direction: column; justify-content: space-between; gap: 14rpx; }
+.dashboard-tile-head { display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
+.dashboard-dot { width: 14rpx; height: 14rpx; border-radius: 50%; flex-shrink: 0; }
+.dashboard-tile-label { color: var(--ink2); font-size: 23rpx; font-weight: 700; }
+.dashboard-tile-value { display: flex; flex-direction: row; align-items: baseline; color: var(--ink); font-size: 44rpx; line-height: 1; font-weight: 800; }
+.dashboard-tile-currency { margin-right: 4rpx; font-size: 24rpx; font-weight: 700; }
+/* 彩点取色：会员墨青、成功绿、分成琥珀、财务靛蓝，四色互不混淆 */
+.dot-member { background: #2F7D6D; }
+.dot-success { background: #2E9E6B; }
+.dot-commission { background: #D98B2B; }
+.dot-finance { background: #6B62C8; }
+.quick-actions { padding: 25rpx 16rpx; border-radius: 20rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: row; justify-content: space-between; gap: 8rpx; }
+.quick-action { width: 20%; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 10rpx; }
+.function-icon { display: flex; align-items: center; justify-content: center; color: var(--paper); font-weight: 800; }
+.quick-action-icon { display: flex; align-items: center; justify-content: center; width: 48rpx; height: 48rpx; }
+.quick-action-image { width: 46rpx; height: 46rpx; }
+.quick-action-label { color: var(--ink2); font-size: 22rpx; white-space: nowrap; }
+.promotion-panel { padding: 26rpx; border-radius: 20rpx; background: var(--sage-soft); display: flex; flex-direction: column; gap: 10rpx; }
+.promotion-title { color: var(--accent2); font-size: 24rpx; font-weight: 800; }
+.promotion-copy { color: var(--ink2); font-size: 23rpx; line-height: 1.5; }
+.promotion-actions { display: flex; flex-direction: row; gap: 12rpx; margin-top: 4rpx; }
+.promotion-action { flex: 1; min-width: 0; min-height: 54rpx; border-radius: 999rpx; background: var(--surface); display: flex; align-items: center; justify-content: center; color: var(--accent2); font-size: 22rpx; font-weight: 800; white-space: nowrap; }
+.function-section { display: flex; flex-direction: column; gap: 14rpx; }
+.function-head { padding: 0 6rpx; display: flex; flex-direction: row; align-items: baseline; justify-content: space-between; }
+.function-head-title { color: var(--ink); font-size: 26rpx; font-weight: 800; }
+.function-head-sub { color: var(--muted); font-size: 21rpx; }
+.function-list { display: flex; flex-direction: column; padding: 8rpx 0; border-radius: 20rpx; background: var(--surface); box-shadow: var(--shadow-sm); overflow: hidden; }
+.function-row { min-height: 96rpx; padding: 20rpx 26rpx; display: flex; flex-direction: row; align-items: center; gap: 22rpx; }
+.function-icon { width: 60rpx; height: 60rpx; border-radius: 18rpx; font-size: 24rpx; flex-shrink: 0; }
+.function-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5rpx; }
+.function-label { color: var(--ink); font-size: 26rpx; font-weight: 700; }
+.function-value { color: var(--muted); font-size: 21rpx; }
+/* 右侧箭头：用文字折角承载（空 view 的 border 在本机渲染为 0×0，实测不可用）。
+ * 颜色取 --soft 而非 --line：--line 在白卡上对比度太低，肉眼近乎不可见。 */
+.function-arrow { width: 24rpx; height: 36rpx; display: flex; align-items: center; justify-content: flex-end; flex-shrink: 0; }
+.function-arrow-glyph { color: var(--soft); font-size: 40rpx; font-weight: 500; line-height: 1; }
+.logout-action { min-height: 72rpx; border-radius: 999rpx; background: var(--surface); display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 23rpx; font-weight: 800; }
+/* 图标色块：墨绿系轮转；tone-five 留暖金，呼应欢迎卡的金色点缀 */
+.tone-one { background: #DCE9E3; color: #154A45; }
+.tone-two { background: #E3EDE6; color: #2A5F52; }
+.tone-three { background: #D6E5DE; color: #1B5249; }
+.tone-four { background: #E7EEE9; color: #3B6A5E; }
+.tone-five { background: #F5EBD6; color: #8A6A2A; }
+.metric-item:active, .brief-copy:active, .quick-action:active, .promotion-action:active, .function-row:active, .logout-action:active, .dashboard-tile:active { opacity: 0.78; transform: scale(0.98); }
+/* meoo 式流光艺术字：光带扫过文字 */
+@keyframes welcome-shimmer { 0% { background-position: 200% center; } 100% { background-position: -200% center; } }
+/* meoo 式灵动弹跳：进入时上下弹两下 */
+@keyframes welcome-bounce { 0% { transform: translateY(0); } 25% { transform: translateY(-16rpx); } 50% { transform: translateY(0); } 75% { transform: translateY(-7rpx); } 100% { transform: translateY(0); } }
+
+</style>

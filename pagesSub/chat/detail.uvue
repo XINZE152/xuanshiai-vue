@@ -276,7 +276,7 @@
 <script setup lang="uts">
 	import XsaButton from '@/components/XsaButton.uvue'
 	import XsaReportSheet from '@/components/XsaReportSheet.uvue'
-	import XsaAiAdvisorSheet from '@/components/XsaAiAdvisorSheet.uvue'
+	import XsaAiAdvisorSheet from '@/pagesSub/chat/components/XsaAiAdvisorSheet.uvue'
 	import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
 	import XsaSheet from '@/components/XsaSheet.uvue'
 	import type { MessageSubject, ParentContext } from '@/api'
@@ -1419,7 +1419,7 @@
 			return
 		}
 		if (isParentMode.value) {
-			uni.navigateTo({ url: '/pages/parent/user-detail?id=' + userId.value })
+			uni.navigateTo({ url: '/pagesSub/parent/user-detail?id=' + userId.value })
 			return
 		}
 			uni.navigateTo({ url: '/pages/user/detail?userId=' + userId.value })

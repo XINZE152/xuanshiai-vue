@@ -1,0 +1,1566 @@
+<template>
+	<view class="parent-page">
+		<view class="page-header">
+			<view class="header-copy">
+				<view class="header-kicker"><view class="header-status-dot"></view><text>父母空间</text></view>
+				<text class="page-title">替子女认真了解</text>
+				<text class="page-subtitle">尊重每一次选择，慢一点也没关系</text>
+			</view>
+			<view class="child-chip" v-if="parentContext != null && parentContext.child != null">
+				<XsaIcon name="profile" size="small" />
+				<view class="child-chip-copy">
+					<text class="child-chip-label">正在协助</text>
+					<text class="child-chip-name">{{ parentContext.child.displayName }}</text>
+				</view>
+			</view>
+		</view>
+
+		<scroll-view class="page-scroll" scroll-y enhanced :show-scrollbar="false">
+				<view class="page-content">
+					<view v-if="pageLoading" class="state-panel"><text>正在加载</text></view>
+					<view v-else-if="loadError.length > 0" class="state-panel error-state">
+					<text class="state-title">暂时无法加载</text>
+					<text class="state-copy">{{ loadError }}</text>
+					<button class="state-action" @click="loadParentPage">重新加载</button>
+				</view>
+
+					<template v-else>
+						<view v-if="activePanel === 'home'" class="panel">
+						<ParentGateNotice :gate="accessGate" @action="handleGateAction" />
+
+						<view class="home-child-summary" v-if="parentContext != null && parentContext.child != null">
+							<view class="child-summary-copy">
+								<text class="section-title">{{ parentContext.child.displayName }}</text>
+								<text class="section-copy">{{ parentContext.child.birthYear }} 年 · {{ parentContext.child.city }} · {{ parentContext.child.job }}</text>
+							</view>
+							<view class="progress-track">
+								<view class="progress-fill" :style="{ width: parentContext.child.profileProgress + '%' }"></view>
+							</view>
+							<text class="progress-copy">资料完善度 {{ parentContext.child.profileProgress }}%</text>
+						</view>
+
+						<view class="summary-grid" v-if="parentContext != null">
+							<view class="summary-item" @click="showLikedOnly">
+								<text class="summary-value">{{ likedCount }}</text>
+								<text class="summary-label">我的喜欢</text>
+							</view>
+							<view class="summary-item">
+								<text class="summary-value">{{ remainingApplications }}</text>
+								<text class="summary-label">今日可申请</text>
+							</view>
+						</view>
+
+						<view class="section-head" v-if="accessGate.allowed">
+							<view>
+								<text class="section-title">{{ likedOnly ? '我的喜欢' : '推荐家庭' }}</text>
+								<text class="section-copy">照片持续模糊保护，资料仅用于认真了解。</text>
+							</view>
+							<button class="text-action" @click="toggleCandidateView">{{ likedOnly ? '查看全部' : '只看喜欢' }}</button>
+						</view>
+
+						<view v-if="accessGate.allowed && candidateLoading" class="state-panel"><text>正在加载推荐资料</text></view>
+							<view v-else-if="accessGate.allowed && currentCandidateError.length > 0" class="state-panel error-state">
+								<text class="state-title">{{ likedOnly ? '我的喜欢暂时不可用' : '推荐资料暂时不可用' }}</text>
+								<text class="state-copy">{{ currentCandidateError }}</text>
+							<button class="state-action" @click="loadParentCandidatesSection">重新加载</button>
+						</view>
+						<view v-else-if="accessGate.allowed && visibleCandidates.length > 0" class="candidate-list">
+							<ParentCandidateCard
+								v-for="item in visibleCandidates"
+								:key="item.id"
+								:candidate="item"
+								@open="openCandidate"
+								@like="handleLike"
+								@apply="handleApply"
+							/>
+						</view>
+						<view v-else-if="accessGate.allowed" class="state-panel"><text>暂无符合条件的资料</text></view>
+					</view>
+
+					<view v-if="activePanel === 'matchmaker'" class="panel">
+						<ParentGateNotice v-if="!accessGate.allowed" :gate="accessGate" @action="handleGateAction" />
+						<template v-else>
+							<view class="section-head">
+								<view>
+									<text class="section-title">服务红娘</text>
+									<text class="section-copy">帮助家庭梳理信息和沟通边界，不替任何人作决定。</text>
+								</view>
+							</view>
+							<view v-if="matchmakerLoading" class="state-panel"><text>正在加载服务红娘</text></view>
+							<view v-else-if="matchmakerError.length > 0" class="state-panel error-state">
+								<text class="state-copy">{{ matchmakerError }}</text>
+								<button class="state-action" @click="loadMatchmakerSection">重新加载</button>
+							</view>
+							<view v-else class="matchmaker-list">
+								<MatchmakerCard
+									v-for="item in matchmakers"
+									:key="item.id"
+									:data="item"
+									actionText="查看服务"
+									:show-metrics="false"
+									:large-text="true"
+									@detail="showMatchmakerService"
+									@contact="showMatchmakerService"
+								/>
+							</view>
+
+							<view class="section-head private-service-head">
+								<view>
+									<text class="section-title">私人定制顾问</text>
+									<text class="section-copy">由顾问先了解家庭情况，再说明适合的服务方式。</text>
+								</view>
+							</view>
+							<view v-if="customMatchmakerLoading" class="state-panel"><text>正在加载私人定制顾问</text></view>
+							<view v-else-if="customMatchmakerError.length > 0" class="state-panel error-state">
+								<text class="state-copy">{{ customMatchmakerError }}</text>
+								<button class="state-action" @click="loadCustomMatchmakerSection">重新加载</button>
+							</view>
+							<view v-else class="matchmaker-list">
+								<MatchmakerCard
+									v-for="item in customMatchmakers"
+									:key="item.id"
+									:data="item"
+									actionText="服务说明"
+									:show-metrics="false"
+									:large-text="true"
+									@detail="showMatchmakerService"
+									@contact="showMatchmakerService"
+								/>
+							</view>
+						</template>
+					</view>
+
+					<view v-if="activePanel === 'message'" class="panel">
+						<ParentGateNotice v-if="!accessGate.allowed" :gate="accessGate" @action="handleGateAction" />
+						<XsaMessageCenter mode="parent"
+							:parent-context="parentContext"
+							:refresh-key="parentMessageRefreshKey"
+							@parent-context-change="updateParentContext"
+							v-else
+						/>
+					</view>
+
+						<view v-if="activePanel === 'profile'" class="panel profile-panel">
+							<view class="profile-card" v-if="parentContext != null && parentContext.child != null">
+								<text class="profile-eyebrow">父母身份</text>
+								<text class="profile-name">{{ parentContext.parent.name }}</text>
+								<view class="profile-child-row">
+									<text class="profile-child-label">正在协助</text>
+									<text class="profile-child">{{ parentContext.child.displayName }}</text>
+								</view>
+								<view class="progress-track">
+									<view class="progress-fill" :style="{ width: parentContext.child.profileProgress + '%' }"></view>
+								</view>
+								<text class="progress-copy">子女资料完善度 {{ parentContext.child.profileProgress }}%</text>
+							</view>
+
+							<ParentGateNotice v-if="!accessGate.allowed" :gate="accessGate" @action="handleGateAction" />
+							<view v-else class="profile-access-summary">
+								<text class="profile-access-title">身份与授权已确认</text>
+								<text class="profile-access-copy">父母实名认证与子女授权均在有效期内。</text>
+							</view>
+
+							<view class="profile-section">
+								<text class="profile-section-title">账户与资料</text>
+								<view class="profile-menu">
+									<button class="menu-row" @click="openProfileEditor">
+										<view class="menu-icon-wrap"><XsaIcon name="profile" size="small" /></view>
+										<view class="menu-copy"><text class="menu-label">资料管理</text><text class="menu-desc">维护子女对外资料</text></view>
+									</button>
+									<button class="menu-row" @click="showVerificationStatus">
+										<view class="menu-icon-wrap"><XsaIcon name="matchmaker" size="small" /></view>
+										<view class="menu-copy"><text class="menu-label">认证与授权</text><text class="menu-desc">查看当前身份状态</text></view>
+									</button>
+									<button class="menu-row" @click="showLikedOnly">
+										<view class="menu-icon-wrap"><XsaIcon name="home" size="small" /></view>
+										<view class="menu-copy"><text class="menu-label">我的喜欢</text><text class="menu-desc">查看已标记的资料</text></view>
+									</button>
+								</view>
+							</view>
+
+							<view class="profile-section">
+								<text class="profile-section-title">安全与设置</text>
+								<view class="profile-menu">
+									<button class="menu-row" @click="showSafetyCenter">
+										<view class="menu-icon-wrap"><XsaIcon name="message" size="small" /></view>
+										<view class="menu-copy"><text class="menu-label">安全中心</text><text class="menu-desc">了解举报与屏蔽规则</text></view>
+									</button>
+									<button class="menu-row" @click="openSettings">
+										<view class="menu-icon-wrap"><XsaIcon name="profile" size="small" /></view>
+										<view class="menu-copy"><text class="menu-label">设置</text><text class="menu-desc">管理提醒与照片隐私</text></view>
+									</button>
+								</view>
+							</view>
+
+							<button class="identity-switch-row" @click="switchToStandardMode">
+								<text>切换为普通身份</text>
+							</button>
+						</view>
+				</template>
+			</view>
+			</scroll-view>
+
+			<XsaSheet :visible="profileEditorVisible" title="编辑子女资料" :large-text="true" @close="closeProfileEditor">
+				<view class="profile-editor">
+					<view class="editor-field">
+						<text class="editor-label">对外称呼</text>
+						<input
+							class="editor-input"
+							:value="childDisplayNameDraft"
+							maxlength="24"
+							placeholder="例如：周女士的女儿"
+							@input="onChildDisplayNameInput"
+						/>
+					</view>
+					<view class="editor-row">
+						<view class="editor-field">
+							<text class="editor-label">出生年份</text>
+							<input
+								class="editor-input"
+								type="number"
+								:value="childBirthYearDraft"
+								maxlength="4"
+								placeholder="例如：1997"
+								@input="onChildBirthYearInput"
+							/>
+						</view>
+						<view class="editor-field">
+							<text class="editor-label">所在城市</text>
+							<input
+								class="editor-input"
+								:value="childCityDraft"
+								maxlength="16"
+								placeholder="例如：南京"
+								@input="onChildCityInput"
+							/>
+						</view>
+					</view>
+					<view class="editor-field">
+						<text class="editor-label">职业</text>
+						<input
+							class="editor-input"
+							:value="childJobDraft"
+							maxlength="24"
+							placeholder="填写当前职业"
+							@input="onChildJobInput"
+						/>
+					</view>
+					<view class="editor-field">
+						<text class="editor-label">个人介绍</text>
+						<textarea
+							class="editor-textarea"
+							:value="childIntroductionDraft"
+							maxlength="240"
+							placeholder="介绍生活状态与关系期待"
+							@input="onChildIntroductionInput"
+						></textarea>
+					</view>
+					<view class="editor-actions">
+						<button class="editor-button secondary" :disabled="profileSaving" @click="closeProfileEditor">取消</button>
+						<button class="editor-button primary" :disabled="profileSaving" @click="saveChildProfile">
+							{{ profileSaving ? '保存中' : '保存资料' }}
+						</button>
+					</view>
+				</view>
+			</XsaSheet>
+
+			<ParentApplySheet
+				:visible="parentApplyVisible"
+				:candidate-id="parentApplyCandidateId"
+				:parent-context="parentContext"
+				@close="closeParentApply"
+				@success="handleParentApplySuccess"
+			/>
+
+				<XsaSheet :visible="parentSettingsVisible" title="父母端设置" :large-text="true" @close="closeParentSettings">
+					<view class="parent-settings">
+						<view class="settings-row">
+							<view class="settings-copy">
+								<text class="settings-label">申请与消息提醒</text>
+								<text class="settings-desc">接收申请状态和双方同意后的聊天提醒</text>
+							</view>
+							<label class="settings-toggle-target">
+								<switch :checked="parentMessageNotifications" color="var(--accent)" @change="onParentMessageNotificationChange" />
+							</label>
+						</view>
+						<view class="settings-row">
+							<view class="settings-copy">
+								<text class="settings-label">照片隐私保护</text>
+								<text class="settings-desc">列表始终使用保护图，清晰照片需本人明确允许</text>
+							</view>
+							<text class="settings-status">始终开启</text>
+						</view>
+						<button class="settings-switch" @click="switchToStandardMode">切换为普通身份</button>
+					</view>
+				</XsaSheet>
+
+				<ParentBottomNav :active="activePanel" @change="switchPanel" />
+	</view>
+</template>
+
+<script setup lang="uts">
+	import ParentBottomNav from '@/pagesSub/parent/components/ParentBottomNav.uvue'
+	import ParentApplySheet from '@/pagesSub/parent/components/ParentApplySheet.uvue'
+	import ParentCandidateCard from '@/pagesSub/parent/components/ParentCandidateCard.uvue'
+	import ParentGateNotice from '@/pagesSub/parent/components/ParentGateNotice.uvue'
+	import MatchmakerCard from '@/components/MatchmakerCard.uvue'
+	import XsaMessageCenter from './components/XsaMessageCenter.uvue'
+	import XsaSheet from '@/components/XsaSheet.uvue'
+	import XsaIcon from '@/pagesSub/parent/components/XsaIcon.uvue'
+	import type { ParentContext } from '@/api'
+	import {
+		getParentAccessGate,
+		getParentAuthenticationGate,
+		getParentCandidates,
+		getParentCustomMatchmakers,
+		getParentContext,
+		getParentLikedCandidates,
+		getParentMatchmakers,
+		toggleParentLike,
+		updateParentChildProfile
+	} from '@/api'
+
+	type ParentPanel = 'home' | 'matchmaker' | 'message' | 'profile'
+
+	const activePanel = ref<ParentPanel>('home')
+	const pageLoading = ref(false)
+	const loadError = ref('')
+	const parentContext = ref(null as ParentContext | null)
+	const candidates = ref<any[]>([])
+	const likedCandidates = ref<any[]>([])
+	const matchmakers = ref<any[]>([])
+	const customMatchmakers = ref<any[]>([])
+	const candidateLoading = ref(false)
+	const matchmakerLoading = ref(false)
+	const customMatchmakerLoading = ref(false)
+	const candidateError = ref('')
+	const likedCandidateError = ref('')
+	const matchmakerError = ref('')
+	const customMatchmakerError = ref('')
+	const likedOnly = ref(false)
+	const profileEditorVisible = ref(false)
+	const profileSaving = ref(false)
+	const parentApplyVisible = ref(false)
+	const parentApplyCandidateId = ref(0)
+	const parentSettingsVisible = ref(false)
+	const parentMessageNotifications = ref(true)
+	const parentMessageRefreshKey = ref(0)
+	const accessClock = ref(Date.now())
+	const childDisplayNameDraft = ref('')
+	const childBirthYearDraft = ref('')
+	const childCityDraft = ref('')
+	const childJobDraft = ref('')
+	const childIntroductionDraft = ref('')
+
+		let authorizationExpiryTimer: any = null
+		let parentRoleTimer: any = null
+		let parentPageActive = false
+		let parentContextRequestGeneration = 0
+		let candidateRequestGeneration = 0
+		let matchmakerRequestGeneration = 0
+		let customMatchmakerRequestGeneration = 0
+
+	const accessGate = computed(() => {
+		accessClock.value
+		return getParentAccessGate(parentContext.value)
+	})
+	const likedCount = computed(() => likedCandidates.value.length)
+	const remainingApplications = computed(() => {
+		if (parentContext.value == null || parentContext.value.quota == null) return 0
+		return parentContext.value.quota.remainingApplications
+	})
+	const visibleCandidates = computed(() => {
+		return likedOnly.value ? likedCandidates.value : candidates.value
+	})
+	const currentCandidateError = computed(() => likedOnly.value ? likedCandidateError.value : candidateError.value)
+
+	const clearParentCollections = () => {
+		candidates.value = []
+		likedCandidates.value = []
+		matchmakers.value = []
+		customMatchmakers.value = []
+		candidateError.value = ''
+		likedCandidateError.value = ''
+		matchmakerError.value = ''
+		customMatchmakerError.value = ''
+	}
+
+		const clearAuthorizationExpiryTimer = () => {
+			if (authorizationExpiryTimer == null) return
+			clearTimeout(authorizationExpiryTimer)
+			authorizationExpiryTimer = null
+		}
+
+		const stopParentRoleMonitor = () => {
+			if (parentRoleTimer == null) return
+			clearInterval(parentRoleTimer)
+			parentRoleTimer = null
+		}
+
+		const startParentRoleMonitor = () => {
+			stopParentRoleMonitor()
+			parentRoleTimer = setInterval(() => ensureParentRole(), 2000)
+		}
+
+		const hasStoredParentRole = (): boolean => {
+			const storedMode = uni.getStorageSync('xsa_onboarding_mode')
+			return storedMode != null && String(storedMode) == 'parent'
+		}
+
+		const invalidateParentPageRequests = () => {
+			parentContextRequestGeneration += 1
+			candidateRequestGeneration += 1
+			matchmakerRequestGeneration += 1
+			customMatchmakerRequestGeneration += 1
+			pageLoading.value = false
+			candidateLoading.value = false
+			matchmakerLoading.value = false
+			customMatchmakerLoading.value = false
+			profileSaving.value = false
+		}
+
+		const isParentPageCurrent = (): boolean => {
+			return parentPageActive && hasStoredParentRole()
+		}
+
+		const isParentContextRequestCurrent = (requestId: number): boolean => {
+			return isParentPageCurrent() && requestId == parentContextRequestGeneration
+		}
+
+		const isCandidateRequestCurrent = (requestId: number): boolean => {
+			return isParentPageCurrent() && requestId == candidateRequestGeneration
+		}
+
+		const isMatchmakerRequestCurrent = (requestId: number): boolean => {
+			return isParentPageCurrent() && requestId == matchmakerRequestGeneration
+		}
+
+		const isCustomMatchmakerRequestCurrent = (requestId: number): boolean => {
+			return isParentPageCurrent() && requestId == customMatchmakerRequestGeneration
+		}
+
+		const deactivateParentPage = () => {
+			parentPageActive = false
+			invalidateParentPageRequests()
+			clearAuthorizationExpiryTimer()
+			stopParentRoleMonitor()
+			parentContext.value = null
+			clearParentCollections()
+			parentApplyVisible.value = false
+			parentApplyCandidateId.value = 0
+			profileEditorVisible.value = false
+			parentSettingsVisible.value = false
+		}
+
+		const redirectToParentLogin = () => {
+			deactivateParentPage()
+			uni.reLaunch({ url: '/pages/auth/login' })
+		}
+
+		const handleParentAuthenticationFailure = (response: any): boolean => {
+			if (response == null || response.code == null || String(response.code) != 'PARENT_AUTH_REQUIRED') {
+				return false
+			}
+			redirectToParentLogin()
+			return true
+		}
+
+		const scheduleAuthorizationExpiry = () => {
+			clearAuthorizationExpiryTimer()
+			if (parentContext.value == null || parentContext.value.child == null) return
+		const expiresAt = new Date(parentContext.value.child.authorizationExpiresAt).getTime()
+		if (isNaN(expiresAt)) {
+			accessClock.value = Date.now()
+			return
+		}
+			const delay = Math.min(Math.max(0, expiresAt - Date.now() + 20), 2147483647)
+		authorizationExpiryTimer = setTimeout(() => {
+			accessClock.value = Date.now()
+			authorizationExpiryTimer = null
+			if (expiresAt > Date.now()) scheduleAuthorizationExpiry()
+		}, delay)
+	}
+
+	const restoreParentPreferences = () => {
+		const stored = uni.getStorageSync('xsa_parent_message_notifications')
+		if (stored === false || stored === 'false') parentMessageNotifications.value = false
+		else parentMessageNotifications.value = true
+	}
+
+		onShow(() => {
+			parentPageActive = true
+			restoreParentPreferences()
+			startParentRoleMonitor()
+			if (ensureParentRole()) loadParentPage()
+		})
+
+		onHide(() => {
+			deactivateParentPage()
+		})
+		onUnmounted(() => {
+			deactivateParentPage()
+		})
+
+	const ensureParentRole = (): boolean => {
+		const authGate = getParentAuthenticationGate()
+		if (authGate == null || authGate.allowed != true) {
+			redirectToParentLogin()
+			return false
+		}
+		if (hasStoredParentRole()) return true
+		deactivateParentPage()
+		uni.reLaunch({ url: '/pages/index/index' })
+		return false
+	}
+
+	const ensureCurrentParentAccess = (): boolean => {
+		if (!ensureParentRole()) return false
+		accessClock.value = Date.now()
+		const gate = getParentAccessGate(parentContext.value)
+		if (gate.allowed == true) return true
+		handleGateAction(gate)
+		return false
+	}
+
+		const updateParentContext = (context: ParentContext) => {
+			if (!isParentPageCurrent()) return
+			parentContext.value = context
+			accessClock.value = Date.now()
+			scheduleAuthorizationExpiry()
+		}
+
+		const requestParentMessageRefresh = () => {
+			parentMessageRefreshKey.value += 1
+		}
+
+		const responseMessage = (response: any, fallback: string): string => {
+			if (response != null && response.message != null && String(response.message) != 'success') {
+				return String(response.message)
+			}
+			if (response != null && response.data != null && response.data.message != null) {
+				return String(response.data.message)
+			}
+			return fallback
+		}
+
+		const loadParentCandidatesSection = async () => {
+			if (!parentPageActive || !ensureParentRole()) return
+			const requestContext = parentContext.value
+			if (requestContext == null) return
+			const requestId = ++candidateRequestGeneration
+			candidateLoading.value = true
+			candidateError.value = ''
+			likedCandidateError.value = ''
+			candidates.value = []
+			likedCandidates.value = []
+				try {
+					const result = await getParentCandidates(requestContext)
+					if (handleParentAuthenticationFailure(result)) return
+					if (!isCandidateRequestCurrent(requestId)) return
+				if (result == null || result.success != true || !Array.isArray(result.data)) {
+					candidateError.value = responseMessage(result, '推荐资料暂时无法加载，请重试。')
+				} else {
+					candidates.value = result.data as any[]
+				}
+			} catch (error: any) {
+				if (!isCandidateRequestCurrent(requestId)) return
+				candidateError.value = error != null && error.message != null
+					? String(error.message)
+					: '推荐资料暂时无法加载，请重试。'
+			}
+
+			if (!isCandidateRequestCurrent(requestId)) return
+				try {
+					const likedResult = await getParentLikedCandidates(requestContext)
+					if (handleParentAuthenticationFailure(likedResult)) return
+					if (!isCandidateRequestCurrent(requestId)) return
+				if (likedResult == null || likedResult.success != true || !Array.isArray(likedResult.data)) {
+					likedCandidateError.value = responseMessage(likedResult, '我的喜欢暂时无法加载，请重试。')
+				} else {
+					likedCandidates.value = likedResult.data as any[]
+				}
+			} catch (error: any) {
+				if (!isCandidateRequestCurrent(requestId)) return
+				likedCandidateError.value = error != null && error.message != null
+					? String(error.message)
+					: '我的喜欢暂时无法加载，请重试。'
+			} finally {
+				if (isCandidateRequestCurrent(requestId)) candidateLoading.value = false
+			}
+		}
+
+		const loadMatchmakerSection = async () => {
+			if (!parentPageActive || !ensureParentRole()) return
+			const requestContext = parentContext.value
+			if (requestContext == null) return
+			const requestId = ++matchmakerRequestGeneration
+			matchmakerLoading.value = true
+			matchmakerError.value = ''
+			matchmakers.value = []
+				try {
+					const result = await getParentMatchmakers(requestContext)
+					if (handleParentAuthenticationFailure(result)) return
+					if (!isMatchmakerRequestCurrent(requestId)) return
+				if (result == null || result.success != true || !Array.isArray(result.data)) {
+					matchmakerError.value = responseMessage(result, '服务红娘暂时无法加载，请重试。')
+					return
+				}
+				matchmakers.value = result.data as any[]
+			} catch (error: any) {
+				if (!isMatchmakerRequestCurrent(requestId)) return
+				matchmakerError.value = error != null && error.message != null
+					? String(error.message)
+					: '服务红娘暂时无法加载，请重试。'
+			} finally {
+				if (isMatchmakerRequestCurrent(requestId)) matchmakerLoading.value = false
+			}
+		}
+
+		const loadCustomMatchmakerSection = async () => {
+			if (!parentPageActive || !ensureParentRole()) return
+			const requestContext = parentContext.value
+			if (requestContext == null) return
+			const requestId = ++customMatchmakerRequestGeneration
+			customMatchmakerLoading.value = true
+			customMatchmakerError.value = ''
+			customMatchmakers.value = []
+				try {
+					const result = await getParentCustomMatchmakers(requestContext)
+					if (handleParentAuthenticationFailure(result)) return
+					if (!isCustomMatchmakerRequestCurrent(requestId)) return
+				if (result == null || result.success != true || !Array.isArray(result.data)) {
+					customMatchmakerError.value = responseMessage(result, '私人定制顾问暂时无法加载，请重试。')
+					return
+				}
+				customMatchmakers.value = result.data as any[]
+			} catch (error: any) {
+				if (!isCustomMatchmakerRequestCurrent(requestId)) return
+				customMatchmakerError.value = error != null && error.message != null
+					? String(error.message)
+					: '私人定制顾问暂时无法加载，请重试。'
+			} finally {
+				if (isCustomMatchmakerRequestCurrent(requestId)) customMatchmakerLoading.value = false
+			}
+		}
+
+		const loadParentPage = async () => {
+			if (!parentPageActive || !ensureParentRole()) return
+			const contextRequestId = ++parentContextRequestGeneration
+			candidateRequestGeneration += 1
+			matchmakerRequestGeneration += 1
+			customMatchmakerRequestGeneration += 1
+			pageLoading.value = true
+			loadError.value = ''
+			parentContext.value = null
+			clearAuthorizationExpiryTimer()
+			clearParentCollections()
+				try {
+					const contextRes = await getParentContext()
+					if (handleParentAuthenticationFailure(contextRes)) return
+					if (!isParentContextRequestCurrent(contextRequestId)) return
+				if (contextRes == null || contextRes.success != true || contextRes.data == null) {
+					loadError.value = '父母端资料暂时不可用，请稍后重试。'
+					return
+				}
+				if (contextRes.data.mode != 'parent') {
+					loadError.value = '当前账号不是父母身份。'
+					return
+				}
+				parentContext.value = contextRes.data as ParentContext
+				accessClock.value = Date.now()
+				scheduleAuthorizationExpiry()
+				if (activePanel.value == 'message') requestParentMessageRefresh()
+				const gate = getParentAccessGate(parentContext.value)
+				if (!gate.allowed) {
+					clearParentCollections()
+					return
+				}
+
+				await loadParentCandidatesSection()
+				if (!isParentContextRequestCurrent(contextRequestId)) return
+				await loadMatchmakerSection()
+				if (!isParentContextRequestCurrent(contextRequestId)) return
+				await loadCustomMatchmakerSection()
+			} catch (e) {
+				if (!isParentContextRequestCurrent(contextRequestId)) return
+				loadError.value = '网络异常，请检查后重新加载。'
+			} finally {
+				if (isParentContextRequestCurrent(contextRequestId)) pageLoading.value = false
+			}
+		}
+
+		const switchPanel = (panel: ParentPanel) => {
+			if (panel == 'message' && activePanel.value != 'message') requestParentMessageRefresh()
+			activePanel.value = panel
+		}
+
+	const toggleCandidateView = () => {
+		likedOnly.value = !likedOnly.value
+	}
+
+	const showLikedOnly = () => {
+		likedOnly.value = true
+		activePanel.value = 'home'
+	}
+
+	const openCandidate = (candidate: any) => {
+		if (!ensureCurrentParentAccess()) return
+		uni.navigateTo({ url: '/pagesSub/parent/user-detail?id=' + candidate.id })
+	}
+
+	const handleLike = async (candidate: any) => {
+		if (!ensureCurrentParentAccess()) return
+		const requestId = parentContextRequestGeneration
+		const requestContext = parentContext.value
+		if (requestContext == null || !isParentPageCurrent()) return
+		const res = await toggleParentLike(requestContext, candidate.id)
+		if (!isParentContextRequestCurrent(requestId)) return
+			if (res.success && res.data != null && res.data.success == true) {
+				const liked = res.data.liked == true
+				candidate.liked = liked
+				candidates.value.forEach((item: any) => {
+					if (item.id == candidate.id) item.liked = liked
+				})
+				if (liked) {
+					if (!likedCandidates.value.some((item: any) => item.id == candidate.id)) {
+						likedCandidates.value.push({ ...candidate, liked: true })
+					}
+				} else {
+					likedCandidates.value = likedCandidates.value.filter((item: any) => item.id != candidate.id)
+				}
+				uni.showToast({
+					title: liked ? '已加入喜欢' : '已取消喜欢',
+				icon: 'none'
+			})
+			return
+		}
+		uni.showToast({ title: res.message != null ? res.message : '操作失败', icon: 'none' })
+	}
+
+	const handleApply = (candidate: any) => {
+		if (!ensureCurrentParentAccess()) return
+		parentApplyCandidateId.value = Number(candidate.id)
+		parentApplyVisible.value = true
+	}
+
+	const closeParentApply = () => {
+		parentApplyVisible.value = false
+		parentApplyCandidateId.value = 0
+	}
+
+	const handleParentApplySuccess = (_payload: any) => {
+		if (!isParentPageCurrent()) return
+		requestParentMessageRefresh()
+	}
+
+	const handleGateAction = (gate: any) => {
+		if (gate != null && gate.code == 'PARENT_REALNAME_REQUIRED') {
+			uni.navigateTo({ url: '/pagesSub/profileExtra/certification' })
+			return
+		}
+		if (
+			gate != null &&
+			(gate.code == 'CHILD_AUTHORIZATION_REQUIRED' || gate.code == 'CHILD_AUTHORIZATION_EXPIRED')
+		) {
+			uni.showModal({
+				title: '需要子女授权',
+				content: '当前尚未取得有效授权，请由子女完成授权后再试。',
+				showCancel: false,
+				confirmText: '知道了'
+			})
+			return
+		}
+		uni.showToast({ title: gate != null && gate.message != null ? gate.message : '请完成访问条件', icon: 'none' })
+	}
+
+	const showMatchmakerService = (item: any) => {
+		if (!ensureCurrentParentAccess()) return
+		uni.showModal({
+			title: item.name,
+			content: item.introduction != null ? item.introduction : '平台会统一受理服务需求。',
+			showCancel: false,
+			confirmText: '知道了'
+		})
+	}
+
+	const openProfileEditor = () => {
+			if (!ensureCurrentParentAccess()) return
+			if (parentContext.value == null || parentContext.value.child == null) return
+			const child = parentContext.value.child
+			childDisplayNameDraft.value = child.displayName != null ? String(child.displayName) : ''
+			childBirthYearDraft.value = child.birthYear != null ? String(child.birthYear) : ''
+			childCityDraft.value = child.city != null ? String(child.city) : ''
+			childJobDraft.value = child.job != null ? String(child.job) : ''
+			childIntroductionDraft.value = child.introduction != null ? String(child.introduction) : ''
+			profileEditorVisible.value = true
+		}
+
+	const closeProfileEditor = () => {
+			if (profileSaving.value) return
+			profileEditorVisible.value = false
+		}
+
+	const onChildDisplayNameInput = (event: any) => {
+			childDisplayNameDraft.value = event.detail.value
+		}
+
+	const onChildBirthYearInput = (event: any) => {
+			childBirthYearDraft.value = event.detail.value
+		}
+
+	const onChildCityInput = (event: any) => {
+			childCityDraft.value = event.detail.value
+		}
+
+	const onChildJobInput = (event: any) => {
+			childJobDraft.value = event.detail.value
+		}
+
+	const onChildIntroductionInput = (event: any) => {
+			childIntroductionDraft.value = event.detail.value
+		}
+
+	const saveChildProfile = async () => {
+			if (profileSaving.value) return
+			if (!ensureCurrentParentAccess()) return
+			const requestId = parentContextRequestGeneration
+			const requestContext = parentContext.value
+			if (requestContext == null || !isParentPageCurrent()) return
+			profileSaving.value = true
+			try {
+					const result = await updateParentChildProfile(requestContext, {
+						displayName: childDisplayNameDraft.value,
+						birthYear: Number(childBirthYearDraft.value),
+						city: childCityDraft.value,
+					job: childJobDraft.value,
+					introduction: childIntroductionDraft.value
+				})
+				if (!isParentContextRequestCurrent(requestId)) return
+				if (result.success && result.data != null) {
+					if (parentContext.value == null) return
+					parentContext.value.child = result.data
+					profileEditorVisible.value = false
+						uni.showToast({ title: '资料已保存', icon: 'success' })
+					return
+				}
+				uni.showToast({ title: result.message != null ? result.message : '保存失败', icon: 'none' })
+			} catch (e) {
+				if (!isParentContextRequestCurrent(requestId)) return
+				uni.showToast({ title: '网络异常，请稍后重试', icon: 'none' })
+			} finally {
+				if (isParentContextRequestCurrent(requestId)) profileSaving.value = false
+			}
+		}
+
+	const showVerificationStatus = () => {
+		if (parentContext.value == null) return
+		const parentStatus = parentContext.value.parent.realNameStatus == 'passed' ? '已通过' : '未通过'
+		const childStatus = accessGate.value.childAuthorized == true ? '有效' : '未生效或已过期'
+		uni.showModal({
+			title: '认证与授权',
+			content: '父母实名认证：' + parentStatus + '\n子女授权：' + childStatus,
+			showCancel: false,
+			confirmText: '知道了'
+		})
+	}
+
+	const showSafetyCenter = () => {
+		uni.showModal({
+			title: '安全中心',
+			content: '请勿代替子女承诺关系或交换联系方式。发现资料异常时，可在详情页举报或屏蔽。',
+			showCancel: false,
+			confirmText: '知道了'
+		})
+	}
+
+	const openSettings = () => {
+		parentSettingsVisible.value = true
+	}
+
+	const closeParentSettings = () => {
+		parentSettingsVisible.value = false
+	}
+
+	const onParentMessageNotificationChange = (event: any) => {
+		const enabled = event != null && event.detail != null && event.detail.value == true
+		parentMessageNotifications.value = enabled
+		uni.setStorageSync('xsa_parent_message_notifications', enabled)
+	}
+
+	const switchToStandardMode = () => {
+		parentSettingsVisible.value = false
+		uni.showModal({
+			title: '切换为普通身份？',
+			content: '切换后将回到普通用户首页，之后仍可重新选择父母身份。',
+			confirmText: '确认切换',
+			success: (result: any) => {
+				if (result == null || result.confirm != true) return
+				uni.setStorageSync('xsa_onboarding_mode', 'self')
+				uni.reLaunch({ url: '/pages/index/index' })
+			}
+		})
+	}
+</script>
+
+<style scoped>
+	.parent-page {
+		min-height: 100vh;
+		background: var(--canvas);
+		color: var(--ink);
+		display: flex;
+		flex-direction: column;
+	}
+
+	.page-header {
+		min-height: 112px;
+		padding: calc(20px + env(safe-area-inset-top)) 20px 18px;
+		background: var(--surface);
+		border-bottom: 1px solid var(--line);
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+		flex-shrink: 0;
+	}
+
+	.header-copy {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.header-kicker {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 6px;
+		font-size: 13px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+		color: var(--accent2);
+	}
+
+	.header-status-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--sage);
+	}
+
+	.page-title {
+		display: block;
+		font-size: 24px;
+		font-family: var(--sans);
+		font-weight: 800;
+		line-height: 1.25;
+		color: var(--ink);
+	}
+
+	.page-subtitle {
+		display: block;
+		font-size: 14px;
+		line-height: 1.45;
+		color: var(--ink2);
+	}
+
+	.child-chip {
+		min-height: 56px;
+		max-width: 152px;
+		padding: 10px 12px;
+		border-radius: 16px;
+		background: var(--accent-bg);
+		color: var(--accent2);
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 14px;
+		font-weight: 700;
+		line-height: 1.45;
+		word-break: break-word;
+	}
+
+	.child-chip-copy {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.child-chip-label {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--accent2);
+	}
+
+	.child-chip-name {
+		font-size: 14px;
+		font-weight: 800;
+		color: var(--ink);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.page-scroll {
+		min-height: 0;
+		flex: 1;
+		height: 0;
+	}
+
+	.page-content {
+		padding: 20px 16px;
+		padding-bottom: calc(112px + env(safe-area-inset-bottom));
+	}
+
+	.panel,
+	.candidate-list,
+	.matchmaker-list,
+	.application-list {
+		display: flex;
+		flex-direction: column;
+		gap: 18px;
+	}
+
+	.summary-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
+		padding: 4px 0;
+	}
+
+	.home-child-summary {
+		padding: 18px;
+		border: 1px solid var(--line);
+		border-radius: 16px;
+		background: var(--surface);
+		box-shadow: var(--shadow-sm);
+	}
+
+	.child-summary-copy {
+		min-width: 0;
+	}
+
+	.summary-item {
+		min-height: 76px;
+		padding: 12px 14px;
+		border-top: 1px solid var(--line);
+		border-bottom: 1px solid var(--line);
+		background: transparent;
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: 4px;
+	}
+
+	.summary-value {
+		font-size: 24px;
+		font-weight: 800;
+		color: var(--accent2);
+	}
+
+	.summary-label {
+		font-size: 14px;
+		font-weight: 700;
+		color: var(--ink2);
+	}
+
+	.section-head {
+		min-height: 52px;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.section-title {
+		display: block;
+		font-size: 20px;
+		font-family: var(--sans);
+		font-weight: 800;
+	}
+
+	.section-copy {
+		display: block;
+		margin-top: 4px;
+		font-size: 14px;
+		line-height: 1.55;
+		color: var(--ink2);
+	}
+
+	.text-action,
+	.state-action {
+		min-height: 48px;
+		margin: 0;
+		padding: 0 14px;
+		border-radius: 12px;
+		background: var(--paper);
+		border: 1px solid var(--line);
+		color: var(--accent2);
+		font-size: 14px;
+		font-weight: 700;
+		line-height: 48px;
+		flex-shrink: 0;
+	}
+
+	.state-panel {
+		min-height: 148px;
+		padding: 20px;
+		border: 1px solid var(--line);
+		border-radius: 16px;
+		background: var(--surface);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 12px;
+		font-size: 16px;
+		text-align: center;
+	}
+
+	.state-title {
+		font-size: 20px;
+		font-weight: 700;
+	}
+
+	.profile-panel {
+		gap: 20px;
+	}
+
+	.profile-card {
+		padding: 22px;
+		border: 1px solid var(--line);
+		border-radius: 20px;
+		background: var(--surface);
+		box-shadow: var(--shadow-sm);
+	}
+
+	.profile-name,
+	.profile-section-title,
+	.profile-eyebrow,
+	.profile-child,
+	.menu-label {
+		font-family: var(--sans);
+	}
+
+	.profile-section {
+		gap: 8px;
+	}
+
+	.profile-menu {
+		border: 1px solid var(--line);
+		border-radius: 16px;
+		box-shadow: var(--shadow-sm);
+	}
+
+	.menu-row {
+		min-height: 72px;
+		padding: 12px 16px;
+		background: var(--surface);
+	}
+
+	.identity-switch-row {
+		min-height: 52px;
+		border-radius: 14px;
+		background: var(--paper);
+		color: var(--accent2);
+	}
+
+	.state-copy {
+		font-size: 14px;
+		color: var(--ink2);
+	}
+
+	.error-state {
+		background: var(--warm);
+	}
+
+	.application-row {
+		min-height: 72px;
+		padding: 12px 14px;
+		border: 1px solid var(--line);
+		border-radius: 14px;
+		background: var(--surface);
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.application-copy {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.application-name {
+		font-size: 16px;
+		font-weight: 700;
+	}
+
+	.application-note {
+		font-size: 14px;
+		color: var(--ink2);
+	}
+
+	.application-status {
+		font-size: 14px;
+		font-weight: 700;
+		color: var(--accent2);
+		flex-shrink: 0;
+	}
+
+	.message-head {
+		margin-top: 6px;
+	}
+
+	.private-service-head {
+		margin-top: 8px;
+	}
+
+	.message-list {
+		overflow: hidden;
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		background: var(--surface);
+	}
+
+	.profile-card {
+		padding: 22px;
+		border: 1px solid var(--line);
+		border-radius: 20px;
+		background: var(--surface);
+		box-shadow: var(--shadow-sm);
+	}
+
+	.profile-eyebrow,
+	.profile-section-title {
+		display: block;
+		font-size: 14px;
+		font-weight: 700;
+		line-height: 1.4;
+		color: var(--accent2);
+	}
+
+	.profile-name {
+		display: block;
+		margin-top: 6px;
+		font-size: 24px;
+		font-family: var(--sans);
+		font-weight: 800;
+		line-height: 1.35;
+	}
+
+	.profile-child-row {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		margin-top: 10px;
+	}
+
+	.profile-child-label {
+		font-size: 14px;
+		line-height: 1.5;
+		color: var(--muted);
+		flex-shrink: 0;
+	}
+
+	.profile-child {
+		font-size: 16px;
+		font-weight: 700;
+		line-height: 1.5;
+		color: var(--ink2);
+	}
+
+	.progress-track {
+		height: 8px;
+		margin-top: 16px;
+		border-radius: 8px;
+		background: var(--warm);
+		overflow: hidden;
+	}
+
+	.progress-fill {
+		height: 100%;
+		border-radius: 8px;
+		background: var(--accent);
+	}
+
+	.progress-copy {
+		display: block;
+		margin-top: 8px;
+		font-size: 14px;
+		line-height: 1.5;
+		color: var(--ink2);
+	}
+
+	.profile-access-summary {
+		padding: 14px 16px;
+		border: 1px solid var(--line);
+		border-radius: 16px;
+		background: var(--sage-soft);
+		box-shadow: var(--shadow-sm);
+	}
+
+	.profile-access-title {
+		display: block;
+		font-size: 16px;
+		font-weight: 700;
+		line-height: 1.45;
+		color: var(--ink);
+	}
+
+	.profile-access-copy {
+		display: block;
+		margin-top: 4px;
+		font-size: 14px;
+		line-height: 1.55;
+		color: var(--ink2);
+	}
+
+	.profile-section {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.profile-section-title {
+		padding: 2px 2px 0;
+		color: var(--muted);
+		text-align: center;
+	}
+
+	.profile-menu {
+		overflow: hidden;
+		border: 1px solid var(--line);
+		border-radius: 16px;
+		background: var(--surface);
+		box-shadow: var(--shadow-sm);
+	}
+
+	.menu-row {
+		width: 100%;
+		margin: 0;
+		padding: 12px 16px;
+		border-bottom: 1px solid var(--line);
+		border-radius: 0;
+		background: var(--surface);
+		color: var(--ink);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 12px;
+		text-align: center;
+	}
+
+	.profile-menu .menu-row:last-child {
+		border-bottom: 0;
+	}
+
+	.menu-copy {
+		min-width: 0;
+		display: flex;
+		flex: 0 1 auto;
+		flex-direction: column;
+		align-items: center;
+		gap: 2px;
+	}
+
+	.menu-icon-wrap {
+		width: 40px;
+		height: 40px;
+		border-radius: 12px;
+		background: var(--accent-bg);
+		color: var(--accent2);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+
+	.menu-label {
+		display: block;
+		font-size: 16px;
+		font-weight: 700;
+		line-height: 1.4;
+		color: var(--ink);
+	}
+
+	.menu-desc {
+		display: block;
+		font-size: 14px;
+		line-height: 1.45;
+		color: var(--ink2);
+	}
+
+	.identity-switch-row {
+		width: 100%;
+		min-height: 52px;
+		margin: 2px 0 0;
+		padding: 0 16px;
+		border: 1px solid var(--line);
+		border-radius: 14px;
+		background: var(--paper);
+		color: var(--ink2);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 16px;
+		font-weight: 700;
+		line-height: 1.4;
+		text-align: center;
+	}
+
+	.profile-editor {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+	}
+
+	.editor-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 12px;
+	}
+
+	.editor-field {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.editor-label {
+		font-size: 14px;
+		font-weight: 700;
+		color: var(--ink2);
+	}
+
+	.editor-input,
+	.editor-textarea {
+		box-sizing: border-box;
+		width: 100%;
+		padding: 12px;
+		border: 1px solid var(--line);
+		border-radius: 12px;
+		background: var(--surface);
+		color: var(--ink);
+		font-size: 16px;
+	}
+
+	.editor-input {
+		min-height: 48px;
+	}
+
+	.editor-textarea {
+		min-height: 112px;
+		line-height: 1.6;
+	}
+
+	.editor-actions {
+		display: grid;
+		grid-template-columns: 1fr 1.4fr;
+		gap: 10px;
+		padding-top: 4px;
+	}
+
+	.editor-button {
+		min-height: 48px;
+		margin: 0;
+		border-radius: 12px;
+		font-size: 16px;
+		font-weight: 700;
+		line-height: 48px;
+	}
+
+	.editor-button.secondary {
+		border: 1px solid var(--line);
+		background: var(--paper);
+		color: var(--ink);
+	}
+
+	.editor-button.primary {
+		background: var(--accent);
+		color: var(--text-invert);
+	}
+
+	.parent-settings {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.settings-row {
+		min-height: 72px;
+		padding: 12px 0;
+		border-bottom: 1px solid var(--line);
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+	}
+
+	.settings-copy {
+		min-width: 0;
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.settings-label {
+		font-size: 16px;
+		font-weight: 700;
+		color: var(--ink);
+	}
+
+	.settings-desc {
+		font-size: 14px;
+		line-height: 1.55;
+		color: var(--ink2);
+	}
+
+	.settings-toggle-target {
+		min-width: 48px;
+		min-height: 48px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+
+	.settings-status {
+		flex-shrink: 0;
+		font-size: 14px;
+		font-weight: 700;
+		color: var(--accent2);
+	}
+
+	.settings-switch {
+		min-height: 48px;
+		margin: 4px 0 0;
+		border: 1px solid var(--line);
+		border-radius: 12px;
+		background: var(--paper);
+		color: var(--ink);
+		font-size: 16px;
+		font-weight: 700;
+		line-height: 48px;
+	}
+
+	@media (max-width: 360px) {
+		.page-header {
+			align-items: stretch;
+			flex-direction: column;
+		}
+
+		.child-chip {
+			max-width: none;
+		}
+
+		.editor-row {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

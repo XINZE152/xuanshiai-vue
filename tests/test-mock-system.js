@@ -198,7 +198,7 @@ try {
   const apiContent = fs.readFileSync(path.join(__dirname, '../api/ai-advisor.uts'), 'utf-8')
   const mockContent = fs.readFileSync(path.join(__dirname, '../mock/ai-advisor.uts'), 'utf-8')
   const chatContent = fs.readFileSync(path.join(__dirname, '../pagesSub/chat/detail.uvue'), 'utf-8')
-  const sheetContent = fs.readFileSync(path.join(__dirname, '../components/XsaAiAdvisorSheet.uvue'), 'utf-8')
+  const sheetContent = fs.readFileSync(path.join(__dirname, '../pagesSub/chat/components/XsaAiAdvisorSheet.uvue'), 'utf-8')
   const checks = [
     ['军师接口封装', apiContent.includes('/ai/advisor/sessions') && apiContent.includes('/advice')],
     ['结构化建议 Mock', mockContent.includes('suggestions') && mockContent.includes('risk_level')],
@@ -227,7 +227,7 @@ try {
   const pageContent = fs.readFileSync(path.join(__dirname, '../pagesSub/matchmaker/become-matchmaker.uvue'), 'utf-8')
   const avatarDir = path.join(__dirname, '../static/avatars')
   const animeAvatarCount = fs.existsSync(avatarDir)
-    ? fs.readdirSync(avatarDir).filter(name => /^matchmaking-anime-\d{3}\.jpg$/.test(name)).length
+    ? fs.readdirSync(avatarDir).filter(name => /^matchmaking-anime-\d{3}\.webp$/.test(name)).length
     : 0
   const checks = [
     ['牵线明细覆盖四种状态', ['PENDING', 'IN_PROGRESS', 'SUCCEEDED', 'FAILED'].every(status => mockContent.includes("'" + status + "'"))],
@@ -252,7 +252,7 @@ console.log('8. 红娘待审列表浮动操作与更多菜单定位检查...')
 try {
   const fs = require('fs')
   const path = require('path')
-  const reviewContent = fs.readFileSync(path.join(__dirname, '../components/MatchmakerPendingReview.uvue'), 'utf-8')
+  const reviewContent = fs.readFileSync(path.join(__dirname, '../pagesSub/matchmaker/components/MatchmakerPendingReview.uvue'), 'utf-8')
   const managementPageContent = fs.readFileSync(path.join(__dirname, '../pagesSub/matchmaker/become-matchmaker.uvue'), 'utf-8')
   const matchmakerApiContent = fs.readFileSync(path.join(__dirname, '../api/matchmaker.uts'), 'utf-8')
   const checks = [
@@ -303,7 +303,7 @@ try {
     ['Mock 提供可校验的合伙人资金数值', mockContent.includes('withdrawableBalance: 1864.50') && mockContent.includes('teamPerformance: 28760.00') && mockContent.includes('totalEarned: 4386.80')],
     ['名下会员使用统计、说明、搜索和档案卡结构', pageContent.includes('member-overview') && pageContent.includes('member-metrics') && pageContent.includes('member-search') && pageContent.includes('member-profile-card')],
     ['名下会员统计随明细实时计算', pageContent.includes('effectiveMembers.length') && pageContent.includes('maleCount') && pageContent.includes('femaleCount') && pageContent.includes('filteredEffectiveMembers.length')],
-    ['Mock 提供多性别、多推广人和不同头像的会员样本', mockContent.includes("name: '许知夏'") && mockContent.includes("gender: '男'") && mockContent.includes("gender: '女'") && mockContent.includes("promoterName: '周雅'") && mockContent.includes('matchmaking-anime-012.jpg')],
+    ['Mock 提供多性别、多推广人和不同头像的会员样本', mockContent.includes("name: '许知夏'") && mockContent.includes("gender: '男'") && mockContent.includes("gender: '女'") && mockContent.includes("promoterName: '周雅'") && mockContent.includes('matchmaking-anime-012.webp')],
     ['会员接口归一化保留头像和审核状态', apiContent.includes('avatar_url') && apiContent.includes('reviewStatus')],
     ['Mock 模式可加载名下会员测试数据', apiContent.includes('mockPartnerCenterSnapshot') && apiContent.includes("url: '/matchmaker/partner-center'")],
     ['本机空数据可回退至脱敏会员测试明细', apiContent.includes('canUseWorkspaceDemoFallback') && apiContent.includes('const useDemoFallback') && apiContent.includes('source = useDemoFallback ? mockPartnerCenterSnapshot')]

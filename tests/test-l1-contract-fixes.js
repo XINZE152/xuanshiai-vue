@@ -44,7 +44,7 @@ assert.match(chatPage, /avatar: myAvatar\.value/, '媒体消息必须使用 myAv
 // ========== 2. AI 军师幂等键 ==========
 
 const advisorApi = read('api/ai-advisor.uts')
-const advisorSheet = read('components/XsaAiAdvisorSheet.uvue')
+const advisorSheet = read('pagesSub/chat/components/XsaAiAdvisorSheet.uvue')
 
 assert.match(advisorApi, /'Idempotency-Key': advisorIdempotencyKey\(chatSessionId\)/, '创建军师会话必须带 Idempotency-Key')
 assert.match(advisorApi, /function advisorIdempotencyKey\(chatSessionId: number\): string/, '幂等键必须按会话复用，重试不能换键')
@@ -79,7 +79,7 @@ assert.doesNotMatch(
 
 // ========== 4. 情感实验室 E1 降级 ==========
 
-const labPage = read('pages/emotion-lab/emotion-lab.uvue')
+const labPage = read('pagesSub/emotionLab/emotion-lab.uvue')
 
 assert.match(labPage, /EMOTION_LAB_USE_MOCK\s*\n?\s*\} from '@\/api'/, '情感实验室必须经统一入口拿到 mock 开关（页面禁止直连 api/config.uts）')
 assert.doesNotMatch(labPage, /from '@\/api\/config\.uts'/, '情感实验室不得绕过 api/index.uts 直连配置模块')

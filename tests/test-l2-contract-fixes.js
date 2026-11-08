@@ -109,7 +109,7 @@ assert.match(detailPage, /likeUser\(id, !isLikedUser\.value\)/, '详情页点击
 // ========== F-03：删掉本地额度硬拦截 + 余额读 /users/me/quotas ==========
 
 assert.doesNotMatch(read('components/XsaApplySheet.uvue'), /remain\.value <= 0/, '申请 Sheet 不得再用本地 remain 提前拦截')
-assert.doesNotMatch(read('components/ParentApplySheet.uvue'), /remainingApplications <= 0/, '红娘申请 Sheet 不得再用本地次数禁用按钮')
+assert.doesNotMatch(read('pagesSub/parent/components/ParentApplySheet.uvue'), /remainingApplications <= 0/, '红娘申请 Sheet 不得再用本地次数禁用按钮')
 assert.doesNotMatch(read('pagesSub/community/paper-plane.uvue'), /remain\.value <= 0/, '纸飞机页不得再用本地 remain 拦截')
 assert.doesNotMatch(read('pagesSub/community/dating-plane-compose.uvue'), /remain\.value <= 0/, '交友飞机页不得再用本地 remain 拦截')
 // 本地额度耗尽不得直接出错误页（服务端 429 分支仍保留该文案，属正常）
