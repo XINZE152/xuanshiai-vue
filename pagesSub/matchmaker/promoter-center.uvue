@@ -251,6 +251,9 @@
 						<view class="account-deactivate" @click="deactivateVisible = true"><text>注销账号</text></view>
 					</view>
 				</view>
+				<view v-else-if="page == 'poster'" class="section poster-section">
+					<MatchmakerPromoPoster :name="posterName" :avatar="posterAvatar" />
+				</view>
 			</view>
 		</scroll-view>
 
@@ -275,15 +278,19 @@
 
 <script setup lang="uts">
 import MatchmakerRemoteServices from '@/pagesSub/matchmaker/components/MatchmakerRemoteServices.uvue'
+import MatchmakerPromoPoster from '@/pagesSub/matchmaker/components/MatchmakerPromoPoster.uvue'
 import XsaToast from '@/components/XsaToast.uvue'
 import MatchmakerServiceNavSheet from '@/pagesSub/matchmaker/components/MatchmakerServiceNavSheet.uvue'
 import XsaSheet from '@/components/XsaSheet.uvue'
 import { addPromoterLead, cancelPromoterTeamRequest, createPromoterPromotionCode, createPromoterWithdrawal, getPromoterCenterSnapshot, submitPromoterTeamRequest, updatePromoterCenterProfile } from '@/api'
+import { getOwnProfile } from '@/api/user.uts'
 // 运行时诊断：暴露 api 层埋点看到的原始 rewards 状态
 import { logout as logoutApi } from '@/api/auth'
 const page = ref('home'), loading = ref(true)
 // 返回栈：仅作逻辑记录，无需驱动渲染（UTS 下 ref 包装数组会丢失 push/pop 方法）
 let pageHistory: string[] = []
+// 由红娘管理中心的「下载推广海报」直接深链进入本页海报视图时，返回要退回管理中心而不是落到本页首页。
+let posterDeepLink = false
 const snapshot = ref<any>({ profile: {}, teamOptions: [], leads: [], effectiveMembers: [], incompleteMembers: [], rewards: [], commissions: [], offlineOrders: [] }), toastVisible = ref(false), toastMessage = ref(''), keyword = ref(''), memberTab = ref('effective'), financeTab = ref('balance'), teamPickerVisible = ref(false), teamChangeTipVisible = ref(false), contactVisible = ref(false), accountEditVisible = ref(false), deactivateVisible = ref(false), withdrawForm = ref(false), withdrawAmount = ref(''), withdrawAccount = ref(''), withdrawPayee = ref(''), withdrawMethod = ref('微信'), accountNickname = ref(''), accountPhone = ref(''), teamInviteCode = ref(''), teamSubmitting = ref(false), recentOnly = ref(false), merchantTab = ref('goods')
 const methods = ['微信', '银行卡', '支付宝']
 const leadForm = ref<any>({ source: '', phone: '', wechat: '', wechatSameAsPhone: false, autoNickname: false, nickname: '', realName: '', gender: '男', birth: '1990-01-01', height: '', weight: '', description: '', photos: [] as any[] })
@@ -300,7 +307,7 @@ const promoterLevels = [
 	{ name: '推广天使', need: '有效会员数≥500人', threshold: 500, rate: '无分成', tone: 'violet' }
 ]
 const profile = computed(() => snapshot.value.profile || {}), teamOptions = computed(() => snapshot.value.teamOptions || []), leads = computed(() => snapshot.value.leads || []), effectiveMembers = computed(() => snapshot.value.effectiveMembers || []), incompleteMembers = computed(() => snapshot.value.incompleteMembers || []), rewards = computed(() => snapshot.value.rewards || []), commissions = computed(() => snapshot.value.commissions || []), offlineOrders = computed(() => snapshot.value.offlineOrders || [])
-const title = computed(() => { const dict:any = { home: '推广红娘管理中心', withdraw: '余额提现', level: '分成级别', rewards: '会员注册奖励', members: '名下会员', leads: '客源线索', 'lead-form': '录入客源', report: '数据报表', commission: '消费分成', merchant: '商家联盟', mall: '优选合作商城', offline: '线下开单', finance: '财务明细', account: '我的账号' }; return dict[page.value] || '推广红娘管理中心' })
+const title = computed(() => { const dict:any = { home: '推广红娘管理中心', withdraw: '余额提现', level: '分成级别', rewards: '会员注册奖励', members: '名下会员', leads: '客源线索', 'lead-form': '录入客源', report: '数据报表', commission: '消费分成', merchant: '商家联盟', mall: '优选合作商城', offline: '线下开单', finance: '财务明细', account: '我的账号', poster: '红娘推广海报' }; return dict[page.value] || '推广红娘管理中心' })
 const pendingRewardCount = computed(() => rewards.value.filter((x:any)=>x.reviewStatus=='PENDING').length), passedRewardCount = computed(() => rewards.value.filter((x:any)=>x.reviewStatus=='PASSED').length), rejectedRewardCount = computed(() => rewards.value.filter((x:any)=>x.reviewStatus=='REJECTED').length)
 const pendingCount = computed(() => leads.value.filter((x:any)=>x.status=='待审核').length), validLeadCount = computed(() => leads.value.filter((x:any)=>x.status=='有效').length), invalidLeadCount = computed(() => leads.value.filter((x:any)=>x.status=='无效').length), maleCount = computed(() => effectiveMembers.value.filter((x:any)=>x.gender=='男').length), femaleCount = computed(() => effectiveMembers.value.length-maleCount.value)
 const pendingMemberCount = computed(() => incompleteMembers.value.length)
@@ -313,6 +320,13 @@ const nextLevelName = computed(() => { if (profile.value.nextLevel != null && St
 const nextLevelGap = computed(() => { if (profile.value.memberGap != null && !isNaN(Number(profile.value.memberGap))) return String(profile.value.memberGap); const local = nextLevel.value; return local != null ? String(local.threshold - effectiveTotal.value) : '0' })
 const availableBalance = computed(() => { const amount = Number(profile.value.balance); return isNaN(amount) || amount < 0 ? '0.00' : amount.toFixed(2) })
 const promoterInitial = computed(() => { const name = profile.value.nickname == null ? '' : String(profile.value.nickname).trim(); return name.length > 0 ? name.substring(0, 1) : '推' })
+// 推广海报资料：昵称优先取推广中心快照；快照因无推广业务身份被拒时，与头像一起按本人资料补。
+const posterProfileName = ref(''), posterAvatar = ref('')
+const posterName = computed(() => { const name = profile.value.nickname == null ? '' : String(profile.value.nickname).trim(); return name != '' ? name : posterProfileName.value })
+const loadPosterAvatar = async () => {
+	if (posterAvatar.value != '') return
+	try { const r: any = await getOwnProfile(); if (r != null && r.success == true && r.data != null) { posterAvatar.value = String(r.data.avatar ?? ''); const own = String(r.data.nickname ?? ''); posterProfileName.value = own != '' ? own : String(r.data.name ?? '') } } catch (e: any) {}
+}
 function listFilter(list:any[]) { const key=keyword.value.trim().toLowerCase(); return key==''?list:list.filter((x:any)=>(String(x.name||'')+String(x.id||'')+String(x.memberName||'')+String(x.memberCode||'')+String(x.phone||'')).toLowerCase().indexOf(key)>=0) }
 const genderSheetVisible = ref(false), genderPick = ref('男')
 const pickGender=()=>{genderPick.value=leadForm.value.gender;genderSheetVisible.value=true}
@@ -326,8 +340,8 @@ function isPositiveUserId(idValue:any):boolean { const n = Number(idValue); retu
 const avatarChar=(name:any)=>{const v=name==null?'':String(name).trim();return v.length>0?v.substring(0,1):'会'}
 const viewMemberHome=(item:any)=>{const memberId = Number(item.id);if(isNaN(memberId)||memberId<=0){showToast('会员主页编号待服务端同步');return};uni.navigateTo({url:'/pagesSub/userExtra/user/detail?userId='+memberId})}
 const filteredLeads = computed(()=>listFilter(leads.value)), filteredRewards = computed(()=>listFilter(rewards.value)), memberRows = computed(()=>{let rows=listFilter(memberTab.value=='effective'?effectiveMembers.value:incompleteMembers.value);if(memberTab.value=='effective'&&recentOnly.value)rows=rows.filter((x:any)=>isWithinDays(x.registerAt,7));return rows})
-const money=(v:any)=>{if(v==null||v==='')return '--';const n=Number(v);return isNaN(n)?'--':n.toFixed(2)}, showToast=(v:string)=>{toastMessage.value=v;toastVisible.value=true}, open=(v:string)=>{if(v=='withdraw'||v=='mall'||v=='finance'){showToast('资金与商业结算能力不在本期范围内');return};if(page.value!='home')pageHistory.push(page.value);page.value=v;keyword.value='';withdrawForm.value=false;recentOnly.value=false}, goBack=()=>{if(page.value=='home'){uni.navigateBack();return};page.value=pageHistory.length>0?pageHistory.pop():'home';keyword.value='';withdrawForm.value=false;recentOnly.value=false}, checkSearch=()=>{if(keyword.value.trim()=='')showToast('请输入搜索关键词')}, updateLead=(key:string,value:string)=>{leadForm.value[key]=value}
-const copyLink=async()=>{if(profile.value.promotionCode){uni.setClipboardData({data:String(profile.value.promotionCode),success:()=>showToast('推广码已复制')});return};const r=await createPromoterPromotionCode();if(!r.success||r.data==null){showToast(r.message||'推广码生成失败');return};uni.setClipboardData({data:String(r.data.code),success:()=>showToast('推广码已复制')});await load()}, savePoster=()=>showToast('专属推广海报待平台配置后开放')
+const money=(v:any)=>{if(v==null||v==='')return '--';const n=Number(v);return isNaN(n)?'--':n.toFixed(2)}, showToast=(v:string)=>{toastMessage.value=v;toastVisible.value=true}, open=(v:string)=>{if(v=='withdraw'||v=='mall'||v=='finance'){showToast('资金与商业结算能力不在本期范围内');return};if(page.value!='home')pageHistory.push(page.value);page.value=v;keyword.value='';withdrawForm.value=false;recentOnly.value=false}, goBack=()=>{if(page.value=='home'||(posterDeepLink&&page.value=='poster')){uni.navigateBack();return};page.value=pageHistory.length>0?pageHistory.pop():'home';keyword.value='';withdrawForm.value=false;recentOnly.value=false}, checkSearch=()=>{if(keyword.value.trim()=='')showToast('请输入搜索关键词')}, updateLead=(key:string,value:string)=>{leadForm.value[key]=value}
+const copyLink=async()=>{if(profile.value.promotionCode){uni.setClipboardData({data:String(profile.value.promotionCode),success:()=>showToast('推广码已复制')});return};const r=await createPromoterPromotionCode();if(!r.success||r.data==null){showToast(r.message||'推广码生成失败');return};uni.setClipboardData({data:String(r.data.code),success:()=>showToast('推广码已复制')});await load()}, savePoster=()=>{open('poster'); loadPosterAvatar()}
 const openTeamEntry=()=>{if(profile.value.teamStatus=='ACTIVE'){teamChangeTipVisible.value=true;return};teamInviteCode.value='';teamPickerVisible.value=true}
 const cancelJoinRequest=async()=>{const id=String(profile.value.pendingRequestId||'');if(id==''){showToast('未找到待确认的申请');return};uni.showModal({title:'撤回申请',content:'确定撤回加入「'+String(profile.value.teamName||'')+'」的申请吗？',success:async(modal:any)=>{if(!modal.confirm)return;try{const r=await cancelPromoterTeamRequest(id);if(r.success){showToast('申请已撤回');await load()}else showToast(r.message||'撤回失败')}catch(e){showToast('网络异常，请稍后重试')}}})}
 const joinSelectedTeam=async()=>{const code=teamInviteCode.value.trim();if(code==''){showToast('请输入团队邀请码');return};if(teamSubmitting.value)return;teamSubmitting.value=true;try{const r=await submitPromoterTeamRequest(code);if(r.success){teamPickerVisible.value=false;showToast('申请已提交，等待合伙人确认');await load()}else showToast(r.message||'提交失败')}catch(e){showToast('网络异常，请稍后重试')}finally{teamSubmitting.value=false}}
@@ -355,6 +369,7 @@ const submitLead=async()=>{const form=leadForm.value;form.phone=String(form.phon
 const submitWithdraw=async()=>{const r=await createPromoterWithdrawal({amount:withdrawAmount.value,method:withdrawMethod.value,account:withdrawAccount.value,payee:withdrawPayee.value});if(r.success){showToast(r.message);withdrawForm.value=false;await load()}else showToast(r.message)}
 const saveAccount=async()=>{const p=accountPhone.value.trim();if(p!=''&&!/^1[3-9]\d{9}$/.test(p)){showToast('请输入正确的11位手机号');return};const r=await updatePromoterCenterProfile({nickname:accountNickname.value.trim(),phone:p});if(r.success){snapshot.value=r.data;accountEditVisible.value=false;showToast('账号资料已保存')}else showToast(r.message)}
 const load=async()=>{loading.value=true;try{const r=await getPromoterCenterSnapshot();if(r.success&&r.data!=null){snapshot.value=r.data;accountNickname.value=String(profile.value.nickname||'');accountPhone.value=String(profile.value.phone||'')}else showToast(r.message)}catch(e){showToast('网络数据加载失败')}finally{loading.value=false}}
+onLoad((options: any) => { if (options != null && options.page != null && String(options.page) == 'poster') { posterDeepLink = true; page.value = 'poster'; loadPosterAvatar() } })
 onMounted(()=>load())
 </script>
 

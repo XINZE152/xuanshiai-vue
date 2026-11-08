@@ -1,0 +1,126 @@
+<template>
+	<view class="mpp-root">
+		<canvas
+			id="promoPosterCanvas"
+			canvas-id="promoPosterCanvas"
+			type="2d"
+			class="mpp-canvas"
+			style="width: 600px; height: 975px; position: fixed; left: -9999px; top: -9999px;"
+		></canvas>
+
+		<view class="mpp-stage">
+			<view v-if="drawing && posterUrl == ''" class="mpp-state">
+				<view class="mpp-spinner"></view>
+				<text class="mpp-state-text">正在生成推广海报</text>
+			</view>
+
+			<view v-else-if="posterUrl != ''" class="mpp-card-shell">
+				<image
+					class="mpp-poster"
+					:src="posterUrl"
+					mode="widthFix"
+					:show-menu-by-longpress="true"
+				></image>
+				<view class="mpp-style-btn" @tap="changeStyle">
+					<view class="mpp-style-icon"><text class="mpp-style-icon-mark">↻</text></view>
+					<text class="mpp-style-label">换风格</text>
+				</view>
+			</view>
+
+			<view v-else class="mpp-state">
+				<text class="mpp-state-text">海报生成失败</text>
+				<view class="mpp-retry" @tap="render"><text class="mpp-retry-text">重新生成</text></view>
+			</view>
+		</view>
+
+		<view class="mpp-save" :class="{ disabled: posterUrl == '' || saving }" @tap="saveToAlbum">
+			<text class="mpp-save-text">↑ 长按图片保存到相册 ↑</text>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+import { ref, watch, nextTick, getCurrentInstance, onMounted } from 'vue'
+import { savePosterToPhotos } from '@/utils/moxiang-poster-drawer.uts'
+import {
+	PROMO_POSTER_STYLES,
+	drawPromoPoster,
+	nextPromoPosterStyleKey,
+	promoPosterDisplayName
+} from '@/utils/matchmaker-promo-poster.uts'
+
+interface Props {
+	name?: string
+	avatar?: string
+}
+
+const props = withDefaults(defineProps<Props>(), {
+	name: '',
+	avatar: ''
+})
+
+const instance = getCurrentInstance()
+const styleKey = ref(PROMO_POSTER_STYLES[0].key)
+const posterUrl = ref('')
+const drawing = ref(false)
+const saving = ref(false)
+
+const hostComponent = () => instance != null && instance.proxy != null ? instance.proxy : null
+
+const render = async () => {
+	if (drawing.value) return
+	drawing.value = true
+	try {
+		await nextTick()
+		const tempPath = await drawPromoPoster(
+			'promoPosterCanvas',
+			hostComponent(),
+			{ name: promoPosterDisplayName(props.name), avatar: props.avatar },
+			styleKey.value
+		)
+		posterUrl.value = tempPath
+	} catch (e: any) {
+		console.error('[MatchmakerPromoPoster] draw error', e)
+		posterUrl.value = ''
+	} finally {
+		drawing.value = false
+	}
+}
+
+const changeStyle = () => {
+	styleKey.value = nextPromoPosterStyleKey(styleKey.value)
+}
+
+const saveToAlbum = async () => {
+	if (posterUrl.value == '' || saving.value) return
+	saving.value = true
+	await savePosterToPhotos(posterUrl.value)
+	saving.value = false
+}
+
+watch(() => props.name, () => { render() })
+watch(() => props.avatar, () => { render() })
+watch(styleKey, () => { render() })
+
+onMounted(() => { render() })
+</script>
+
+<style scoped>
+.mpp-root { display: flex; flex-direction: column; align-items: center; width: 100%; box-sizing: border-box; }
+.mpp-canvas { position: fixed; left: -9999px; top: -9999px; }
+.mpp-stage { position: relative; width: 684rpx; max-width: 100%; display: flex; flex-direction: column; align-items: center; box-sizing: border-box; }
+.mpp-card-shell { position: relative; width: 684rpx; max-width: 100%; display: flex; flex-direction: column; box-sizing: border-box; }
+.mpp-poster { display: block; width: 684rpx; max-width: 100%; border-radius: 24rpx; }
+.mpp-style-btn { position: absolute; z-index: 5; right: -4rpx; top: 897rpx; width: 116rpx; height: 116rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 50%; background-color: #FFFFFF; box-shadow: 0 6rpx 18rpx rgba(180, 120, 130, 0.28); }
+.mpp-style-icon { width: 46rpx; height: 46rpx; display: flex; align-items: center; justify-content: center; border-radius: 50%; background-color: #E2728A; }
+.mpp-style-icon-mark { color: #FFFFFF; font-size: 30rpx; line-height: 1; }
+.mpp-style-label { margin-top: 6rpx; color: #7A5A60; font-size: 20rpx; }
+.mpp-state { width: 684rpx; max-width: 100%; min-height: 900rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20rpx; border-radius: 24rpx; background-color: #FBEFF1; }
+.mpp-spinner { width: 56rpx; height: 56rpx; border: 6rpx solid #E8C4CC; border-top-color: #D2566F; border-radius: 50%; }
+.mpp-state-text { color: #9A7A80; font-size: 24rpx; text-align: center; }
+.mpp-retry { padding: 16rpx 32rpx; border-radius: 999rpx; background-color: #E2728A; }
+.mpp-retry-text { color: #FFFFFF; font-size: 24rpx; }
+.mpp-save { width: 684rpx; max-width: 100%; height: 92rpx; margin-top: 24rpx; display: flex; align-items: center; justify-content: center; border-radius: 999rpx; background-color: #E7E1F7; }
+.mpp-save.disabled { opacity: 0.6; }
+.mpp-save-text { color: #4A3F63; font-size: 28rpx; font-weight: 500; }
+</style>

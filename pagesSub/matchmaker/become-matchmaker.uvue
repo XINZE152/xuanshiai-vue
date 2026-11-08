@@ -47,11 +47,8 @@
 				<view v-else-if="workspaceKind == 'commission'">
 					<view class="workspace-cash"><text>资金结算</text><text class="workspace-cash-value">{{ workspaceTitle == '财务明细' ? workspaceFinanceTotal : workspaceCommissionTotal }}</text><text>{{ workspaceCashNote }}</text></view>
 
-					<!-- 专属推广工具：推广能力未开放，保留原提示 -->
-					<view v-if="workspaceTitle == '专属推广工具'" class="workspace-notice"><text class="workspace-notice-title">温馨提示</text><text>专属推广链接与海报将在后端配置后开放。</text></view>
-
 					<!-- 分成标准：各消费事件计提比例 -->
-					<view v-else-if="workspaceActiveTab == '分成标准'">
+					<view v-if="workspaceActiveTab == '分成标准'">
 						<view class="workspace-demo-notice"><text>平台尚未提供分成标准查询接口，请以平台确认的规则为准。</text></view>
 						<view v-for="rate in workspaceCommissionRates" :key="rate.event" class="workspace-info-card">
 							<view><text>{{ rate.event }}</text><text class="workspace-rate-value">{{ rate.rate }}</text></view>
@@ -1072,6 +1069,7 @@ import { getWorkspaceMeetingPresentation } from '@/utils/meeting-workflow.uts'
 import { resolveMediaUrl } from '@/api/config.uts'
 import { nextTick } from 'vue'
 import { savePosterToPhotos } from '@/utils/moxiang-poster-drawer.uts'
+import { PLATFORM_HOME_URL } from '@/utils/matchmaker-promo-poster.uts'
 
 // ===== 基本信息 =====
 const realName = ref('')
@@ -1463,7 +1461,12 @@ const copyWorkspaceText = (value: string) => {
 	})
 }
 
-const copyWorkspaceLink = () => { showToast('专属推广链接尚未开放') }
+const copyPromotionLink = () => {
+	uni.setClipboardData({
+		data: PLATFORM_HOME_URL,
+		success: () => showToast('复制成功')
+	})
+}
 
 const loadManagementAccess = async () => {
 	managementAccessLoading.value = true
@@ -3291,8 +3294,15 @@ const handleManagementCenterAction = (name: string) => {
 		openWorkspace(name == '查看牵线记录' ? '牵线管理' : name, 'match')
 		return
 	}
-	if (name.indexOf('推广') >= 0 || name.indexOf('海报') >= 0 || name.indexOf('链接') >= 0) {
-		openWorkspace('专属推广工具', 'commission')
+	if (name.indexOf('海报') >= 0) {
+		uni.navigateTo({
+			url: '/pagesSub/matchmaker/promoter-center?page=poster',
+			fail: () => showToast('推广海报打开失败，请稍后重试')
+		})
+		return
+	}
+	if (name.indexOf('链接') >= 0) {
+		copyPromotionLink()
 		return
 	}
 	if (name.indexOf('活动') >= 0) {
