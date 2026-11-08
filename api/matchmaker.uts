@@ -1256,7 +1256,7 @@ export async function updateMatchmakerMemberNickname(id: string, nickname: strin
 
 /** 代传会员头像 / 相册，服务端直接标记审核通过，保存后立即可见。 */
 export async function uploadMatchmakerMemberMedia(id: string, filePath: string, kind: string) {
-  if (MATCHMAKER_REMOTE_MODE) return remoteMatchmakerUnavailable()
+  if (MATCHMAKER_REMOTE_MODE && getAccessToken() == '') return { success: false, data: null, code: 401, message: '请重新登录远端账号' }
   const normalizedKind = kind == 'avatar' || kind == 'background' ? kind : 'photo'
   return new Promise<any>((resolve) => {
     uni.uploadFile({
