@@ -6,8 +6,11 @@
 				<view class="nav-back-chevron"></view>
 			</view>
 			<text class="nav-title">{{ pendingReviewVisible ? '资料待审' : (workspaceVisible ? workspaceTitle : (managementCenterVisible || managementCenterLoading ? '红娘管理中心' : '我要做红娘')) }}</text>
-			<view v-if="pendingReviewVisible || workspaceVisible" class="nav-help" :class="{ 'nav-help-save': isLeadEntryStudio }" @click="isLeadEntryStudio ? submitLeadForm() : closeWorkspace()">
-				<text class="nav-help-text">{{ isLeadEntryStudio ? '保存' : '返回' }}</text>
+			<!-- 工作区遮罩右上角只保留「保存」药丸；返回走左侧箭头（handlePageBack 会先关遮罩）。 -->
+			<view v-if="pendingReviewVisible || workspaceVisible">
+				<view v-if="isLeadEntryStudio" class="nav-help nav-help-save" @click="submitLeadForm()">
+					<text class="nav-help-text">保存</text>
+				</view>
 			</view>
 			<view v-else-if="managementCenterVisible" class="nav-entries">
 				<view class="nav-entry" @click="openMyAccount">
