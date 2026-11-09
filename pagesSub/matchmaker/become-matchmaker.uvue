@@ -329,7 +329,15 @@
 						</view>
 						<view class="ls-field">
 							<text class="ls-label">称呼</text>
-							<input :value="leadFormName" @input="leadFormName = $event.detail.value" placeholder="如：李阿姨介绍的小雅" :maxlength="20"/>
+							<input :value="leadFormName" @input="onLeadFormNameInput" placeholder="如：李阿姨介绍的小雅" :maxlength="20"/>
+							<view class="ls-auto" :class="{ checked: leadAutoName }" @click="toggleLeadAutoName">
+								<view class="ls-auto-head">
+									<view class="ls-auto-box"><text v-if="leadAutoName" class="ls-auto-tick">✓</text></view>
+									<text class="ls-auto-title">自动生成称呼</text>
+									<text class="ls-auto-code">{{ leadAutoName ? (leadAutoNameCode.length > 0 ? leadAutoNameCode : '正在获取客源编号…') : '关闭' }}</text>
+								</view>
+								<text class="ls-auto-sub">按客源编号命名，例如第一位客源线索写 客源_1；勾选后手动改动即退出自动生成</text>
+							</view>
 						</view>
 						<view class="ls-field">
 							<text class="ls-label">电话</text>
@@ -2017,6 +2025,72 @@ const pickLeadFormSource = (value: string) => {
 	leadFormSource.value = value
 	leadFormSourcePickerVisible.value = false
 }
+// ===== 自动生成称呼 =====
+// 编号取本条客源线索入库后的记录编号；前缀与后台「客源线索-功能配置」的 name_prefix 默认值一致。
+const LEAD_AUTO_NAME_PREFIX = '客源'
+const leadAutoName = ref(false)
+const leadAutoNameCode = ref('')
+const leadAutoNameBusy = ref(false)
+const resetLeadAutoName = () => {
+	leadAutoName.value = false
+	leadAutoNameCode.value = ''
+}
+const onLeadFormNameInput = (event: any) => {
+	leadFormName.value = event.detail.value
+	// 手动改称呼即退出自动生成，否则提交时会被编号覆盖掉他刚改的内容。
+	if (leadAutoName.value) resetLeadAutoName()
+}
+// 列表按编号倒序，第一页首条即当前工作范围内的最大编号，预览号取「最大编号 + 1」；
+// 工作范围之外可能已有更大编号，所以提交后还要用服务端返回的真实编号校正一次。
+const nextLeadAutoNameCode = async (): Promise<string> => {
+	const result = await getMatchmakerWorkspaceLeads(1)
+	if (!result.success || result.data == null) return ''
+	const source = result.data
+	if (!Array.isArray(source.items)) return ''
+	const items = source.items as any[]
+	if (items.length == 0) return LEAD_AUTO_NAME_PREFIX + '_1'
+	const newestId = Number(items[0].id)
+	if (isNaN(newestId) || newestId < 0) return ''
+	return LEAD_AUTO_NAME_PREFIX + '_' + String(Math.floor(newestId) + 1)
+}
+const toggleLeadAutoName = async () => {
+	// 取消勾选时保留已生成的文本，让红娘能在它基础上继续手动改。
+	if (leadAutoName.value) {
+		resetLeadAutoName()
+		return
+	}
+	if (leadAutoNameBusy.value) return
+	leadAutoNameBusy.value = true
+	leadAutoName.value = true
+	leadAutoNameCode.value = ''
+	try {
+		const code = await nextLeadAutoNameCode()
+		if (code.length == 0) {
+			resetLeadAutoName()
+			leadFormError.value = '客源编号获取失败，请稍后重试，或手动填写称呼'
+			return
+		}
+		leadAutoNameCode.value = code
+		leadFormName.value = code
+	} catch (e: any) {
+		resetLeadAutoName()
+		leadFormError.value = '客源编号获取失败，请稍后重试，或手动填写称呼'
+	} finally {
+		leadAutoNameBusy.value = false
+	}
+}
+// 勾选自动生成时，以服务端新建记录的真实编号为准改写称呼。
+const applyCreatedLeadAutoName = async (result: any) => {
+	if (!leadAutoName.value || leadFormIsEdit.value) return
+	if (result == null || result.data == null) return
+	const created = result.data
+	const createdId = Number(created.id)
+	if (isNaN(createdId) || createdId <= 0) return
+	const exact = LEAD_AUTO_NAME_PREFIX + '_' + String(createdId)
+	leadAutoNameCode.value = exact
+	if (exact == leadFormName.value.trim()) return
+	await updateWorkspaceLead(String(createdId), { name: exact })
+}
 // 录入视图示例数据：一键填充全表单便于联调，再点一次清空。
 const leadDemoFilled = computed(() => leadFormRealName.value != '' || leadFormName.value != '' || leadFormPhone.value != '' || leadFormWechat.value != '' || leadFormRemark.value != '')
 const leadSourceOptions = ['抖音', '微信群', '本地群', '身边朋友', '同行群', '朋友圈', 'QQ', '其他渠道', '落地页']
@@ -2040,6 +2114,7 @@ const fillLeadDemo = () => {
 		leadFormGender.value = 0
 		leadFormBirthday.value = ''
 		leadFormError.value = ''
+		resetLeadAutoName()
 		return
 	}
 	const gender = demoPersonaGender[nextDemoPersona()]
@@ -2168,10 +2243,12 @@ const openLeadAddSheet = () => {
 	leadFormBirthday.value = ''
 	leadFormIntention.value = 1
 	leadFormError.value = ''
+	resetLeadAutoName()
 	leadFormSheetVisible.value = true
 }
 const openLeadEditSheet = (row: any) => {
 	leadFormIsEdit.value = true
+	resetLeadAutoName()
 	leadFormLeadId.value = String(row.id)
 	leadFormRealName.value = row.realName != null ? String(row.realName) : ''
 	leadFormName.value = String(row.name)
@@ -2232,7 +2309,7 @@ const findLeadContactConflict = (phone: string, wechat: string, excludeLeadId: s
 const submitLeadForm = () => {
 	const name = leadFormName.value.trim()
 	if (name.length == 0) {
-		leadFormError.value = '请填写客户称呼'
+		leadFormError.value = leadAutoNameBusy.value ? '正在获取客源编号，请稍候' : '请填写客户称呼'
 		return
 	}
 	const phone = leadFormPhone.value.trim()
@@ -2269,6 +2346,7 @@ const sendLeadForm = async (name: string, phone: string, wechat: string) => {
 			leadFormError.value = result.message != null && String(result.message).length > 0 ? String(result.message) : '保存失败，请稍后重试'
 			return
 		}
+		await applyCreatedLeadAutoName(result)
 		leadFormSheetVisible.value = false
 		leadFormRealName.value = ''
 		leadFormName.value = ''
@@ -2280,6 +2358,7 @@ const sendLeadForm = async (name: string, phone: string, wechat: string) => {
 		leadFormPhoto.value = ''
 		leadFormGender.value = 0
 		leadFormBirthday.value = ''
+		resetLeadAutoName()
 		showToast(leadFormIsEdit.value ? '线索已更新' : '线索已添加，等待跟进')
 		await loadWorkspaceLeads()
 	} catch (e) {
@@ -3248,6 +3327,9 @@ const openWorkspace = async (title: string, kind: string, initialTab: string = '
 	workspaceVisible.value = true
 	if (kind == 'entry') {
 		// 录入客源线索 / 录入会员：重置线索表单，避免残留上一次填写。
+		// 录入页只建新客源，必须同时清掉编辑弹层留下的编辑态，否则提交会改成 PATCH 上一条线索。
+		leadFormIsEdit.value = false
+		leadFormLeadId.value = ''
 		leadFormRealName.value = ''
 		leadFormName.value = ''
 		leadFormPhone.value = ''
@@ -3260,6 +3342,7 @@ const openWorkspace = async (title: string, kind: string, initialTab: string = '
 		leadFormGender.value = 0
 		leadFormBirthday.value = ''
 		leadFormError.value = ''
+		resetLeadAutoName()
 	}
 	if (kind == 'member') await loadWorkspaceMembers()
 	if (kind == 'lead') await loadWorkspaceLeads()
@@ -6318,6 +6401,17 @@ const submitApplication = async () => {
 .ls-label { color: #93A39C; font-size: 21rpx; font-weight: 600; }
 .ls-label-row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
 .ls-count { color: #A9B8B1; font-size: 20rpx; }
+
+/* 自动生成称呼：勾选框 + 右侧实时编号预览，说明文案压在下一行。 */
+.ls-auto { margin-top: 4rpx; padding: 18rpx 20rpx; border-radius: 18rpx; background: #F5F8F6; display: flex; flex-direction: column; gap: 8rpx; }
+.ls-auto-head { display: flex; flex-direction: row; align-items: center; gap: 14rpx; }
+.ls-auto-box { width: 30rpx; height: 30rpx; border-radius: 8rpx; border: 2rpx solid #C6D3CD; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+.ls-auto.checked .ls-auto-box { background: #123B33; border-color: #123B33; }
+.ls-auto-tick { color: #FFFFFF; font-size: 20rpx; font-weight: 800; line-height: 1; }
+.ls-auto-title { color: #2A3B34; font-size: 23rpx; font-weight: 700; }
+.ls-auto-code { flex: 1; text-align: right; color: #123B33; font-size: 23rpx; font-weight: 800; }
+.ls-auto-sub { color: #93A39C; font-size: 20rpx; line-height: 1.5; }
+.ls-auto:active { opacity: .75; }
 .ls-field input { width: 100%; color: #16211D; font-size: 28rpx; font-weight: 600; }
 
 /* 选择器 */
