@@ -1,0 +1,146 @@
+<template>
+	<XsaSheet :visible="visible" title="我的画像档案" :tall="true" @close="close">
+		<scroll-view scroll-y class="prt-scroll" :show-scrollbar="false">
+			<view class="prt-content">
+				<view class="prt-segments">
+					<button class="prt-segment" :class="{ active: subject == 'personal' }" @tap="chooseSubject('personal')">我的真实画像</button>
+					<button class="prt-segment" :class="{ active: subject == 'ideal_partner' }" @tap="chooseSubject('ideal_partner')">期待的长期关系</button>
+				</view>
+				<view class="prt-segments">
+					<button class="prt-segment" :class="{ active: tab == 'report' }" @tap="tab = 'report'">画像报告</button>
+					<button class="prt-segment" :class="{ active: tab == 'metrics' }" @tap="tab = 'metrics'">数据报表</button>
+				</view>
+				<view v-if="loading" class="prt-state"><view class="prt-skeleton" /><view class="prt-skeleton prt-short" /><text>正在读取已确认版本…</text></view>
+				<view v-else-if="errorText != ''" class="prt-state">
+					<text class="prt-title">{{ errorTitle }}</text><text class="prt-copy">{{ errorText }}</text>
+					<button v-if="retryable" class="prt-button" @tap="load">重新读取</button>
+					<button class="prt-button prt-secondary" @tap="goChat">返回与知遇聊聊</button>
+				</view>
+				<template v-else-if="report != null">
+					<view class="prt-cover"><text class="prt-eyebrow">知遇整理 · 仅本人可见</text><text class="prt-title">{{ report.title }}</text><text class="prt-copy">已确认版本 v{{ report.revisionNo }} · {{ report.publishedAt != null ? report.publishedAt.slice(0, 10) : '日期未提供' }}</text></view>
+					<text class="prt-copy">{{ report.notice }}</text>
+					<template v-if="tab == 'report'">
+						<text v-if="report.narrativeNotice != ''" class="prt-note">{{ report.narrativeNotice }}</text>
+						<view v-if="report.sections.length == 0" class="prt-state"><text>本版尚无可展示的字段。未知信息留白，不作推断。</text></view>
+						<view v-for="(section, index) in report.sections" :key="section.key" class="prt-section">
+							<text class="prt-section-index">{{ index + 1 < 10 ? '0' + (index + 1) : index + 1 }}</text>
+							<text class="prt-heading">{{ section.title }}</text>
+							<text v-if="section.copy != ''" class="prt-body">{{ section.copy }}</text>
+							<view v-for="row in section.rows" :key="row.key" class="prt-row"><text class="prt-label">{{ row.label }}</text><text class="prt-value">{{ row.value }}</text></view>
+						</view>
+					</template>
+					<MoxiangMetricsSheet v-else :key="report.subject + '-' + report.revisionId" :report="report" />
+					<view class="prt-footer">
+						<button class="prt-button prt-secondary" @tap="load">刷新已确认版本</button>
+						<text class="prt-copy">报告包含仅本人可见的信息，不可整页分享。可导出当前个人画像中已经采用的公开介绍，私密偏好、心理推断和报表指标不会进入图片。</text>
+						<button v-if="subject == 'personal'" class="prt-button" :disabled="exporting" @tap="prepareExport">{{ exporting ? '正在准备公开长图…' : '导出可分享版本' }}</button>
+						<text v-else class="prt-note">伴侣期待仅本人可见，不支持导出。</text>
+						<text v-if="exportError != ''" class="prt-note">{{ exportError }}</text>
+						<image v-if="exportPath != ''" :src="exportPath" mode="widthFix" class="prt-export" :show-menu-by-longpress="true" />
+						<button v-if="exportPath != ''" class="prt-button" :disabled="saving" @tap="saveImage">{{ saving ? '保存中…' : '保存长图到相册' }}</button>
+						<canvas id="portraitPublicReportCanvas" type="2d" class="prt-export-canvas" />
+					</view>
+				</template>
+			</view>
+		</scroll-view>
+	</XsaSheet>
+</template>
+<script setup lang="uts">
+import { ref, watch, nextTick, onBeforeUnmount, getCurrentInstance } from 'vue'
+import XsaSheet from '@/components/XsaSheet.uvue'
+import MoxiangMetricsSheet from './MoxiangMetricsSheet.uvue'
+import { getPublicProfileCardExport, type ProfileSubject } from '@/api/ai-profile.uts'
+import { portraitResponseData } from '@/api/ai-profile-metrics.uts'
+import { loadPortraitReport, type PortraitReportView } from '@/utils/portrait-report-data.uts'
+import { portraitPublicExportData, drawPortraitPublicReport } from '@/utils/portrait-report-export.uts'
+import { aiFailureNotice } from '@/utils/ai-error.uts'
+const props = withDefaults(defineProps<{ visible: boolean, initialTab?: string }>(), { initialTab: 'report' })
+const emit = defineEmits<{ close: [], chat: [] }>()
+const instance = getCurrentInstance()
+const report = ref<PortraitReportView | null>(null), subject = ref<ProfileSubject>('personal'), tab = ref('report')
+const loading = ref(false), errorText = ref(''), errorTitle = ref(''), retryable = ref(false)
+const exporting = ref(false), saving = ref(false), exportPath = ref(''), exportError = ref('')
+let alive = true, requestSeq = 0
+function clearPrivate() { requestSeq++; report.value = null; exportPath.value = ''; exportError.value = ''; exporting.value = false; saving.value = false }
+async function load() {
+	clearPrivate(); const seq = requestSeq; loading.value = true; errorText.value = ''; errorTitle.value = ''
+	try {
+		const result = await loadPortraitReport(subject.value)
+		if (alive && props.visible && seq == requestSeq) report.value = result
+	} catch (error: any) {
+		if (!alive || !props.visible || seq != requestSeq) return
+		const code = Number(error?.code)
+		const notice = aiFailureNotice(error, '画像报告')
+		errorTitle.value = code == 404 ? '还没有已确认画像' : code == 403 ? '需要画像授权' : code == 409 ? '版本已变化' : notice.title
+		errorText.value = [403, 404, 409].includes(code) ? String(error.message) : notice.hint
+		retryable.value = code == 409 || (notice.retryable && code != 403 && code != 404)
+	} finally { if (alive && seq == requestSeq) loading.value = false }
+}
+function chooseSubject(value: ProfileSubject) { if (value == subject.value) return; subject.value = value; load() }
+function close() { clearPrivate(); emit('close') }
+function goChat() { close(); emit('chat') }
+async function prepareExport() {
+	if (exporting.value || report.value == null || subject.value != 'personal') return
+	exporting.value = true; exportError.value = ''; exportPath.value = ''
+	const seq = requestSeq, revisionId = report.value.revisionId
+	try {
+		const choice: any = await new Promise((resolve) => uni.showModal({ title: '仅导出公开内容', content: '图片只包含当前已采用的公开介绍和标签，不含私密报告、伴侣偏好或指标。保存后由你自行决定是否分享。', confirmText: '确认导出', success: resolve, fail: () => resolve({ confirm: false }) }))
+		if (!choice.confirm || !alive || !props.visible || seq != requestSeq) return
+		const raw = portraitResponseData(await getPublicProfileCardExport(revisionId))
+		if (!alive || !props.visible || seq != requestSeq) return
+		const data = portraitPublicExportData(raw, revisionId)
+		await nextTick()
+		const path = await drawPortraitPublicReport('portraitPublicReportCanvas', instance?.proxy ?? null, data)
+		if (!alive || !props.visible || seq != requestSeq) return
+		// 导出期间的撤权和换版也必须使图片失效。
+		portraitPublicExportData(portraitResponseData(await getPublicProfileCardExport(revisionId)), revisionId)
+		if (alive && props.visible && seq == requestSeq) exportPath.value = path
+	} catch (error: any) { if (alive && seq == requestSeq) exportError.value = String(error?.message ?? '导出失败，请重新读取公开内容后重试') }
+	finally { if (alive && seq == requestSeq) exporting.value = false }
+}
+async function saveImage() {
+	if (saving.value || exportPath.value == '' || report.value == null) return
+	saving.value = true; const seq = requestSeq, revisionId = report.value.revisionId
+	try {
+		portraitPublicExportData(portraitResponseData(await getPublicProfileCardExport(revisionId)), revisionId)
+		if (!alive || !props.visible || seq != requestSeq || exportPath.value == '') return
+		await new Promise((resolve, reject) => uni.saveImageToPhotosAlbum({ filePath: exportPath.value, success: resolve, fail: reject }))
+		if (alive && seq == requestSeq) uni.showToast({ title: '已保存，可从相册分享', icon: 'success' })
+	} catch (error: any) {
+		if (!alive || seq != requestSeq) return
+		const message = String(error?.errMsg ?? '')
+		if (/auth|deny|denied/.test(message)) uni.showModal({ title: '需要相册权限', content: '可以在设置中允许保存，也可以长按图片使用系统菜单。', confirmText: '去设置', success: (result: any) => { if (result.confirm && alive && props.visible && seq == requestSeq) uni.openSetting() } })
+		else { exportPath.value = ''; exportError.value = String(error?.message ?? '保存未完成，请重新导出后重试') }
+	} finally { if (alive && seq == requestSeq) saving.value = false }
+}
+watch(() => props.visible, (visible: boolean) => { if (visible) { tab.value = props.initialTab; load() } else clearPrivate() }, { immediate: true })
+onBeforeUnmount(() => { alive = false; clearPrivate() })
+</script>
+<style scoped>
+.prt-scroll { height: 76vh; }
+.prt-content { padding: 8px 16px 40px; display: flex; flex-direction: column; gap: 20px; color: var(--ink); }
+.prt-segments { display: flex; flex-direction: row; gap: 8px; }
+.prt-segment { margin: 0; padding: 0 8px; min-height: 44px; flex: 1; font-size: 13px; color: var(--ink2); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.prt-segment.active { background: var(--accent-bg); color: var(--accent2); border-color: var(--accent2); }
+.prt-state { padding: 40px 8px; display: flex; flex-direction: column; align-items: stretch; gap: 16px; color: var(--ink2); text-align: center; font-size: 14px; }
+.prt-skeleton { height: 18px; background: var(--warm); border-radius: 4px; }
+.prt-short { width: 65%; }
+.prt-cover { display: flex; flex-direction: column; gap: 12px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+.prt-eyebrow { font-size: 12px; color: var(--ink2); letter-spacing: 2px; }
+.prt-title { font-family: var(--serif); font-weight: 600; font-size: 24px; line-height: 1.5; }
+.prt-copy, .prt-note { font-size: 12px; line-height: 1.8; color: var(--ink2); }
+.prt-note { padding: 12px; background: var(--warm); border-radius: 8px; }
+.prt-section { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.prt-section-index { font-size: 12px; color: var(--ink2); }
+.prt-heading { font-size: 17px; font-family: var(--serif); font-weight: 600; }
+.prt-body { font-size: 14px; line-height: 1.9; color: var(--ink2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.prt-row { display: flex; flex-direction: row; gap: 16px; padding: 12px 0; border-top: 1px solid var(--line); align-items: flex-start; }
+.prt-label { font-size: 12px; color: var(--ink2); width: 72px; flex-shrink: 0; line-height: 1.8; }
+.prt-value { flex: 1; min-width: 0; font-size: 14px; color: var(--ink); line-height: 1.7; overflow-wrap: anywhere; }
+.prt-footer { display: flex; flex-direction: column; gap: 16px; }
+.prt-button { margin: 0; min-height: 44px; padding: 0 16px; border-radius: 8px; font-size: 14px; background: var(--accent2); color: var(--text-invert); }
+.prt-secondary { background: var(--surface); color: var(--ink2); border: 1px solid var(--line); }
+.prt-button::after, .prt-segment::after { border: none; }
+.prt-export { width: 100%; border-radius: 12px; }
+.prt-export-canvas { width: 600px; height: 1600px; position: fixed; left: -9999px; top: -9999px; pointer-events: none; }
+</style>

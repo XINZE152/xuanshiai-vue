@@ -3,6 +3,10 @@
  * import { getRecommendUser, getMessageList } from '@/api'
  */
 
+// 画像指标与独立角色扮演
+export { getPortraitMetricHistory } from './ai-profile-metrics.uts'
+export { getRoleplayScenes, getRoleplayTurns, submitRoleplayTurn, confirmRoleplayInterest } from './ai-roleplay.uts'
+
 // 配置开关（页面只允许从 '@/api' 取，禁止直接引 api/config.uts）
 export { EMOTION_LAB_USE_MOCK } from './config.uts'
 

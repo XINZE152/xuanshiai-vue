@@ -1,0 +1,223 @@
+<template>
+	<XsaSheet :visible="true" title="角色扮演" :tall="true" @close="closeSheet">
+		<view class="rp-scroll-wrap"><scroll-view scroll-y class="rp-sheet-scroll"><view class="rp">
+			<text class="rp-intro">这里是独立的 AI 角色扮演。角色、名字与对白均为虚构，与平台其它 AI 能力无关。</text>
+			<text class="rp-note">只有你主动点击「确认记入画像」的兴趣才会同步；虚构设定与角色台词不会写入你的资料。</text>
+			<view v-if="loadingScenes" class="rp-state"><text>正在加载角色…</text></view>
+			<view v-else-if="sceneError != ''" class="rp-state"><text>{{ sceneError }}</text><view v-if="sceneRetryable" class="rp-action" @tap="loadScenes"><text>重试</text></view></view>
+			<view v-else-if="scenes.length == 0" class="rp-state"><text>暂无可用角色，请稍后再来。</text><view class="rp-action" @tap="loadScenes"><text>重试</text></view></view>
+			<view v-else>
+				<text class="rp-label">选择角色</text>
+				<view class="rp-scenes">
+					<view v-for="scene in scenes" :key="scene.key" class="rp-card" :class="{ selected: selectedKey == scene.key }" @tap="selectScene(scene)">
+						<view class="rp-avatar" :style="'background-color:var(' + scene.avatar_token + ')'"><text class="rp-avatar-glyph">{{ scene.avatar_glyph }}</text></view>
+						<view class="rp-card-copy"><text class="rp-card-name">{{ scene.role_name }}</text><text class="rp-card-label">{{ scene.label }}</text></view>
+					</view>
+				</view>
+				<view v-if="selectedScene != null" class="rp-selected">
+					<view class="rp-avatar rp-avatar-large" :style="'background-color:var(' + selectedScene.avatar_token + ')'"><text class="rp-avatar-glyph">{{ selectedScene.avatar_glyph }}</text></view>
+					<view class="rp-selected-copy"><text class="rp-selected-name">{{ selectedScene.role_name }} · AI 角色扮演</text><text class="rp-description">{{ selectedScene.description }}</text></view>
+				</view>
+				<view v-if="loadingTurns" class="rp-state"><text>正在加载对话…</text></view>
+				<view v-else-if="turnError != ''" class="rp-state"><text>{{ turnError }}</text><view v-if="turnRetryable" class="rp-action" @tap="loadTurns"><text>重试</text></view></view>
+				<scroll-view v-else scroll-y class="rp-history">
+					<view v-for="(turn, index) in displayTurns" :key="turn.turn_id + '-' + index" class="rp-message" :class="{ mine: turn.role == 'user' }">
+						<text class="rp-speaker">{{ turn.role == 'user' ? '我' : (selectedScene != null ? selectedScene.role_name : 'AI 角色') }}</text>
+						<text class="rp-text">{{ turn.answer_text }}</text>
+					</view>
+				</scroll-view>
+				<view class="rp-field"><text class="rp-label">场景补充（选填）</text><input v-model="customSetting" :disabled="busy || pending != null" class="rp-input" maxlength="200" placeholder="补充氛围或话题，不改变角色身份" /></view>
+				<view class="rp-field"><text class="rp-label">你的对话</text><textarea v-model="message" class="rp-input rp-small" maxlength="2000" :disabled="busy || pending != null" placeholder="输入想说的话" /></view>
+				<view v-if="submitError != ''" class="rp-error"><text>{{ submitError }}</text><text v-if="submitRetryable">失败的内容会保留，重试使用同一请求。</text><view v-if="pending != null && !busy" class="rp-action" @tap="discardPending"><text>取消重试并重新编辑</text></view></view>
+				<view class="rp-send" :class="{ disabled: busy || loadingTurns || turnError != '' }" @tap="send"><text>{{ busy ? '发送中…' : (pending != null ? '重试发送' : '发送') }}</text></view>
+				<view class="rp-interest">
+					<text class="rp-label">把现实兴趣记入画像（需你确认）</text>
+					<text class="rp-interest-hint">仅填写你本人真实的兴趣；确认后仍需你在画像流程中整份确认。</text>
+					<input v-model="interestTag" :disabled="busy || interestBusy" class="rp-input" maxlength="64" placeholder="例如：阅读" />
+					<view class="rp-interest-btn" :class="{ disabled: interestBusy || interestTag.trim() == '' || lastTurnId == '' }" @tap="confirmInterest"><text>{{ interestBusy ? '正在确认…' : '确认记入画像' }}</text></view>
+					<text v-if="interestNotice != ''" class="rp-interest-notice">{{ interestNotice }}</text>
+				</view>
+			</view>
+		</view>
+	</scroll-view></view></XsaSheet>
+</template>
+<script setup lang="uts">
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import XsaSheet from '@/components/XsaSheet.uvue'
+import { getRoleplayScenes, getRoleplayTurns, submitRoleplayTurn, confirmRoleplayInterest, ROLEPLAY_PRESET_SCENES, type RoleplayScene, type RoleplayTurn, type RoleplaySubmit } from '@/api/ai-roleplay.uts'
+import { genIdempotencyKey } from '@/api/ai-profile.uts'
+import { aiFailureNotice } from '@/utils/ai-error.uts'
+const emit = defineEmits<{ close: [] }>()
+const scenes = ref<RoleplayScene[]>([])
+const turns = ref<RoleplayTurn[]>([])
+const selectedKey = ref('')
+const selectedScene = computed((): RoleplayScene | null => scenes.value.find((s: RoleplayScene): boolean => s.key == selectedKey.value) ?? null)
+// 首次进入或没有历史时，角色主动开口问话。
+const displayTurns = computed((): RoleplayTurn[] => {
+	if (turns.value.length > 0 || selectedScene.value == null) return turns.value
+	const opening = selectedScene.value.opening_line
+	if (opening == null || opening == '') return turns.value
+	return [{ turn_id: 'opening-' + selectedScene.value.key, role: 'assistant', answer_text: opening, created_at: '' }]
+})
+const loadingScenes = ref(false)
+const loadingTurns = ref(false)
+const sceneError = ref('')
+const sceneRetryable = ref(true), turnRetryable = ref(true), submitRetryable = ref(true)
+const turnError = ref('')
+const submitError = ref('')
+const message = ref('')
+const customSetting = ref('')
+const interestTag = ref('')
+const interestNotice = ref('')
+const interestBusy = ref(false)
+const lastTurnId = ref('')
+const busy = ref(false)
+const pending = ref<{ payload: RoleplaySubmit, key: string } | null>(null)
+let sequence = 0
+let alive = true
+function failure(e: any): string {
+	if (Number(e?.code ?? 0) == 403) return '当前账号无权使用角色扮演，请检查授权后重试。'
+	const notice = aiFailureNotice(e, '角色扮演')
+	return notice.title + '。' + notice.hint
+}
+function clearPrivate() {
+	sequence++
+	turns.value = []
+	message.value = ''
+	customSetting.value = ''
+	interestTag.value = ''
+	interestNotice.value = ''
+	lastTurnId.value = ''
+	pending.value = null
+	busy.value = false
+	submitError.value = ''
+}
+function closeSheet() { clearPrivate(); emit('close') }
+async function loadScenes() {
+	const seq = ++sequence
+	loadingScenes.value = true
+	sceneError.value = ''
+	try {
+		const result = await getRoleplayScenes()
+		if (!alive || seq != sequence) return
+		scenes.value = result.length > 0 ? result : ROLEPLAY_PRESET_SCENES
+		if (scenes.value.length > 0) { selectedKey.value = scenes.value[0].key; await loadTurns() }
+	} catch (e: any) {
+		if (alive && seq == sequence) {
+			// 接口不可用只展示静态角色卡，不伪装对话能力。
+			scenes.value = ROLEPLAY_PRESET_SCENES
+			if (scenes.value.length > 0) selectedKey.value = scenes.value[0].key
+			sceneError.value = failure(e)
+			sceneRetryable.value = aiFailureNotice(e, '角色扮演').retryable && Number(e?.code) != 403
+		}
+	} finally { if (alive) loadingScenes.value = false }
+}
+function selectScene(scene: RoleplayScene) {
+	if (scene.key == selectedKey.value || busy.value) return
+	clearPrivate()
+	selectedKey.value = scene.key
+	loadTurns()
+}
+async function loadTurns() {
+	const seq = ++sequence
+	const key = selectedKey.value
+	loadingTurns.value = true
+	turnError.value = ''
+	try {
+		const result = await getRoleplayTurns(key)
+		if (alive && seq == sequence && key == selectedKey.value) {
+			turns.value = result
+			lastTurnId.value = result.length > 0 ? String(result[result.length - 1].turn_id) : ''
+		}
+	} catch (e: any) {
+		if (alive && seq == sequence) {
+			turns.value = []
+			turnError.value = failure(e)
+			turnRetryable.value = aiFailureNotice(e, '角色扮演').retryable && Number(e?.code) != 403
+		}
+	} finally { if (alive && seq == sequence) loadingTurns.value = false }
+}
+function discardPending() { if (busy.value) return; pending.value = null; submitError.value = ''; submitRetryable.value = true }
+async function send() {
+	if (pending.value != null && !submitRetryable.value) return
+	if (busy.value || loadingTurns.value || turnError.value != '' || selectedKey.value == '') return
+	if (pending.value == null) {
+		const text = message.value.trim()
+		if (text == '') { uni.showToast({ title: '请输入对话内容', icon: 'none' }); return }
+		const id = genIdempotencyKey()
+		const payload: RoleplaySubmit = { scene_key: selectedKey.value, user_message: text, client_turn_id: id }
+		if (customSetting.value.trim() != '') payload.custom_setting = customSetting.value.trim()
+		pending.value = { payload: payload, key: id }
+	}
+	const current = pending.value
+	if (current == null) return
+	const seq = sequence
+	busy.value = true
+	submitError.value = ''
+	try {
+		const result = await submitRoleplayTurn(current.payload, current.key)
+		if (!alive || seq != sequence || pending.value !== current) return
+		turns.value.push({ turn_id: result.turn_id + '-user', role: 'user', answer_text: current.payload.user_message, created_at: '' })
+		turns.value.push({ turn_id: String(result.turn_id), role: 'assistant', answer_text: String(result.assistant_reply), created_at: '' })
+		lastTurnId.value = String(result.turn_id)
+		message.value = ''
+		pending.value = null
+	} catch (e: any) {
+		if (alive && seq == sequence) {
+			const text = failure(e)
+			submitRetryable.value = aiFailureNotice(e, '角色扮演').retryable && ![400, 401, 403, 409, 422].includes(Number(e?.code))
+			if (Number(e?.code ?? 0) == 401 || Number(e?.code ?? 0) == 403) clearPrivate()
+			submitError.value = text
+		}
+	} finally { if (alive && seq == sequence) busy.value = false }
+}
+async function confirmInterest() {
+	if (interestBusy.value || busy.value) return
+	const tag = interestTag.value.trim()
+	if (tag == '' || lastTurnId.value == '') { uni.showToast({ title: '请先完成一轮对话', icon: 'none' }); return }
+	interestBusy.value = true
+	interestNotice.value = ''
+	try {
+		const result = await confirmRoleplayInterest({ turn_id: lastTurnId.value, tag: tag, confirm: true }, genIdempotencyKey())
+		interestNotice.value = String(result?.notice ?? '已确认，等待你在画像流程中整份确认。')
+		interestTag.value = ''
+	} catch (e: any) {
+		interestNotice.value = failure(e)
+	} finally { interestBusy.value = false }
+}
+onMounted(() => { loadScenes() })
+onUnmounted(() => { alive = false; clearPrivate(); scenes.value = []; selectedKey.value = '' })
+</script>
+<style scoped>
+.rp-scroll-wrap { padding: 0 16px; }
+.rp-sheet-scroll { height: 76vh; }
+.rp { display:flex; flex-direction:column; gap:10px; padding-bottom: 32px; color:var(--ink); }
+.rp-intro,.rp-note,.rp-description,.rp-interest-hint,.rp-interest-notice { font-size:12px; line-height:1.5; color:var(--ink2); }
+.rp-note { padding:10px; background:var(--warm); border-radius:8px; }
+.rp-label { font-size:13px; font-weight:700; color:var(--ink); }
+.rp-scenes { display:flex; flex-direction:row; flex-wrap:wrap; gap:8px; margin:8px 0; }
+.rp-card { display:flex; flex-direction:row; align-items:center; gap:8px; min-height:56px; box-sizing:border-box; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
+.rp-card.selected { border-color:var(--accent2); background:var(--accent-bg); }
+.rp-avatar { display:flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:999px; color:var(--text-invert); flex-shrink:0; }
+.rp-avatar-large { width:48px; height:48px; }
+.rp-avatar-glyph { font-size:16px; font-weight:700; }
+.rp-card-copy,.rp-selected-copy { display:flex; flex-direction:column; gap:2px; }
+.rp-card-name,.rp-selected-name { font-size:13px; font-weight:700; color:var(--ink); }
+.rp-card-label { font-size:11px; color:var(--ink2); }
+.rp-selected { display:flex; flex-direction:row; align-items:center; gap:10px; padding:10px; background:var(--canvas); border-radius:8px; }
+.rp-field,.rp-interest { display:flex; flex-direction:column; gap:6px; margin-top:10px; }
+.rp-interest { padding:10px; border:1px solid var(--line); border-radius:8px; }
+.rp-input { box-sizing: border-box; width:100%; min-height:44px; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--surface); font-size:14px; }
+.rp-small { height:68px; }
+.rp-history { height:200px; margin-top:10px; background:var(--canvas); border-radius:8px; }
+.rp-message { display:flex; flex-direction:column; margin:8px; padding:10px; background:var(--surface); border-radius:8px; }
+.rp-message.mine { background:var(--accent-bg); }
+.rp-speaker { font-size:12px; color:var(--accent2); font-weight:700; }
+.rp-text { font-size:14px; line-height:1.5; word-break:break-all; }
+.rp-state { display:flex; flex-direction:column; align-items:center; gap:8px; padding:18px 8px; font-size:13px; color:var(--ink2); }
+.rp-action { min-height:44px; padding:10px 20px; color:var(--accent2); }
+.rp-error { display:flex; flex-direction:column; gap:4px; margin-top:8px; color:var(--ink2); font-size:12px; }
+.rp-send,.rp-interest-btn { display:flex; justify-content:center; align-items:center; min-height:44px; margin-top:10px; border-radius:8px; background:var(--accent2); color:var(--text-invert); font-weight:700; }
+.rp-interest-btn { background:var(--surface); color:var(--accent2); border:1px solid var(--accent2); }
+.rp-send.disabled,.rp-interest-btn.disabled { opacity:0.5; }
+</style>

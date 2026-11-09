@@ -1,12 +1,12 @@
 <template>
 	<view class="mm-page">
 		<!-- 导航栏 -->
-		<view class="mm-nav" :style="{ paddingTop: navPadTop + 'px', paddingRight: (menuButtonSpacing + 8) + 'px' }">
+		<view class="mm-nav" :style="{ paddingTop: navPadTop + 'px', paddingRight: (menuButtonSpacing + 8) + 'px', zIndex: roleplayVisible ? 1 : 100 }">
 			<view class="mm-nav-side mm-nav-back" @tap="navBack">
 				<text class="mm-nav-back-text">‹</text>
 			</view>
 			<text class="mm-nav-title" :style="{ top: navPadTop + 'px' }">与知遇聊聊</text>
-			<view class="mm-nav-side"></view>
+			<view class="mm-nav-side mm-roleplay-entry" @tap="openRoleplay"><text class="mm-roleplay-entry-text">角色扮演</text></view>
 		</view>
 
 		<MoxiangContinuousPanel v-if="continuousFlow && continuousState != null && continuousState.consent_granted" :state="continuousState" @open="openContinuousPortrait" />
@@ -111,6 +111,7 @@
 			<!-- 消息流 -->
 			<scroll-view scroll-y class="mm-flow" enhanced :show-scrollbar="false" :scroll-into-view="scrollAnchor" :scroll-with-animation="true">
 				<view v-if="continuousFlow && historyBeforeId != null" class="mm-history-more" @tap="loadOlderContinuousHistory"><text class="mm-state-sub">{{ historyLoading ? '正在恢复…' : '查看更早的对话' }}</text></view>
+				<view v-if="!continuousFlow && legacyHistoryCursors[activeSessionBySubject[currentSubject]] != null" class="mm-history-more" @tap="loadOlderLegacyHistory"><text class="mm-state-sub">{{ legacyHistoryBusy ? '正在恢复…' : '查看更早的对话' }}</text></view>
 				<view v-if="visibleMessages.length == 0" class="mm-empty">
 					<text class="mm-empty-title">从一句近况开始</text>
 					<text class="mm-empty-sub">说说最近在想什么，{{ masterRoleName }}会帮你慢慢整理。</text>
@@ -266,10 +267,12 @@
 			</view>
 		</view>
 		<XsaMoxiangTrace :trace="devMoxiangTrace" />
+		<MoxiangRoleplaySheet v-if="roleplayVisible" @close="closeRoleplay" />
 	</view>
 </template>
 
 <script setup lang="uts">
+import MoxiangRoleplaySheet from '@/pagesSub/profileExtra/components/moxiang/MoxiangRoleplaySheet.uvue'
 import MoxiangMasterAvatar from '@/pagesSub/profileExtra/components/MoxiangMasterAvatar.uvue'
 import MoxiangEntryState from '@/pagesSub/profileExtra/components/moxiang/MoxiangEntryState.uvue'
 import MoxiangProgressPanel from '@/pagesSub/profileExtra/components/moxiang/MoxiangProgressPanel.uvue'
@@ -623,6 +626,7 @@ async function loadPortraitArchive() {
 
 // ===== 连接 =====
 function connectWS() {
+	if (!masterPageVisible || !masterPageAlive) return
 	const connId = ++connectionSeq
 	// A retry creates a fresh socket, but the local message stream belongs to the
 	// page/session and must survive the transport replacement.
@@ -1885,6 +1889,20 @@ async function openContinuousPortrait(subject: string) {
 	}
 }
 
+// 角色扮演是独立面板；不改动知遇的 WS、轮询、录音或异步恢复状态。
+const roleplayVisible = ref(false)
+function openRoleplay() {
+	if (roleplayVisible.value) return
+	if (isRecording || masterState.value == 'listening' || masterState.value == 'thinking' || transcriptPreviewVisible.value || continuousActionBusy.value || consentBusy) {
+		uni.showToast({ title: '请先完成当前对话或录音', icon: 'none' })
+		return
+	}
+	roleplayVisible.value = true
+}
+function closeRoleplay() {
+	roleplayVisible.value = false
+}
+
 // ===== 重试 =====
 function retryConnect() {
 	// Keep both visible turns and the dedupe index.  Only a transient typing
@@ -1981,21 +1999,31 @@ async function restoreConfirmCardFromRest(subject: ProfileSubject) {
 }
 
 // 按 turn_id 去重合并服务端历史到本地消息流
+const legacyHistoryCursors = ref<Record<string, number | null>>({})
+const legacyHistoryBusy = ref(false)
+async function loadOlderLegacyHistory() {
+	if (legacyHistoryBusy.value) return
+	const subject = currentSubject.value
+	const sessionId = activeSessionBySubject.value[subject]
+	const cursor = legacyHistoryCursors.value[sessionId]
+	if (sessionId == '' || cursor == null) return
+	legacyHistoryBusy.value = true
+	try { await loadSessionHistory(sessionId, cursor, subject) } finally { legacyHistoryBusy.value = false }
+}
 async function loadSessionHistory(sessionId: string, beforeTurnNo: number | null, subject: ProfileSubject = currentSubject.value) {
 	try {
 		const res = await getSessionTurns(sessionId, beforeTurnNo, 50)
+		if (!masterPageAlive || !masterPageVisible || continuousFlow.value || activeSessionBySubject.value[subject] != sessionId) return
+		const older: any[] = []
 		for (let i = 0; i < res.turns.length; i++) {
 			const t: MoxiangTurn = res.turns[i]
 			if (restoredTurnIds.value.has(t.turnId)) continue
 			restoredTurnIds.value.add(t.turnId)
-			if (t.role == 'assistant') {
-				addMessage('master', t.content, true, subject)
-			} else {
-				addMessage('user', t.content, false, subject)
-			}
+			older.push({ id: 'history-' + t.turnId, turnId: t.turnId, role: t.role == 'assistant' ? 'master' : 'user', text: t.content, canListen: t.role == 'assistant', subject })
 		}
+		messages.value = older.concat(messages.value)
+		legacyHistoryCursors.value[sessionId] = res.nextBeforeTurnNo
 	} catch (e: any) {
-		// 历史读取失败不替换本地已有消息,提示重试
 		stateError.value = '重新加载历史'
 	}
 }
@@ -2173,6 +2201,7 @@ onLoad((options: any) => {
 })
 
 onHide(() => {
+	roleplayVisible.value = false
 	if (!continuousFlow.value) return
 	masterPageVisible = false
 	continuousLoadSeq++
@@ -2189,6 +2218,7 @@ onHide(() => {
 })
 
 onUnmounted(() => {
+	roleplayVisible.value = false
 	masterPageAlive = false
 	masterPageVisible = false
 	connectionSeq++
@@ -2213,6 +2243,8 @@ const devMoxiangTrace = ref<any>(null)
 </script>
 
 <style scoped>
+.mm-roleplay-entry { position: relative; z-index: 2; min-width: 68px; }
+.mm-roleplay-entry-text { font-size: 12px; color: var(--primary-deep); }
 .mm-sync-error { flex-shrink: 0; min-height: 44px; padding: 0 16px; display: flex; align-items: center; }
 .mm-history-more { min-height: 44px; display: flex; align-items: center; justify-content: center; }
 .mm-hero.mm-hero-compact { flex-direction: row; gap: 10px; padding: 4px 16px; }

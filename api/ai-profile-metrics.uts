@@ -1,0 +1,67 @@
+import { request } from './request.uts'
+import { USE_MOCK } from './config.uts'
+import type { ProfileSubject } from './ai-profile.uts'
+
+export interface PortraitMetricDimension {
+	key: string
+	percent: number | null
+	evidence_count: number | null
+}
+export interface PortraitMetricPoint {
+	revision_id: number
+	revision_no: number
+	published_at: string | null
+	overall_percent: number | null
+	confirmed_field_count: number | null
+	entry_count: number | null
+	dimensions: PortraitMetricDimension[]
+}
+export interface PortraitMetricHistory {
+	subject: ProfileSubject
+	points: PortraitMetricPoint[]
+	has_more: boolean
+	notice: string
+}
+
+export function portraitNullableNumber(value: any, maximum: number = Number.MAX_SAFE_INTEGER): number | null {
+	if (typeof value != 'number' || !Number.isFinite(value) || value < 0 || value > maximum) return null
+	return value
+}
+
+export function portraitResponseData(response: any): any {
+	if (response == null) throw { code: 502, message: '服务返回为空，请重试' }
+	if (response.success === false) throw response
+	return response.data != null ? response.data : response
+}
+
+export function adaptPortraitMetricHistory(raw: any, subject: ProfileSubject): PortraitMetricHistory {
+	if (raw == null || raw.subject != subject || !Array.isArray(raw.points) || typeof raw.has_more != 'boolean') {
+		throw { code: 502, message: '历史指标格式不一致，请更新后重试' }
+	}
+	const points: PortraitMetricPoint[] = []
+	const seen = new Set<number>()
+	for (const item of raw.points) {
+		const id = portraitNullableNumber(item.revision_id)
+		const no = portraitNullableNumber(item.revision_no)
+		if (id == null || no == null || id < 1 || no < 1 || !Number.isInteger(id) || !Number.isInteger(no) || seen.has(id)) throw { code: 502, message: '历史版本标识异常' }
+		seen.add(id)
+		const dimensions: PortraitMetricDimension[] = []
+		const keys = new Set<string>()
+		for (const dim of (Array.isArray(item.dimensions) ? item.dimensions : [])) {
+			if (typeof dim.key != 'string' || keys.has(dim.key)) continue
+			keys.add(dim.key)
+			dimensions.push({ key: dim.key, percent: portraitNullableNumber(dim.percent, 100), evidence_count: portraitNullableNumber(dim.evidence_count) })
+		}
+		points.push({ revision_id: id, revision_no: no, published_at: typeof item.published_at == 'string' ? item.published_at : null,
+			overall_percent: portraitNullableNumber(item.overall_percent, 100), confirmed_field_count: portraitNullableNumber(item.confirmed_field_count),
+			entry_count: portraitNullableNumber(item.entry_count), dimensions: dimensions })
+	}
+	points.sort((a: PortraitMetricPoint, b: PortraitMetricPoint): number => a.revision_no - b.revision_no)
+	return { subject: subject, points: points, has_more: raw.has_more, notice: typeof raw.notice == 'string' ? raw.notice : '仅记录已确认版本的理解覆盖度，旧版本无指标时留白。' }
+}
+
+export async function getPortraitMetricHistory(subject: ProfileSubject, limit: number = 20): Promise<PortraitMetricHistory> {
+	if (USE_MOCK) throw { code: 503, businessCode: 'AI_FEATURE_DISABLED', message: '历史指标需要连接真实服务' }
+	const response = await request({ url: '/ai/profile-metrics/history', method: 'GET', data: { subject: subject, limit: limit } })
+	return adaptPortraitMetricHistory(portraitResponseData(response), subject)
+}

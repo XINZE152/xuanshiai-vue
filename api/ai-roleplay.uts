@@ -1,0 +1,54 @@
+import { request } from './request.uts'
+import { USE_MOCK } from './config.uts'
+
+export interface RoleplayScene { key: string, label: string, description: string, role_name: string, avatar_token: string, avatar_glyph: string, opening_line: string }
+export interface RoleplayTurn { turn_id: string, role: string, answer_text: string, created_at: string }
+export interface RoleplaySubmit { scene_key: string, user_message: string, client_turn_id: string, custom_setting?: string }
+export interface RoleplaySubmitResult { session_id: string, turn_id: string, assistant_reply: string, notice: string }
+export interface RoleplayInterestConfirm { turn_id: string, tag: string, confirm: boolean }
+
+/** 仅用于接口不可用时的静态展示，绝不用于伪装 AI 回复。 */
+export const ROLEPLAY_PRESET_SCENES: RoleplayScene[] = [
+	{ key: 'coffee_chat', label: '咖啡馆闲聊', description: '在轻松的咖啡时光里聊聊近况与日常', role_name: '林夏', avatar_token: '--accent', avatar_glyph: '夏', opening_line: '先别急着聊正事——今天这杯咖啡，你是特意给自己留了点时间，还是刚好路过？' },
+	{ key: 'hobby_exploration', label: '兴趣探索', description: '聊聊平时喜欢做什么、怎么打发空闲', role_name: '方远', avatar_token: '--navy', avatar_glyph: '远', opening_line: '我最近在琢磨一个问题：一个人真正喜欢做的事，通常是怎么开始的？你有没有一做起来就忘了时间的事？' },
+	{ key: 'life_vision', label: '未来畅想', description: '聊聊期待的生活节奏与长期打算', role_name: '简宁', avatar_token: '--sage', avatar_glyph: '宁', opening_line: '如果只挑一个词形容你希望几年后的生活节奏，你会选哪个？我想先听听这个词背后的画面。' },
+	{ key: 'weekend_activity', label: '周末活动', description: '聊聊周末怎么放松、喜欢哪些活动', role_name: '江野', avatar_token: '--brown', avatar_glyph: '野', opening_line: '周末如果完全不安排，你通常会怎么过？我挺好奇你是喜欢出门，还是更愿意待着。' }
+]
+
+function unwrapRoleplay(raw: any): any {
+	if (raw == null || raw.success !== true || raw.data == null) {
+		const error: any = new Error(raw?.message ?? '角色扮演暂时不可用')
+		error.code = raw?.code ?? 0
+		error.businessCode = raw?.businessCode ?? ''
+		error.retryable = raw?.retryable !== false
+		throw error
+	}
+	return raw.data
+}
+function unavailableMock(): never {
+	const error: any = new Error('角色扮演暂未接入模拟数据')
+	error.code = 503
+	throw error
+}
+export async function getRoleplayScenes(): Promise<RoleplayScene[]> {
+	if (USE_MOCK) return ROLEPLAY_PRESET_SCENES
+	const data = unwrapRoleplay(await request({ url: '/ai/roleplay/scenes', method: 'GET' }))
+	if (!Array.isArray(data.scenes)) throw new Error('场景数据格式错误')
+	return data.scenes as RoleplayScene[]
+}
+export async function getRoleplayTurns(sceneKey: string): Promise<RoleplayTurn[]> {
+	if (USE_MOCK) return []
+	const data = unwrapRoleplay(await request({ url: '/ai/roleplay/turns?scene_key=' + encodeURIComponent(sceneKey) + '&limit=50', method: 'GET' }))
+	if (!Array.isArray(data.turns)) throw new Error('对话记录格式错误')
+	return data.turns as RoleplayTurn[]
+}
+export async function submitRoleplayTurn(payload: RoleplaySubmit, key: string): Promise<RoleplaySubmitResult> {
+	if (USE_MOCK) return unavailableMock()
+	const data = unwrapRoleplay(await request({ url: '/ai/roleplay/submit', method: 'POST', data: payload, headers: { 'Idempotency-Key': key } }))
+	if (data.turn_id == null || data.assistant_reply == null) throw new Error('回复数据格式错误，请重试')
+	return data as RoleplaySubmitResult
+}
+export async function confirmRoleplayInterest(payload: RoleplayInterestConfirm, key: string): Promise<any> {
+	if (USE_MOCK) return unavailableMock()
+	return unwrapRoleplay(await request({ url: '/ai/roleplay/interests/confirm', method: 'POST', data: payload, headers: { 'Idempotency-Key': key } }))
+}

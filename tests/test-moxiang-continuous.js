@@ -42,6 +42,7 @@ function sandbox() {
   const calls = { connected: 0, audio: 0, history: 0, sent: [], timers: new Map(), cleared: 0, timerSeq: 0 }
   const ctx = {
     masterPageAlive: true, masterPageVisible: true, continuousFlow: ref(true),
+    roleplayVisible: ref(false),
     continuousLoadSeq: 0, continuousSnapshotSeq: 0, continuousPollGeneration: 0, connectionSeq: 0,
     continuousPendingBuilds: new Map(), continuousActionBusy: ref(false), genIdempotencyKey: () => `build-${Math.random()}`, pageFirstShow: false,
     messages: ref([{ id: 'old', text: '已有理解' }]), restoredTurnIds: ref(new Set(['old'])), openingMessageKeys: new Set(['welcome']),

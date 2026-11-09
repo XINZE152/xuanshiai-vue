@@ -387,7 +387,7 @@ export function getMoxiangArchive(): Promise<MoxiangArchiveResponse> {
 	return request({
 		url: buildApiUrl('/ai/moxiang/archive'),
 		method: 'GET'
-	}).then((raw: any) => adaptArchive(raw?.data ?? raw ?? {}))
+	}).then((raw: any) => adaptArchive(unwrapMoxiangResponse(raw)))
 }
 
 // 连续对话：不以单主体 session 决定用户能否开始聊天。

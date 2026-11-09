@@ -1,0 +1,61 @@
+import { PORTRAIT_CHART_THEME as T } from '@/utils/portrait-chart-theme.uts'
+import { createPortraitCanvas } from '@/utils/portrait-chart-drawer.uts'
+
+export interface PortraitPublicExport { title: string, tags: string[], introduction: string, revisionId: number }
+
+export function portraitPublicExportData(raw: any, revisionId: number): PortraitPublicExport {
+	if (raw == null || raw.status != 'ready' || raw.subject != 'personal' || raw.revision_id != revisionId || raw.source_revision_id != revisionId || raw.public == null) {
+		throw { code: 409, message: '公开内容与当前版本不一致，请重新读取画像' }
+	}
+	// 公开接口是唯一数据源；私密报告、指标与伴侣偏好不能进入导出参数。
+	const pub = raw.public
+	const title = typeof pub.persona_title == 'string' ? pub.persona_title.trim() : ''
+	const introduction = typeof pub.self_intro == 'string' ? pub.self_intro.trim() : ''
+	const tags = Array.isArray(pub.persona_tags) ? pub.persona_tags.filter((tag: any): boolean => typeof tag == 'string' && tag.trim() != '').map((tag: string): string => tag.trim()) : []
+	if (title == '' && introduction == '' && tags.length == 0) throw { code: 404, message: '尚无已采用的公开介绍，请先在成稿页整理并采用公开内容' }
+	return { title: title, tags: tags, introduction: introduction, revisionId: revisionId }
+}
+function lines(ctx: any, text: string, maxWidth: number): string[] {
+	const rows: string[] = []; let line = ''
+	for (const character of text) {
+		if (character == '\n') { rows.push(line); line = ''; continue }
+		if (line != '' && ctx.measureText(line + character).width > maxWidth) { rows.push(line); line = character } else line += character
+	}
+	if (line != '') rows.push(line)
+	return rows
+}
+export async function drawPortraitPublicReport(id: string, component: any, data: PortraitPublicExport): Promise<string> {
+	const ctx = await createPortraitCanvas(id, component, 600, 1600)
+	ctx.font = '24px sans-serif'
+	const content = lines(ctx, data.introduction, 504)
+	const tagRows = lines(ctx, data.tags.join(' · '), 504)
+	ctx.font = '34px sans-serif'
+	const titleRows = lines(ctx, data.title != '' ? data.title : '我的公开介绍', 504)
+	const height = Math.max(600, 268 + titleRows.length * 48 + tagRows.length * 38 + content.length * 40)
+	ctx.canvas.width = 1200; ctx.canvas.height = height * 2; ctx.scale(2, 2)
+	ctx.fillStyle = T.paper; ctx.fillRect(0, 0, 600, height)
+	ctx.textBaseline = 'top'; ctx.fillStyle = T.ink2; ctx.font = '18px sans-serif'; ctx.fillText('知遇 · 我的公开介绍', 48, 48)
+	let y = 106
+	ctx.fillStyle = T.ink; ctx.font = '34px sans-serif'
+	for (const row of titleRows) { ctx.fillText(row, 48, y); y += 48 }
+	y += 22; ctx.font = '24px sans-serif'; ctx.fillStyle = T.ink2
+	for (const row of tagRows) { ctx.fillText(row, 48, y); y += 38 }
+	y += 28
+	for (const row of content) { ctx.fillText(row, 48, y); y += 40 }
+	ctx.strokeStyle = T.line; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(48, height - 92); ctx.lineTo(552, height - 92); ctx.stroke()
+	ctx.font = '16px sans-serif'; ctx.fillStyle = T.ink2; ctx.fillText('AI 整理，仅供参考 · 内容由本人确认采用', 48, height - 66)
+	return new Promise<string>((resolve, reject) => {
+		const options: any = { canvas: ctx.canvas, width: 1200, height: height * 2, destWidth: 1200, destHeight: height * 2, fileType: 'png',
+			success: (res: any) => { if (typeof res.tempFilePath == 'string' && res.tempFilePath != '') resolve(res.tempFilePath); else reject(new Error('未获取导出图片')) }, fail: reject }
+		// #ifdef MP-WEIXIN
+		const query = uni.createSelectorQuery(); const scoped = component != null ? query.in(component) : query
+		scoped.select('#' + id).fields({ node: true, size: true }).exec((result: any) => {
+			if (result == null || result[0] == null || result[0].node == null) { reject(new Error('无法读取画布节点')); return }
+			options.canvas = result[0].node; uni.canvasToTempFilePath(options)
+		})
+		// #endif
+		// #ifndef MP-WEIXIN
+		uni.canvasToTempFilePath(options, component)
+		// #endif
+	})
+}

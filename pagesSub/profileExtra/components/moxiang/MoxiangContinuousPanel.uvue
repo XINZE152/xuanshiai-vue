@@ -18,7 +18,7 @@ const props = defineProps<{ state: ContinuousMoxiangState }>()
 const emit = defineEmits(['open'])
 function open(subject: string) { emit('open', subject) }
 function portraitView(item: ContinuousSubjectState): any {
-	let label = '整理中'
+	let label = '收集信息中'
 	let action = '继续聊聊'
 	if (item.status == 'generating') { label = '生成中'; action = '查看任务' }
 	if (item.status == 'awaiting_confirmation') { label = '待确认'; action = '阅读成稿' }

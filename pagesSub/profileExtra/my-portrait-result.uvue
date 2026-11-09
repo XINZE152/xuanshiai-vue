@@ -71,7 +71,7 @@
 		<!-- 已发布但叙事 Worker 尚未生成完成。 -->
 		<view v-else-if="publishedMode && !narrativeReady" class="mpr-state">
 			<text class="mpr-state-title">{{ continuousFlow ? '正在读取已确认画像' : '正在写下完整画像' }}</text>
-			<text class="mpr-state-copy">{{ continuousFlow ? '确认结果已经提交。请刷新核对正式版本，不会另行生成不同正文。' : '成稿已经发布，完整理解仍在后台整理。稍后刷新即可，不需要重复发布。' }}</text>
+			<text class="mpr-state-copy">{{ continuousFlow ? '确认结果已经提交。请刷新核对正式版本，不会另行生成不同正文。' : '暂未取得可展示的完整画像。请刷新重试，或返回画像档案查看已有历史摘要；无需重复发布。' }}</text>
 			<text v-if="narrativeFailure != ''" class="mpr-state-copy mpr-fail">上次整理失败：{{ narrativeFailure }}。可稍后刷新重试，不影响已发布的成稿。</text>
 			<view class="mpr-btn mpr-btn-primary" @tap="retryLoad">
 				<text class="mpr-btn-primary-text">刷新画像</text>

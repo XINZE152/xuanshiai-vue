@@ -1,0 +1,109 @@
+<template>
+	<view class="pmt-root">
+		<text class="pmt-copy">只展示当前已确认版本的冻结指标，不使用聊天中的待确认进度。</text>
+		<view v-if="loading" class="pmt-state"><text>正在读取历史指标…</text></view>
+		<view v-else-if="errorText != ''" class="pmt-state">
+			<text>{{ errorText }}</text><button v-if="retryable" class="pmt-button" @tap="load">重新读取</button>
+		</view>
+		<template v-else-if="metrics != null">
+			<view class="pmt-tabs">
+				<button v-for="tab in tabs" :key="tab.key" class="pmt-tab" :class="{ active: chart == tab.key }" @tap="setChart(tab.key)">{{ tab.label }}</button>
+			</view>
+			<view class="pmt-plot">
+				<text class="pmt-heading">{{ chartTitle }}</text>
+				<text v-if="chart == 'history' && metrics.series.length < 2" class="pmt-copy">{{ metrics.series.length == 0 ? '还没有可对比的历史版本；旧版本没有快照时不会补零。' : '目前只有一个指标版本，再确认一个版本后便可对比变化。' }}</text>
+				<text v-else-if="chart != 'history' && metrics.coveragePercent == null" class="pmt-copy">当前正式版本没有冻结指标。保留空白，不使用新对话的进度替代。</text>
+				<canvas v-else id="portraitMetricsCanvas" type="2d" class="pmt-canvas" :style="{ width: canvasWidth + 'px', height: canvasHeight + 'px' }" @tap="selectHistoryPoint" />
+				<text v-if="drawError != ''" class="pmt-copy">{{ drawError }}；下方表格仍可查看全部数值。</text>
+				<view v-if="chart == 'history' && selectedPoint != null" class="pmt-readout"><text>v{{ selectedPoint.revision_no }} · {{ selectedPoint.published_at != null ? selectedPoint.published_at.slice(0, 10) : '日期未提供' }} · {{ percentText(selectedPoint.overall_percent) }}</text></view>
+			</view>
+			<text class="pmt-copy">理解覆盖度只反映已确认信息的覆盖情况，不是人格分、关系质量或完成任务的分数。六维中每个维度按不同高置信证据数计为 0% / 50% / 100%，总值取平均。</text>
+			<view class="pmt-table">
+				<view class="pmt-row pmt-head"><text class="pmt-cell-name">当前版本 v{{ report.revisionNo }}</text><text class="pmt-cell">覆盖度</text><text class="pmt-cell">证据数</text></view>
+				<view v-for="(dim, index) in metrics.dimensions" :key="dim.key" class="pmt-row"><text class="pmt-cell-name">{{ index + 1 }} {{ dim.label }}</text><text class="pmt-cell">{{ percentText(dim.percent) }}</text><text class="pmt-cell">{{ dim.evidenceCount == null ? '未提供' : dim.evidenceCount }}</text></view>
+				<view class="pmt-row"><text class="pmt-cell-name">六维平均覆盖度</text><text class="pmt-cell">{{ percentText(metrics.coveragePercent) }}</text></view>
+				<view class="pmt-row"><text class="pmt-cell-name">已确认结构化字段 / 条目</text><text>{{ metrics.confirmedFieldCount == null ? '未提供' : metrics.confirmedFieldCount }} / {{ metrics.entryCount == null ? '未提供' : metrics.entryCount }}</text></view>
+			</view>
+			<text class="pmt-heading">版本明细</text>
+			<text v-if="metrics.series.length == 0" class="pmt-copy">暂无历史指标。继续聊天并确认新的成稿后，将记录新的版本点。</text>
+			<button v-for="(point, index) in metrics.series" :key="point.revision_id" class="pmt-history" @tap="pickPoint(index)"><text>v{{ point.revision_no }} · {{ point.published_at != null ? point.published_at.slice(0, 10) : '日期未提供' }}</text><text>{{ percentText(point.overall_percent) }}</text></button>
+			<text v-if="hasMore" class="pmt-copy">仅展示最近 {{ historyLimit }} 个指标版本。</text>
+			<button v-if="hasMore && historyLimit < 100" class="pmt-button" @tap="loadMore">显示最近 100 个版本</button>
+		</template>
+	</view>
+</template>
+<script setup lang="uts">
+import { ref, computed, watch, nextTick, getCurrentInstance, onBeforeUnmount } from 'vue'
+import { getPortraitMetricHistory, type PortraitMetricPoint } from '@/api/ai-profile-metrics.uts'
+import { buildPortraitMetrics, type PortraitReportView, type PortraitMetricsView } from '@/utils/portrait-report-data.uts'
+import { createPortraitCanvas, drawPortraitRadar, drawPortraitRing, drawPortraitLine } from '@/utils/portrait-chart-drawer.uts'
+import { aiFailureNotice } from '@/utils/ai-error.uts'
+const props = defineProps<{ report: PortraitReportView }>()
+const instance = getCurrentInstance()
+const canvasWidth = Math.max(220, Math.min(364, uni.getSystemInfoSync().windowWidth - 64))
+const canvasHeight = computed((): number => chart.value == 'radar' ? 252 : 224)
+const loading = ref(false), errorText = ref(''), retryable = ref(true), drawError = ref(''), chart = ref('radar')
+const metrics = ref<PortraitMetricsView | null>(null), selected = ref(-1), hasMore = ref(false), historyLimit = ref(20)
+const tabs = [{ key: 'radar', label: '六维图' }, { key: 'ring', label: '覆盖度' }, { key: 'history', label: '版本曲线' }]
+let alive = true, requestSeq = 0, drawSeq = 0
+const selectedPoint = computed((): PortraitMetricPoint | null => metrics.value != null && selected.value >= 0 ? metrics.value.series[selected.value] : null)
+const chartTitle = computed((): string => chart.value == 'radar' ? '已确认信息的六维覆盖' : chart.value == 'ring' ? '六维平均理解覆盖度' : '理解覆盖度 · 按确认版本变化')
+function percentText(value: number | null): string { return value == null ? '未提供' : value.toFixed(1) + '%' }
+async function load() {
+	const seq = ++requestSeq; ++drawSeq; loading.value = true; errorText.value = ''; metrics.value = null; drawError.value = ''
+	try {
+		const history = await getPortraitMetricHistory(props.report.subject, historyLimit.value)
+		if (!alive || seq != requestSeq) return
+		metrics.value = buildPortraitMetrics(props.report, history); hasMore.value = history.has_more; selected.value = metrics.value.series.length - 1
+	} catch (error: any) {
+		if (!alive || seq != requestSeq) return
+		const notice = aiFailureNotice(error, '画像指标'); errorText.value = Number(error?.code) == 403 ? '授权已变化，请关闭并重新进入档案' : notice.title + '。' + notice.hint; retryable.value = notice.retryable
+	} finally { if (alive && seq == requestSeq) { loading.value = false; await renderChart() } }
+}
+async function renderChart() {
+	const seq = ++drawSeq; await nextTick()
+	if (!alive || seq != drawSeq || metrics.value == null || loading.value || errorText.value != '') return
+	if ((chart.value == 'history' && metrics.value.series.length < 2) || (chart.value != 'history' && metrics.value.coveragePercent == null)) return
+	try {
+		const ctx = await createPortraitCanvas('portraitMetricsCanvas', instance?.proxy ?? null, canvasWidth, canvasHeight.value)
+		if (!alive || seq != drawSeq || metrics.value == null) return
+		if (chart.value == 'radar') drawPortraitRadar(ctx, canvasWidth, metrics.value.dimensions)
+		else if (chart.value == 'ring') drawPortraitRing(ctx, canvasWidth, metrics.value.coveragePercent)
+		else drawPortraitLine(ctx, canvasWidth, metrics.value.series, selected.value)
+		drawError.value = ''
+	} catch (error) { if (alive && seq == drawSeq) drawError.value = '图形暂时未能绘制' }
+}
+function setChart(value: string) { chart.value = value; renderChart() }
+function pickPoint(index: number) { selected.value = index; chart.value = 'history'; renderChart() }
+function selectHistoryPoint(event: any) {
+	if (chart.value != 'history' || metrics.value == null || metrics.value.series.length < 2) return
+	const x = Number(event?.detail?.x)
+	if (!Number.isFinite(x)) return
+	selected.value = Math.max(0, Math.min(metrics.value.series.length - 1, Math.round((x - 36) / (canvasWidth - 56) * (metrics.value.series.length - 1))))
+	renderChart()
+}
+function loadMore() { if (loading.value) return; historyLimit.value = 100; load() }
+watch(() => props.report.revisionId, () => { historyLimit.value = 20; load() }, { immediate: true })
+onBeforeUnmount(() => { alive = false; requestSeq++; drawSeq++; metrics.value = null })
+</script>
+<style scoped>
+.pmt-root { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.pmt-copy { font-size: 12px; line-height: 1.8; color: var(--ink2); }
+.pmt-heading { font-size: 15px; font-weight: 600; color: var(--ink); }
+.pmt-state { padding: 32px 12px; text-align: center; color: var(--ink2); font-size: 14px; }
+.pmt-tabs { display: flex; flex-direction: row; gap: 6px; }
+.pmt-tab, .pmt-button { margin: 0; padding: 0 10px; min-height: 44px; border-radius: 8px; font-size: 13px; color: var(--ink2); background: var(--surface); border: 1px solid var(--line); }
+.pmt-tab { flex: 1; }
+.pmt-tab.active { color: var(--accent2); background: var(--accent-bg); border-color: var(--accent2); }
+.pmt-plot { padding: 16px 0; display: flex; flex-direction: column; gap: 12px; align-items: center; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; }
+.pmt-plot > .pmt-copy { padding: 0 16px; }
+.pmt-canvas { max-width: 100%; }
+.pmt-readout { padding: 8px 12px; font-size: 12px; color: var(--ink); background: var(--warm); border-radius: 6px; }
+.pmt-table { border-top: 1px solid var(--line); }
+.pmt-row { display: flex; flex-direction: row; align-items: center; gap: 8px; min-height: 48px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink2); }
+.pmt-head { color: var(--ink); font-weight: 600; }
+.pmt-cell-name { flex: 1; min-width: 0; }
+.pmt-cell { width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
+.pmt-history { margin: 0; padding: 10px 12px; min-height: 44px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink2); font-size: 12px; display: flex; flex-direction: row; justify-content: space-between; }
+.pmt-tab::after, .pmt-button::after, .pmt-history::after { border: none; }
+</style>

@@ -1,0 +1,88 @@
+import { getMoxiangArchive, getContinuousMoxiangState } from '@/api/ai-moxiang.uts'
+import { listPublishedProfileFields, getPortraitNarrative, type ProfileSubject } from '@/api/ai-profile.uts'
+import { portraitResponseData, type PortraitMetricHistory, type PortraitMetricPoint } from '@/api/ai-profile-metrics.uts'
+import { displayFieldValue } from '@/utils/profile-field-display.uts'
+import { MOXIANG_DIMENSIONS, categoryLabel } from '@/utils/moxiang-dimension.uts'
+
+export interface PortraitReportRow { key: string, label: string, value: string, source: string }
+export interface PortraitReportSection { key: string, title: string, rows: PortraitReportRow[], copy: string }
+export interface PortraitReportView {
+	subject: ProfileSubject
+	revisionId: number
+	revisionNo: number
+	publishedAt: string | null
+	title: string
+	sections: PortraitReportSection[]
+	notice: string
+	narrativeNotice: string
+}
+export interface PortraitChartDimension { key: string, label: string, percent: number | null, evidenceCount: number | null }
+export interface PortraitMetricsView { dimensions: PortraitChartDimension[], coveragePercent: number | null, confirmedFieldCount: number | null, entryCount: number | null, series: PortraitMetricPoint[] }
+
+const STRUCTURED_KEYS = ['age', 'city_code', 'marriage_status', 'education_level', 'height_cm', 'income_band', 'occupation_group', 'interest_tags', 'lifestyle_tags', 'relationship_goal']
+const FIELD_LABELS = ['年龄', '城市', '婚姻状态', '学历', '身高', '收入区间', '职业', '兴趣爱好', '生活方式', '关系期待']
+const ENTRY_GROUPS = ['basics', 'occupation', 'appearance', 'personality', 'values', 'interests', 'routine', 'diet', 'life_plan']
+
+export function buildPortraitReport(subject: ProfileSubject, revision: any, fields: any[], narrative: any): PortraitReportView {
+	if (revision == null || !(revision.revisionId > 0)) throw { code: 404, message: '还没有已确认画像，请先与知遇聊聊并确认成稿' }
+	const sections: PortraitReportSection[] = []
+	const basicRows: PortraitReportRow[] = []
+	for (let index = 0; index < STRUCTURED_KEYS.length; index++) {
+		const key = STRUCTURED_KEYS[index]
+		const row = fields.find((field: any): boolean => field.field_kind == 'structured' && field.field_key == key)
+		if (row == null || (row.value == null && (row.display_value == null || row.display_value == ''))) continue
+		const text = displayFieldValue(key, row.value, row.display_value)
+		if (text == '') continue
+		basicRows.push({ key: key, label: FIELD_LABELS[index], value: text, source: '已确认版本 v' + revision.revisionNo })
+	}
+	if (basicRows.length > 0) sections.push({ key: 'basics', title: subject == 'personal' ? '你确认过的自己' : '你确认过的期待', rows: basicRows, copy: '' })
+	for (const category of ENTRY_GROUPS) {
+		const rows: PortraitReportRow[] = fields.filter((field: any): boolean => field.field_kind == 'entry' && field.category == category && typeof field.content == 'string' && field.content.trim() != '')
+			.map((field: any): PortraitReportRow => ({ key: String(field.field_key), label: categoryLabel(category), value: String(field.content), source: '已确认版本 v' + revision.revisionNo }))
+		if (rows.length > 0) sections.push({ key: 'entry-' + category, title: categoryLabel(category), rows: rows, copy: '' })
+	}
+	const narrativeReady = narrative != null && narrative.subject == subject && Number(narrative.revision_id) == revision.revisionId && (narrative.status == 'confirmed' || narrative.status == 'published')
+	if (narrativeReady) {
+		if (typeof narrative.insight == 'string' && narrative.insight.trim() != '') sections.push({ key: 'insight', title: '知遇整理', rows: [], copy: narrative.insight })
+		for (const dimension of MOXIANG_DIMENSIONS) {
+			const item = Array.isArray(narrative.dimensions) ? narrative.dimensions.find((row: any): boolean => row.key == dimension.key) : null
+			if (item != null && typeof item.summary == 'string' && item.summary.trim() != '') sections.push({ key: 'narrative-' + dimension.key, title: dimension.label, rows: [], copy: item.summary })
+		}
+		if (typeof narrative.conclusion == 'string' && narrative.conclusion.trim() != '') sections.push({ key: 'conclusion', title: '写给此刻的你', rows: [], copy: narrative.conclusion })
+	}
+	return { subject: subject, revisionId: revision.revisionId, revisionNo: revision.revisionNo, publishedAt: revision.publishedAt,
+		title: subject == 'personal' ? '我的真实画像' : '期待的长期关系', sections: sections,
+		notice: 'AI 整理，仅供参考，未经事实认证。本报告仅本人可见；新对话需再次确认才会更新正式画像。',
+		narrativeNotice: narrativeReady ? '' : '叙事尚未确认或版本未对齐，当前只展示已确认字段，不把待确认稿作为正式报告。' }
+}
+
+export function buildPortraitMetrics(report: PortraitReportView, history: PortraitMetricHistory): PortraitMetricsView {
+	if (history.subject != report.subject) throw { code: 502, message: '画像主体与指标不一致' }
+	const current = history.points.find((point: PortraitMetricPoint): boolean => point.revision_id == report.revisionId)
+	const dimensions: PortraitChartDimension[] = MOXIANG_DIMENSIONS.map((meta: any): PortraitChartDimension => {
+		const point = current != null ? current.dimensions.find((item: any): boolean => item.key == meta.key) : null
+		return { key: meta.key, label: meta.label, percent: point != null ? point.percent : null, evidenceCount: point != null ? point.evidence_count : null }
+	})
+	return { dimensions: dimensions, coveragePercent: current != null ? current.overall_percent : null,
+		confirmedFieldCount: current != null ? current.confirmed_field_count : null, entryCount: current != null ? current.entry_count : null,
+		series: history.points.filter((point: PortraitMetricPoint): boolean => point.revision_no <= report.revisionNo) }
+}
+
+export async function loadPortraitReport(subject: ProfileSubject): Promise<PortraitReportView> {
+	const initial = await Promise.all([getMoxiangArchive(), getContinuousMoxiangState()])
+	if (!initial[1].consent_granted) throw { code: 403, message: '请先完成画像授权' }
+	const archive = subject == 'personal' ? initial[0].personal : initial[0].idealPartner
+	const revision = archive.currentRevision
+	if (revision == null) throw { code: 404, message: '还没有已确认画像，请先与知遇聊聊并确认成稿' }
+	const fields = portraitResponseData(await listPublishedProfileFields(subject))
+	if (fields.subject != subject || !Array.isArray(fields.fields)) throw { code: 502, message: '画像字段格式不一致，请重试' }
+	let narrative: any = null
+	try { narrative = portraitResponseData(await getPortraitNarrative(subject)) }
+	catch (error: any) { if (Number(error?.code) == 401 || Number(error?.code) == 403) throw error }
+	// 字段接口没有 revision_id，因此用前后两次单调递增版本读取防止跨版本拼装。
+	const final = await Promise.all([getMoxiangArchive(), getContinuousMoxiangState()])
+	if (!final[1].consent_granted) throw { code: 403, message: '授权状态已变化，请重新进入知遇' }
+	const current = subject == 'personal' ? final[0].personal.currentRevision : final[0].idealPartner.currentRevision
+	if (current == null || current.revisionId != revision.revisionId) throw { code: 409, businessCode: 'RESULT_STALE', message: '画像版本已变化，请刷新后查看' }
+	return buildPortraitReport(subject, revision, fields.fields, narrative)
+}

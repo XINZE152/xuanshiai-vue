@@ -210,8 +210,25 @@ async function main() {
     await t.closeMemorySheet()
     assert.equal(t.ctx.memorySheetVisible, false)
     assert.equal(t.calls.stateLoads, 1, 'closing data management rechecks consent')
+    t.ctx.archive.personal.consentActive = true
+    t.ctx.archive.personal.currentRevision = { revisionId: 1 }
     t.goLegacy('personal')
     assert.match(t.calls.urls[0], /subject=personal$/)
+  }
+  {
+    const t = page()
+    const archive = emptyArchive()
+    archive.personal.currentRevision = { revisionId: 12 }
+    archive.personal.consentActive = true
+    archive.personal.summaryExcerpt = '已有历史摘要'
+    t.ctx.getMoxiangArchive = async () => archive
+    t.ctx.getContinuousMoxiangState = async () => { throw new Error('temporary failure') }
+    await t.loadArchive()
+    assert.equal(t.ctx.archive.personal.currentRevision.revisionId, 12)
+    assert.equal(t.ctx.errorMessage, '', 'a state failure must not hide a successful archive')
+    assert.match(t.ctx.continuousError, /暂时不可用/)
+    t.goLegacy('personal')
+    assert.equal(t.calls.modals[0].content, '已有历史摘要')
   }
   for (const code of [401, 403]) {
     const t = page({ loading: true, pollTimer: 1 })

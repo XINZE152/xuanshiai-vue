@@ -7,6 +7,11 @@ const testDir = __dirname
 // 只在取得真实产物的环境执行（AGENTS §6.1：产物由 HBuilderX 生成）。
 // 跨仓契约测试统一通过 tests/helpers/cross-repo.cjs 解析后端路径。
 const core = [
+  'test-portrait-report-contract.js',
+  'test-portrait-metrics-history.js',
+  'test-portrait-chart-theme.js',
+  'test-portrait-report-export.js',
+  'test-roleplay-entry-contract.js',
   'test-ai-avatar-request.js',
   'test-ai-search-proxy-contract.js',
   'test-community-api-compile-guard.js',
