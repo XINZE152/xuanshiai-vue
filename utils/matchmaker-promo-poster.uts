@@ -1,0 +1,470 @@
+/**
+ * 红娘推广海报：把红娘头像、称呼与平台首页二维码画成一张可保存的竖版海报。
+ * 二维码内容固定为平台首页地址，点阵离线生成后内嵌：字节模式 + 纠错等级 M + 自动版本（两串都是 25x25），
+ * 用 node_modules/qrcode-terminal 内置的 Kazuhiko Arase 编码器生成，再用 qrcode-reader 独立回读校验过内容。
+ * 换域名时需按同样参数重新生成 HOME_QR_* 两串，运行期只按格子画方块，不在小程序里塞 QR 编码器。
+ */
+
+import { API_BASE_URL, resolveMediaUrl } from '@/api/config.uts'
+
+const TEST_HOME_URL = 'https://xhztest.xyz'
+const PROD_HOME_URL = 'https://www.xuanshiai.com'
+
+/** 海报二维码指向的平台首页：release 指向正式域名，其余环境统一指向可访问的测试域名。 */
+export const PLATFORM_HOME_URL = API_BASE_URL == PROD_HOME_URL ? PROD_HOME_URL : TEST_HOME_URL
+
+export interface PromoPosterData {
+  name: string
+  avatar: string
+}
+
+export interface PromoPosterStyle {
+  key: string
+  name: string
+  topFrom: string
+  topTo: string
+  glow: string
+  band: string
+  bandDeep: string
+  ring: string
+  heart: string
+  heartSoft: string
+  nameColor: string
+  sloganColor: string
+  sloganSoft: string
+  qrBorder: string
+  hintText: string
+}
+
+export const PROMO_POSTER_STYLES: PromoPosterStyle[] = [
+  {
+    key: 'rose',
+    name: '玫粉良缘',
+    topFrom: '#FDF3F3',
+    topTo: '#F7DEE1',
+    glow: 'rgba(255,255,255,.85)',
+    band: '#DE7286',
+    bandDeep: '#CF5F76',
+    ring: '#EEA6B2',
+    heart: '#E28C9C',
+    heartSoft: 'rgba(232,168,180,.34)',
+    nameColor: '#CE3F60',
+    sloganColor: '#C1707C',
+    sloganSoft: 'rgba(193,112,124,.55)',
+    qrBorder: '#F5D894',
+    hintText: '#FFFFFF'
+  },
+  {
+    key: 'lilac',
+    name: '藕荷心语',
+    topFrom: '#F8F5FC',
+    topTo: '#E6DEF1',
+    glow: 'rgba(255,255,255,.85)',
+    band: '#9E8CBF',
+    bandDeep: '#8B77AF',
+    ring: '#C3B2DC',
+    heart: '#A996C7',
+    heartSoft: 'rgba(169,150,199,.32)',
+    nameColor: '#6E5596',
+    sloganColor: '#8A76A8',
+    sloganSoft: 'rgba(138,118,168,.55)',
+    qrBorder: '#E3D6A8',
+    hintText: '#FFFFFF'
+  },
+  {
+    key: 'mint',
+    name: '薄荷初见',
+    topFrom: '#F4FAF8',
+    topTo: '#DCEDE8',
+    glow: 'rgba(255,255,255,.85)',
+    band: '#7FA9A1',
+    bandDeep: '#6C9792',
+    ring: '#A9CFC8',
+    heart: '#8FBDB4',
+    heartSoft: 'rgba(143,189,180,.32)',
+    nameColor: '#3F7168',
+    sloganColor: '#6E978F',
+    sloganSoft: 'rgba(110,151,143,.55)',
+    qrBorder: '#EBD9A5',
+    hintText: '#FFFFFF'
+  },
+  {
+    key: 'cocoa',
+    name: '暮山暖约',
+    topFrom: '#FBF5EF',
+    topTo: '#EFDDD0',
+    glow: 'rgba(255,255,255,.85)',
+    band: '#C08D76',
+    bandDeep: '#AE7A64',
+    ring: '#DCB49F',
+    heart: '#CE9E85',
+    heartSoft: 'rgba(206,158,133,.32)',
+    nameColor: '#8C4A33',
+    sloganColor: '#A9765F',
+    sloganSoft: 'rgba(169,118,95,.55)',
+    qrBorder: '#E9CE93',
+    hintText: '#FFFFFF'
+  }
+]
+
+const QR_MODULE_COUNT = 25
+
+const HOME_QR_TEST =
+  '1111111010110000001111111|1000001010100110001000001|1011101011111111101011101|1011101000000101001011101|1011101011101100101011101|1000001001110100101000001|1111111010101010101111111|0000000000111111100000000|1001111111110100110010111|1011110010001111100111110|0110101100110101010011001|0011110000100100011011111|1111011100111101001000001|1000110100100111110010010|1101111111111101000011111|1001110110010001100101101|1010001111000011111110110|0000000010011111100010110|1111111010110000101010001|1000001011101011100010010|1011101011101111111110001|1011101011100011111000011|1011101001101010000011111|1000001001100010001110111|1111111010100110111001001'
+
+const HOME_QR_PROD =
+  '1111111010111010001111111|1000001011100110101000001|1011101011100100101011101|1011101000110100001011101|1011101010000110101011101|1000001000101000101000001|1111111010101010101111111|0000000001011101100000000|1001111110011010110010111|1011110101110011010111110|0010101110110011101101001|0011000001110010100101111|1000011010001001101000001|1101110000100011110010010|1111101001111101011011111|1010010001010000010101101|1001101101101111111110110|0000000011111101100010110|1111111011010000101010001|1000001011100111100010011|1011101010111011111110000|1011101011110010101000011|1011101001110111110011111|1000001000000011000110111|1111111010101000110001001'
+
+/** 画布逻辑尺寸：竖版 600x975，导出按 2 倍放大到 1200x1950。 */
+export const PROMO_POSTER_WIDTH = 600
+export const PROMO_POSTER_HEIGHT = 975
+const POSTER_SCALE = 2
+
+const SLOGAN_LINE_ONE = '牵线良缘·成就幸福'
+const SLOGAN_LINE_TWO = '专业红娘·用心服务'
+
+export function getPromoPosterStyle(key: string): PromoPosterStyle {
+  for (let i = 0; i < PROMO_POSTER_STYLES.length; i++) {
+    if (PROMO_POSTER_STYLES[i].key == key) return PROMO_POSTER_STYLES[i]
+  }
+  return PROMO_POSTER_STYLES[0]
+}
+
+export function nextPromoPosterStyleKey(key: string): string {
+  const count = PROMO_POSTER_STYLES.length
+  let index = 0
+  for (let i = 0; i < count; i++) {
+    if (PROMO_POSTER_STYLES[i].key == key) { index = i; break }
+  }
+  return PROMO_POSTER_STYLES[(index + 1) % count].key
+}
+
+/** 红娘称呼统一带「老师」，已带后缀的资料不重复追加。 */
+export function promoPosterDisplayName(raw: string): string {
+  const name = raw.trim()
+  if (name.length == 0) return '红娘老师'
+  return name.indexOf('老师') >= 0 ? name : name + '老师'
+}
+
+function homeQrRows(): string[] {
+  return (PLATFORM_HOME_URL == PROD_HOME_URL ? HOME_QR_PROD : HOME_QR_TEST).split('|')
+}
+
+function roundRectPath(ctx: any, x: number, y: number, w: number, h: number, r: number) {
+  const radius = r < w / 2 ? r : w / 2
+  ctx.beginPath()
+  ctx.moveTo(x + radius, y)
+  ctx.lineTo(x + w - radius, y)
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius)
+  ctx.lineTo(x + w, y + h - radius)
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h)
+  ctx.lineTo(x + radius, y + h)
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius)
+  ctx.lineTo(x, y + radius)
+  ctx.quadraticCurveTo(x, y, x + radius, y)
+  ctx.closePath()
+}
+
+function heartPath(ctx: any, cx: number, cy: number, size: number) {
+  ctx.beginPath()
+  ctx.moveTo(cx, cy + size * 0.78)
+  ctx.bezierCurveTo(cx - size * 1.12, cy + size * 0.06, cx - size * 0.58, cy - size * 0.92, cx, cy - size * 0.28)
+  ctx.bezierCurveTo(cx + size * 0.58, cy - size * 0.92, cx + size * 1.12, cy + size * 0.06, cx, cy + size * 0.78)
+  ctx.closePath()
+}
+
+function drawHeart(ctx: any, cx: number, cy: number, size: number, color: string, filled: boolean) {
+  heartPath(ctx, cx, cy, size)
+  if (filled) {
+    ctx.fillStyle = color
+    ctx.fill()
+    return
+  }
+  ctx.strokeStyle = color
+  ctx.lineWidth = size * 0.16
+  ctx.stroke()
+}
+
+/** 字号按字数回缩，保证最长的称呼也留在画布内。 */
+function fitFont(ctx: any, text: string, maxWidth: number, maxSize: number, weight: string, family: string): number {
+  let size = maxSize
+  for (let i = 0; i < 12; i++) {
+    ctx.font = weight + ' ' + size.toString() + 'px ' + family
+    if (ctx.measureText(text).width <= maxWidth) break
+    size = size - maxSize * 0.06
+  }
+  return size
+}
+
+function drawTopGlow(ctx: any, w: number, h: number, style: PromoPosterStyle) {
+  const gradient = ctx.createLinearGradient(0, 0, 0, h)
+  gradient.addColorStop(0, style.topFrom)
+  gradient.addColorStop(0.66, style.topTo)
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, w, h)
+
+  const glow = ctx.createRadialGradient(w * 0.5, h * 0.24, w * 0.08, w * 0.5, h * 0.24, w * 0.62)
+  glow.addColorStop(0, style.glow)
+  glow.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = glow
+  ctx.fillRect(0, 0, w, h * 0.62)
+}
+
+function drawDecorHearts(ctx: any, w: number, h: number, style: PromoPosterStyle) {
+  drawHeart(ctx, w * 0.16, h * 0.395, w * 0.085, style.heartSoft, false)
+  drawHeart(ctx, w * 0.80, h * 0.345, w * 0.062, style.heart, true)
+  drawHeart(ctx, w * 0.875, h * 0.305, w * 0.034, style.heart, true)
+}
+
+function drawAvatar(ctx: any, image: any, data: PromoPosterData, w: number, h: number, style: PromoPosterStyle) {
+  const cx = w * 0.5
+  const cy = h * 0.235
+  const radius = w * 0.245
+  ctx.fillStyle = '#FFFFFF'
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius + w * 0.03, 0, Math.PI * 2)
+  ctx.fill()
+
+  if (image != null) {
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+    ctx.closePath()
+    ctx.clip()
+    ctx.drawImage(image, cx - radius, cy - radius, radius * 2, radius * 2)
+    ctx.restore()
+  } else {
+    ctx.fillStyle = style.band
+    ctx.beginPath()
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#FFFFFF'
+    ctx.font = 'bold ' + Math.round(radius * 0.86).toString() + 'px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(data.name.substring(0, 1), cx, cy + radius * 0.04)
+  }
+
+  ctx.strokeStyle = style.ring
+  ctx.lineWidth = w * 0.021
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius + w * 0.012, 0, Math.PI * 2)
+  ctx.stroke()
+}
+
+function drawName(ctx: any, data: PromoPosterData, w: number, h: number, style: PromoPosterStyle) {
+  const baseline = h * 0.435
+  const size = fitFont(ctx, data.name, w * 0.62, 44, 'bold', 'sans-serif')
+  ctx.font = 'bold ' + Math.round(size).toString() + 'px sans-serif'
+  ctx.fillStyle = style.nameColor
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(data.name, w * 0.5, baseline)
+
+  const half = ctx.measureText(data.name).width / 2
+  ctx.strokeStyle = style.sloganSoft
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(w * 0.5 - half - 58, baseline)
+  ctx.lineTo(w * 0.5 - half - 26, baseline)
+  ctx.moveTo(w * 0.5 + half + 26, baseline)
+  ctx.lineTo(w * 0.5 + half + 58, baseline)
+  ctx.stroke()
+  drawHeart(ctx, w * 0.5 - half - 15, baseline, 7, style.nameColor, true)
+  drawHeart(ctx, w * 0.5 + half + 15, baseline, 7, style.nameColor, true)
+}
+
+function drawSlogan(ctx: any, w: number, h: number, style: PromoPosterStyle) {
+  const size = fitFont(ctx, SLOGAN_LINE_ONE, w * 0.9, 58, 'bold', 'serif')
+  ctx.font = 'bold ' + Math.round(size).toString() + 'px serif'
+  ctx.fillStyle = style.sloganColor
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(SLOGAN_LINE_ONE, w * 0.5, h * 0.535)
+  ctx.fillText(SLOGAN_LINE_TWO, w * 0.5, h * 0.615)
+
+  ctx.strokeStyle = style.sloganSoft
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.moveTo(w * 0.30, h * 0.665)
+  ctx.quadraticCurveTo(w * 0.58, h * 0.695, w * 0.80, h * 0.645)
+  ctx.stroke()
+  drawHeart(ctx, w * 0.885, h * 0.615, w * 0.032, style.sloganSoft, false)
+}
+
+function drawBand(ctx: any, w: number, h: number, style: PromoPosterStyle) {
+  const top = h * 0.685
+  const gradient = ctx.createLinearGradient(0, top, 0, h)
+  gradient.addColorStop(0, style.band)
+  gradient.addColorStop(1, style.bandDeep)
+  ctx.fillStyle = gradient
+  ctx.beginPath()
+  ctx.moveTo(0, top + h * 0.022)
+  ctx.bezierCurveTo(w * 0.24, top - h * 0.028, w * 0.56, top + h * 0.038, w, top - h * 0.012)
+  ctx.lineTo(w, h)
+  ctx.lineTo(0, h)
+  ctx.closePath()
+  ctx.fill()
+}
+
+function drawQr(ctx: any, w: number, h: number, style: PromoPosterStyle) {
+  const box = w * 0.335
+  const x = w * 0.075
+  const y = h * 0.735
+  ctx.fillStyle = '#FFFFFF'
+  roundRectPath(ctx, x, y, box, box, 10)
+  ctx.fill()
+  ctx.strokeStyle = style.qrBorder
+  ctx.lineWidth = 3
+  roundRectPath(ctx, x, y, box, box, 10)
+  ctx.stroke()
+
+  const rows = homeQrRows()
+  const pad = box * 0.06
+  const module = (box - pad * 2) / QR_MODULE_COUNT
+  const originX = x + pad
+  const originY = y + pad
+  ctx.fillStyle = '#1A1A1A'
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r]
+    for (let c = 0; c < row.length; c++) {
+      if (row.substring(c, c + 1) != '1') continue
+      ctx.fillRect(originX + c * module, originY + r * module, module + 0.2, module + 0.2)
+    }
+  }
+}
+
+/** 设计图里的「点击手型」提示：食指 + 手掌 + 指尖两圈点击波纹。 */
+function drawTapHand(ctx: any, cx: number, cy: number, size: number, color: string) {
+  ctx.fillStyle = color
+  roundRectPath(ctx, cx - size * 0.1, cy - size * 0.72, size * 0.26, size * 0.9, size * 0.13)
+  ctx.fill()
+  roundRectPath(ctx, cx - size * 0.36, cy + size * 0.02, size * 0.72, size * 0.6, size * 0.22)
+  ctx.fill()
+
+  ctx.strokeStyle = color
+  ctx.lineWidth = size * 0.1
+  ctx.beginPath()
+  ctx.arc(cx + size * 0.03, cy - size * 0.78, size * 0.34, Math.PI * 1.15, Math.PI * 1.85)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.arc(cx + size * 0.03, cy - size * 0.78, size * 0.62, Math.PI * 1.2, Math.PI * 1.8)
+  ctx.stroke()
+}
+
+function drawQrGuide(ctx: any, w: number, h: number, style: PromoPosterStyle) {
+  drawTapHand(ctx, w * 0.475, h * 0.782, w * 0.035, style.hintText)
+  ctx.fillStyle = style.hintText
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  const size = fitFont(ctx, '长按二维码', w * 0.46, 34, 'bold', 'sans-serif')
+  ctx.font = 'bold ' + Math.round(size).toString() + 'px sans-serif'
+  ctx.fillText('长按二维码', w * 0.545, h * 0.762)
+  ctx.fillText('进入平台', w * 0.545, h * 0.812)
+}
+
+async function loadAvatarImage(context: any, data: PromoPosterData): Promise<any> {
+  if (data.avatar.length == 0) return null
+  if (context.createImage == null) return null
+  const url = resolveMediaUrl(data.avatar)
+  if (url.indexOf('http') != 0 && url.indexOf('/static/') != 0 && url.indexOf('wxfile://') != 0 && url.indexOf('data:') != 0) return null
+  return new Promise<any>((resolve) => {
+    let settled = false
+    const finish = (value: any) => {
+      if (settled) return
+      settled = true
+      resolve(value)
+    }
+    try {
+      const image = context.createImage()
+      image.onload = () => finish(image)
+      image.onerror = () => finish(null)
+      image.src = url
+      setTimeout(() => finish(null), 3000)
+    } catch (e) {
+      finish(null)
+    }
+  })
+}
+
+function paintPoster(ctx: any, image: any, data: PromoPosterData, style: PromoPosterStyle, w: number, h: number) {
+  roundRectPath(ctx, 0, 0, w, h, 22)
+  ctx.clip()
+  drawTopGlow(ctx, w, h, style)
+  drawDecorHearts(ctx, w, h, style)
+  drawAvatar(ctx, image, data, w, h, style)
+  drawName(ctx, data, w, h, style)
+  drawSlogan(ctx, w, h, style)
+  drawBand(ctx, w, h, style)
+  drawQr(ctx, w, h, style)
+  drawQrGuide(ctx, w, h, style)
+}
+
+/**
+ * 绘制红娘推广海报并导出临时图片路径。
+ * canvasId: 页面里 canvas 的 id；component: 页面/组件实例（微信小程序内必传）。
+ */
+export async function drawPromoPoster(
+  canvasId: string,
+  component: any,
+  data: PromoPosterData,
+  styleKey: string,
+  cssWidth: number = PROMO_POSTER_WIDTH,
+  cssHeight: number = PROMO_POSTER_HEIGHT
+): Promise<string> {
+  let canvasComponent = component
+  // #ifdef MP-WEIXIN
+  if (component != null && component.$scope != null) canvasComponent = component.$scope
+  // #endif
+  const context: any = await new Promise<any>((resolve, reject) => {
+    uni.createCanvasContextAsync({
+      id: canvasId,
+      component: canvasComponent,
+      success: (created: any) => resolve(created),
+      fail: (err: any) => reject(err)
+    })
+  })
+  const ctx = context.getContext('2d')
+  if (ctx == null) throw new Error('无法创建海报画布上下文')
+  const canvas = ctx.canvas
+  canvas.width = cssWidth * POSTER_SCALE
+  canvas.height = cssHeight * POSTER_SCALE
+  ctx.scale(POSTER_SCALE, POSTER_SCALE)
+
+  const image = await loadAvatarImage(context, data)
+  paintPoster(ctx, image, data, getPromoPosterStyle(styleKey), cssWidth, cssHeight)
+
+  return new Promise<string>((resolve, reject) => {
+    const exportParams: any = {
+      x: 0,
+      y: 0,
+      width: cssWidth * POSTER_SCALE,
+      height: cssHeight * POSTER_SCALE,
+      destWidth: cssWidth * POSTER_SCALE,
+      destHeight: cssHeight * POSTER_SCALE,
+      fileType: 'png',
+      quality: 1,
+      success: (res: any) => {
+        const path = String(res.tempFilePath ?? '')
+        if (path == '') reject(new Error('海报导出路径为空'))
+        else resolve(path)
+      },
+      fail: (err: any) => reject(err)
+    }
+    // #ifdef MP-WEIXIN
+    const query = uni.createSelectorQuery()
+    const scopedQuery = component != null ? query.in(component) : query
+    scopedQuery.select('#' + canvasId).fields({ node: true, size: true }).exec((res: any) => {
+      if (res == null || res.length == 0 || res[0] == null || res[0].node == null) {
+        reject(new Error('无法获取海报 Canvas 节点'))
+        return
+      }
+      exportParams.canvas = res[0].node
+      uni.canvasToTempFilePath(exportParams)
+    })
+    // #endif
+    // #ifndef MP-WEIXIN
+    uni.canvasToTempFilePath(exportParams, component)
+    // #endif
+  })
+}

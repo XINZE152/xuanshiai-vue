@@ -56,7 +56,7 @@
 
 			<view class="promotion-panel">
 				<text class="promotion-title">专属推广工具</text>
-				<text class="promotion-copy">推广链接与海报由服务端配置后开放。</text>
+				<text class="promotion-copy">推广链接即平台首页地址，复制后可直接分享给好友；海报进入后自动生成，长按二维码即可进入平台首页。</text>
 				<view class="promotion-actions">
 					<view class="promotion-action" @click="emit('action', '复制我的专属推广链接')"><text>复制推广链接</text></view>
 					<view class="promotion-action" @click="emit('action', '下载我的专属推广海报')"><text>下载推广海报</text></view>

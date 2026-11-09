@@ -512,8 +512,8 @@ export async function updateMatchmakerWorkspaceHomepage(changes: any) {
 }
 
 /** 查询当前服务红娘工作范围内的客源线索。 */
-export async function getMatchmakerWorkspaceLeads() {
-  return request({ url: '/matchmaker/workbench/leads', method: 'GET', data: { page: 1, page_size: 100 } })
+export async function getMatchmakerWorkspaceLeads(page: number = 1) {
+  return request({ url: '/matchmaker/workbench/leads', method: 'GET', data: { page: page, page_size: 100 } })
 }
 
 /** 查询客源线索跟进记录。 */
@@ -1151,6 +1151,14 @@ export async function pickupMatchmakerMember(id: string) {
   return request({ url: '/matchmaker/workbench/members/' + encodeURIComponent(id) + '/pickup', method: 'POST' })
 }
 
+export async function abandonMemberRecord(id: string, reason: string) {
+  return request({ url: '/matchmaker/workbench/members/' + encodeURIComponent(id) + '/abandonment', method: 'POST', data: { reason: reason } })
+}
+
+export async function pickupAbandonedMemberRecord(id: string) {
+  return request({ url: '/matchmaker/workbench/members/' + encodeURIComponent(id) + '/abandonment/pickup', method: 'POST' })
+}
+
 export async function getMatchmakerMemberFollowUps(id: string) {
   return request({ url: '/matchmaker/workbench/members/' + encodeURIComponent(id) + '/follow-ups', method: 'GET', data: { page: 1, page_size: 100 } })
 }
@@ -1256,7 +1264,7 @@ export async function updateMatchmakerMemberNickname(id: string, nickname: strin
 
 /** 代传会员头像 / 相册，服务端直接标记审核通过，保存后立即可见。 */
 export async function uploadMatchmakerMemberMedia(id: string, filePath: string, kind: string) {
-  if (MATCHMAKER_REMOTE_MODE) return remoteMatchmakerUnavailable()
+  if (MATCHMAKER_REMOTE_MODE && getAccessToken() == '') return { success: false, data: null, code: 401, message: '请重新登录远端账号' }
   const normalizedKind = kind == 'avatar' || kind == 'background' ? kind : 'photo'
   return new Promise<any>((resolve) => {
     uni.uploadFile({

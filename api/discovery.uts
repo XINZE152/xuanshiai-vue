@@ -106,6 +106,28 @@ export async function getDiscoveryRecommendations(filters: any = null) {
   return { success: true, data: mapPage(res.data), code: res.code, message: res.message }
 }
 
+/** 筛选项字典：mbti_types 为 MBTI 选项权威来源；cities 只是展示名，不含编码。 */
+export async function getDiscoveryFilterOptions() {
+  const res = await request({
+    url: '/discovery/filter-options',
+    method: 'GET',
+    skipAuth: true,
+    mockData: {
+      genders: [{ value: 1, label: '男' }, { value: 2, label: '女' }],
+      marriage_statuses: [{ value: 1, label: '未婚' }, { value: 2, label: '离异' }, { value: 3, label: '丧偶' }],
+      education_levels: [{ value: 1, label: '高中及以下' }, { value: 2, label: '大专' }, { value: 3, label: '本科' }, { value: 4, label: '硕士' }, { value: 5, label: '博士' }],
+      cities: ['北京', '上海', '杭州'],
+      mbti_types: [
+        { value: 'INTJ', label: '建筑师' }, { value: 'INTP', label: '逻辑学家' }, { value: 'ENTJ', label: '指挥官' }, { value: 'ENTP', label: '辩论家' },
+        { value: 'INFJ', label: '提倡者' }, { value: 'INFP', label: '调停者' }, { value: 'ENFJ', label: '主人公' }, { value: 'ENFP', label: '竞选者' },
+        { value: 'ISTJ', label: '物流师' }, { value: 'ISFJ', label: '守卫者' }, { value: 'ESTJ', label: '总经理' }, { value: 'ESFJ', label: '执政官' },
+        { value: 'ISTP', label: '鉴赏家' }, { value: 'ISFP', label: '探险家' }, { value: 'ESTP', label: '企业家' }, { value: 'ESFP', label: '表演者' }
+      ]
+    }
+  })
+  return res
+}
+
 /**
  * 首页卡片预览（后端 A-3）。
  * 契约：`GET /users/{id}/card-preview` → `{ user_id, card, background_wall, photos[≤1], income_display }`。

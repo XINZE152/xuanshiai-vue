@@ -1,0 +1,15 @@
+/**
+ * AI 运行时能力探测（GET /ai/capabilities）。
+ * 页面据此决定是否开放 AI 入口；请求失败按 fail-closed 处理，不默认放行。
+ */
+
+import { request } from './request.uts'
+
+export async function getAiCapabilities(): Promise<any> {
+  return request({ url: '/ai/capabilities', method: 'GET' })
+}
+
+export function isAiSearchEnabled(res: any): boolean {
+  const body = res != null && res.data != null ? res.data : res
+  return body != null && body.master == true && body.search == true
+}

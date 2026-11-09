@@ -15,6 +15,11 @@ const api = vm.runInNewContext(compiled + '\n;({' + names.join(',') + '})', {
 async function run() {
  assert.equal(api.hasRemoteMatchmakerEndpoint('PATCH','/matchmaker/workbench/leads/12'),true)
  assert.equal(api.hasRemoteMatchmakerEndpoint('POST','/matchmaker/workbench/leads/12/assign'),true)
+ assert.equal(api.hasRemoteMatchmakerEndpoint('POST','/matchmaker/workbench/members/28/abandonment'),true)
+ assert.equal(api.hasRemoteMatchmakerEndpoint('POST','/matchmaker/workbench/members/28/abandonment/pickup'),true)
+ for (const [method, suffix] of [['GET','profile'],['PATCH','profile'],['GET','preferences'],['PUT','preferences'],['GET','completion'],['PATCH','nickname'],['POST','avatar'],['POST','background'],['POST','photos'],['DELETE','photos/9']]) {
+  assert.equal(api.hasRemoteMatchmakerEndpoint(method, '/matchmaker/workbench/members/36/' + suffix), true)
+ }
  assert.equal(api.hasRemoteMatchmakerEndpoint('GET','/matchmaker/workbench/unsupported-feature'),false)
  assert.equal((await api.request({url:'/matchmaker/workbench/unsupported-feature'})).code,'REMOTE_FEATURE_UNAVAILABLE')
  assert.equal(calls.length,0)

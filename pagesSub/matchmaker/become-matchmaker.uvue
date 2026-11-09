@@ -6,8 +6,11 @@
 				<view class="nav-back-chevron"></view>
 			</view>
 			<text class="nav-title">{{ pendingReviewVisible ? '资料待审' : (workspaceVisible ? workspaceTitle : (managementCenterVisible || managementCenterLoading ? '红娘管理中心' : '我要做红娘')) }}</text>
-			<view v-if="pendingReviewVisible || workspaceVisible" class="nav-help" :class="{ 'nav-help-save': isLeadEntryStudio }" @click="isLeadEntryStudio ? submitLeadForm() : closeWorkspace()">
-				<text class="nav-help-text">{{ isLeadEntryStudio ? '保存' : '返回' }}</text>
+			<!-- 工作区遮罩右上角只保留「保存」药丸；返回走左侧箭头（handlePageBack 会先关遮罩）。 -->
+			<view v-if="pendingReviewVisible || workspaceVisible">
+				<view v-if="isLeadEntryStudio" class="nav-help nav-help-save" @click="submitLeadForm()">
+					<text class="nav-help-text">保存</text>
+				</view>
 			</view>
 			<view v-else-if="managementCenterVisible" class="nav-entries">
 				<view class="nav-entry" @click="openMyAccount">
@@ -47,11 +50,8 @@
 				<view v-else-if="workspaceKind == 'commission'">
 					<view class="workspace-cash"><text>资金结算</text><text class="workspace-cash-value">{{ workspaceTitle == '财务明细' ? workspaceFinanceTotal : workspaceCommissionTotal }}</text><text>{{ workspaceCashNote }}</text></view>
 
-					<!-- 专属推广工具：推广能力未开放，保留原提示 -->
-					<view v-if="workspaceTitle == '专属推广工具'" class="workspace-notice"><text class="workspace-notice-title">温馨提示</text><text>专属推广链接与海报将在后端配置后开放。</text></view>
-
 					<!-- 分成标准：各消费事件计提比例 -->
-					<view v-else-if="workspaceActiveTab == '分成标准'">
+					<view v-if="workspaceActiveTab == '分成标准'">
 						<view class="workspace-demo-notice"><text>平台尚未提供分成标准查询接口，请以平台确认的规则为准。</text></view>
 						<view v-for="rate in workspaceCommissionRates" :key="rate.event" class="workspace-info-card">
 							<view><text>{{ rate.event }}</text><text class="workspace-rate-value">{{ rate.rate }}</text></view>
@@ -111,7 +111,7 @@
 						</view>
 					</view>
 					<view v-else>
-					<view class="workspace-notice"><text>超级红娘可查看全部客源线索，普通红娘仅查看已分派的客源。</text></view>
+					<view class="workspace-notice"><text>总店超级红娘可查看全部客源，门店超级红娘查看本门店客源，普通红娘查看本人客源。</text></view>
 					<view v-if="workspaceLeadsLoading" class="workspace-state"><text>正在加载客源数据…</text></view>
 					<view v-else-if="workspaceLeadsError.length > 0" class="workspace-state"><text>{{ workspaceLeadsError }}</text><text class="workspace-state-action" @click="loadWorkspaceLeads">重新加载</text><text v-if="workspaceLeadsDiagnostic.length > 0" class="workspace-state-action" @tap="copyLeadDiagnostic">复制故障信息</text></view>
 					<view v-else-if="workspaceVisibleLeads.length == 0" class="workspace-state"><text>没有符合条件的客源</text></view>
@@ -332,7 +332,15 @@
 						</view>
 						<view class="ls-field">
 							<text class="ls-label">称呼</text>
-							<input :value="leadFormName" @input="leadFormName = $event.detail.value" placeholder="如：李阿姨介绍的小雅" :maxlength="20"/>
+							<input :value="leadFormName" @input="onLeadFormNameInput" placeholder="如：李阿姨介绍的小雅" :maxlength="20"/>
+							<view class="ls-auto" :class="{ checked: leadAutoName }" @click="toggleLeadAutoName">
+								<view class="ls-auto-head">
+									<view class="ls-auto-box"><text v-if="leadAutoName" class="ls-auto-tick">✓</text></view>
+									<text class="ls-auto-title">自动生成称呼</text>
+									<text class="ls-auto-code">{{ leadAutoName ? (leadAutoNameCode.length > 0 ? leadAutoNameCode : '正在获取客源编号…') : '关闭' }}</text>
+								</view>
+								<text class="ls-auto-sub">按客源编号命名，例如第一位客源线索写 客源_1；勾选后手动改动即退出自动生成</text>
+							</view>
 						</view>
 						<view class="ls-field">
 							<text class="ls-label">电话</text>
@@ -1072,6 +1080,7 @@ import { getWorkspaceMeetingPresentation } from '@/utils/meeting-workflow.uts'
 import { resolveMediaUrl } from '@/api/config.uts'
 import { nextTick } from 'vue'
 import { savePosterToPhotos } from '@/utils/moxiang-poster-drawer.uts'
+import { PLATFORM_HOME_URL } from '@/utils/matchmaker-promo-poster.uts'
 
 // ===== 基本信息 =====
 const realName = ref('')
@@ -1254,6 +1263,42 @@ const refreshBusinessMetricCounts = async () => {
 	}
 }
 const workspaceMembers = ref<any[]>([])
+// 与资料待审“待审”页使用相同的全会员筛选和服务端总数，避免工作范围汇总与列表不一致。
+let pendingReviewCountRequest = 0
+let pendingReviewCountTimer: any = null
+const applyPendingReviewCount = (value: string) => {
+	if (managementCenterSnapshot.value == null || !Array.isArray(managementCenterSnapshot.value.storeMetrics)) return
+	managementCenterSnapshot.value = {
+		...managementCenterSnapshot.value,
+		storeMetrics: managementCenterSnapshot.value.storeMetrics.map((item: any) => item.key == 'pending_review'
+			? { ...item, value: value }
+			: item)
+	}
+}
+const refreshPendingReviewCount = async () => {
+	const requestId = ++pendingReviewCountRequest
+	try {
+		const result = await getMatchmakerReviewMembers({ page: 1, page_size: 1, member_pool: 'all', review_status: 'PENDING', filters: '{}' })
+		if (requestId != pendingReviewCountRequest) return
+		if (!result.success || result.data == null || Number(result.data.member_pool_version || 0) < 1 || result.data.total == null) {
+			applyPendingReviewCount('--')
+			return
+		}
+		applyPendingReviewCount(String(Math.max(0, Number(result.data.total))))
+	} catch (e) {
+		if (requestId == pendingReviewCountRequest) applyPendingReviewCount('--')
+	}
+}
+const stopPendingReviewCountTimer = () => {
+	if (pendingReviewCountTimer != null) clearInterval(pendingReviewCountTimer)
+	pendingReviewCountTimer = null
+}
+const startPendingReviewCountTimer = () => {
+	stopPendingReviewCountTimer()
+	pendingReviewCountTimer = setInterval(() => {
+		if (managementCenterVisible.value && !pendingReviewVisible.value && !workspaceVisible.value) refreshPendingReviewCount()
+	}, 15000)
+}
 // 「我服务的」以会员列表真实数据（matchmaker_id == 当前红娘）为准，实时覆盖简报里的服务端统计。
 const selfMatchmakerUserId = ref(0)
 const ensureSelfMatchmakerUserId = async (): Promise<number> => {
@@ -1299,7 +1344,7 @@ const reloadManagementCenterSnapshot = async () => {
 		const result = await getMatchmakerManagementCenterSnapshot()
 		if (!result.success || result.data == null) return
 		managementCenterSnapshot.value = result.data
-		await Promise.all([refreshBusinessMetricCounts(), refreshServedMemberCount()])
+		await Promise.all([refreshBusinessMetricCounts(), refreshServedMemberCount(), refreshPendingReviewCount()])
 	} catch (e) {
 		// 重拉失败时保留上一次有效统计，和刷新接口的容错一致。
 	}
@@ -1463,7 +1508,12 @@ const copyWorkspaceText = (value: string) => {
 	})
 }
 
-const copyWorkspaceLink = () => { showToast('专属推广链接尚未开放') }
+const copyPromotionLink = () => {
+	uni.setClipboardData({
+		data: PLATFORM_HOME_URL,
+		success: () => showToast('复制成功')
+	})
+}
 
 const loadManagementAccess = async () => {
 	managementAccessLoading.value = true
@@ -1492,8 +1542,10 @@ const openManagementCenter = async () => {
 		const result = await getMatchmakerManagementCenterSnapshot()
 		if (result.success && result.data != null) {
 			managementCenterSnapshot.value = result.data
-			await Promise.all([refreshBusinessMetricCounts(), refreshServedMemberCount()])
+			applyPendingReviewCount('--')
+			await Promise.all([refreshBusinessMetricCounts(), refreshServedMemberCount(), refreshPendingReviewCount()])
 			managementCenterVisible.value = true
+			startPendingReviewCountTimer()
 		} else {
 			showToast(result.message != null ? String(result.message) : '工作台加载失败，请稍后重试')
 		}
@@ -1505,6 +1557,8 @@ const openManagementCenter = async () => {
 }
 
 const exitManagementCenter = () => {
+	stopPendingReviewCountTimer()
+	pendingReviewCountRequest += 1
 	pendingReviewVisible.value = false
 	workspaceVisible.value = false
 	managementCenterVisible.value = false
@@ -1528,6 +1582,7 @@ const openPendingReview = (initialTab: string = 'PENDING') => {
 
 const closePendingReview = () => {
 	pendingReviewVisible.value = false
+	refreshPendingReviewCount()
 }
 
 const closeWorkspace = () => {
@@ -1652,15 +1707,34 @@ const loadWorkspaceLeads = async () => {
 	workspaceLeadsLoading.value = true
 	workspaceLeadsError.value = ''
 	try {
-		const result = await getMatchmakerWorkspaceLeads()
-		if (!result.success || result.data == null) {
-			workspaceLeads.value = []
-			workspaceLeadsError.value = result.message != null ? String(result.message) : '客源数据加载失败'
-			workspaceLeadsDiagnostic.value = result.diagnostic != null ? String(result.diagnostic) : ''
-			return
+		// 状态、搜索和意向在页面上组合筛选，须先读取工作范围内的全部分页，避免只筛选前 100 条。
+		const items: any[] = []
+		let page = 1
+		let hasMore = true
+		while (hasMore) {
+			const result = await getMatchmakerWorkspaceLeads(page)
+			if (!result.success || result.data == null) {
+				workspaceLeads.value = []
+				workspaceLeadsError.value = result.message != null ? String(result.message) : '客源数据加载失败'
+				workspaceLeadsDiagnostic.value = result.diagnostic != null ? String(result.diagnostic) : ''
+				return
+			}
+			const source = result.data
+			if (!Array.isArray(source.items) || typeof source.has_more != 'boolean' || Number(source.page) != page) {
+				workspaceLeads.value = []
+				workspaceLeadsError.value = '客源数据不完整，请重新加载'
+				return
+			}
+			const batch = source.items as any[]
+			for (let i = 0; i < batch.length; i++) items.push(batch[i])
+			hasMore = source.has_more === true
+			if (hasMore && (batch.length == 0 || page >= 1000)) {
+				workspaceLeads.value = []
+				workspaceLeadsError.value = '客源数据不完整，请重新加载'
+				return
+			}
+			page += 1
 		}
-		const source = result.data
-		const items = Array.isArray(source.items) ? source.items : []
 		workspaceLeads.value = items.map((item: any) => {
 			const status = item.status != null ? String(item.status) : 'NEW'
 			const intentionLevel = item.intention_level != null ? Number(item.intention_level) : 1
@@ -1954,6 +2028,72 @@ const pickLeadFormSource = (value: string) => {
 	leadFormSource.value = value
 	leadFormSourcePickerVisible.value = false
 }
+// ===== 自动生成称呼 =====
+// 编号取本条客源线索入库后的记录编号；前缀与后台「客源线索-功能配置」的 name_prefix 默认值一致。
+const LEAD_AUTO_NAME_PREFIX = '客源'
+const leadAutoName = ref(false)
+const leadAutoNameCode = ref('')
+const leadAutoNameBusy = ref(false)
+const resetLeadAutoName = () => {
+	leadAutoName.value = false
+	leadAutoNameCode.value = ''
+}
+const onLeadFormNameInput = (event: any) => {
+	leadFormName.value = event.detail.value
+	// 手动改称呼即退出自动生成，否则提交时会被编号覆盖掉他刚改的内容。
+	if (leadAutoName.value) resetLeadAutoName()
+}
+// 列表按编号倒序，第一页首条即当前工作范围内的最大编号，预览号取「最大编号 + 1」；
+// 工作范围之外可能已有更大编号，所以提交后还要用服务端返回的真实编号校正一次。
+const nextLeadAutoNameCode = async (): Promise<string> => {
+	const result = await getMatchmakerWorkspaceLeads(1)
+	if (!result.success || result.data == null) return ''
+	const source = result.data
+	if (!Array.isArray(source.items)) return ''
+	const items = source.items as any[]
+	if (items.length == 0) return LEAD_AUTO_NAME_PREFIX + '_1'
+	const newestId = Number(items[0].id)
+	if (isNaN(newestId) || newestId < 0) return ''
+	return LEAD_AUTO_NAME_PREFIX + '_' + String(Math.floor(newestId) + 1)
+}
+const toggleLeadAutoName = async () => {
+	// 取消勾选时保留已生成的文本，让红娘能在它基础上继续手动改。
+	if (leadAutoName.value) {
+		resetLeadAutoName()
+		return
+	}
+	if (leadAutoNameBusy.value) return
+	leadAutoNameBusy.value = true
+	leadAutoName.value = true
+	leadAutoNameCode.value = ''
+	try {
+		const code = await nextLeadAutoNameCode()
+		if (code.length == 0) {
+			resetLeadAutoName()
+			leadFormError.value = '客源编号获取失败，请稍后重试，或手动填写称呼'
+			return
+		}
+		leadAutoNameCode.value = code
+		leadFormName.value = code
+	} catch (e: any) {
+		resetLeadAutoName()
+		leadFormError.value = '客源编号获取失败，请稍后重试，或手动填写称呼'
+	} finally {
+		leadAutoNameBusy.value = false
+	}
+}
+// 勾选自动生成时，以服务端新建记录的真实编号为准改写称呼。
+const applyCreatedLeadAutoName = async (result: any) => {
+	if (!leadAutoName.value || leadFormIsEdit.value) return
+	if (result == null || result.data == null) return
+	const created = result.data
+	const createdId = Number(created.id)
+	if (isNaN(createdId) || createdId <= 0) return
+	const exact = LEAD_AUTO_NAME_PREFIX + '_' + String(createdId)
+	leadAutoNameCode.value = exact
+	if (exact == leadFormName.value.trim()) return
+	await updateWorkspaceLead(String(createdId), { name: exact })
+}
 // 录入视图示例数据：一键填充全表单便于联调，再点一次清空。
 const leadDemoFilled = computed(() => leadFormRealName.value != '' || leadFormName.value != '' || leadFormPhone.value != '' || leadFormWechat.value != '' || leadFormRemark.value != '')
 const leadSourceOptions = ['抖音', '微信群', '本地群', '身边朋友', '同行群', '朋友圈', 'QQ', '其他渠道', '落地页']
@@ -1977,6 +2117,7 @@ const fillLeadDemo = () => {
 		leadFormGender.value = 0
 		leadFormBirthday.value = ''
 		leadFormError.value = ''
+		resetLeadAutoName()
 		return
 	}
 	const gender = demoPersonaGender[nextDemoPersona()]
@@ -2105,10 +2246,12 @@ const openLeadAddSheet = () => {
 	leadFormBirthday.value = ''
 	leadFormIntention.value = 1
 	leadFormError.value = ''
+	resetLeadAutoName()
 	leadFormSheetVisible.value = true
 }
 const openLeadEditSheet = (row: any) => {
 	leadFormIsEdit.value = true
+	resetLeadAutoName()
 	leadFormLeadId.value = String(row.id)
 	leadFormRealName.value = row.realName != null ? String(row.realName) : ''
 	leadFormName.value = String(row.name)
@@ -2169,7 +2312,7 @@ const findLeadContactConflict = (phone: string, wechat: string, excludeLeadId: s
 const submitLeadForm = () => {
 	const name = leadFormName.value.trim()
 	if (name.length == 0) {
-		leadFormError.value = '请填写客户称呼'
+		leadFormError.value = leadAutoNameBusy.value ? '正在获取客源编号，请稍候' : '请填写客户称呼'
 		return
 	}
 	const phone = leadFormPhone.value.trim()
@@ -2206,6 +2349,7 @@ const sendLeadForm = async (name: string, phone: string, wechat: string) => {
 			leadFormError.value = result.message != null && String(result.message).length > 0 ? String(result.message) : '保存失败，请稍后重试'
 			return
 		}
+		await applyCreatedLeadAutoName(result)
 		leadFormSheetVisible.value = false
 		leadFormRealName.value = ''
 		leadFormName.value = ''
@@ -2217,6 +2361,7 @@ const sendLeadForm = async (name: string, phone: string, wechat: string) => {
 		leadFormPhoto.value = ''
 		leadFormGender.value = 0
 		leadFormBirthday.value = ''
+		resetLeadAutoName()
 		showToast(leadFormIsEdit.value ? '线索已更新' : '线索已添加，等待跟进')
 		await loadWorkspaceLeads()
 	} catch (e) {
@@ -3185,6 +3330,9 @@ const openWorkspace = async (title: string, kind: string, initialTab: string = '
 	workspaceVisible.value = true
 	if (kind == 'entry') {
 		// 录入客源线索 / 录入会员：重置线索表单，避免残留上一次填写。
+		// 录入页只建新客源，必须同时清掉编辑弹层留下的编辑态，否则提交会改成 PATCH 上一条线索。
+		leadFormIsEdit.value = false
+		leadFormLeadId.value = ''
 		leadFormRealName.value = ''
 		leadFormName.value = ''
 		leadFormPhone.value = ''
@@ -3197,6 +3345,7 @@ const openWorkspace = async (title: string, kind: string, initialTab: string = '
 		leadFormGender.value = 0
 		leadFormBirthday.value = ''
 		leadFormError.value = ''
+		resetLeadAutoName()
 	}
 	if (kind == 'member') await loadWorkspaceMembers()
 	if (kind == 'lead') await loadWorkspaceLeads()
@@ -3219,7 +3368,8 @@ const refreshManagementCenter = async () => {
 		const result = await getMatchmakerManagementCenterSnapshot()
 		if (result.success && result.data != null) {
 			managementCenterSnapshot.value = result.data
-			await Promise.all([refreshBusinessMetricCounts(), refreshServedMemberCount()])
+			applyPendingReviewCount('--')
+			await Promise.all([refreshBusinessMetricCounts(), refreshServedMemberCount(), refreshPendingReviewCount()])
 			showToast('工作台已刷新')
 		} else {
 			showToast(result.message != null ? String(result.message) : '工作台刷新失败')
@@ -3291,8 +3441,15 @@ const handleManagementCenterAction = (name: string) => {
 		openWorkspace(name == '查看牵线记录' ? '牵线管理' : name, 'match')
 		return
 	}
-	if (name.indexOf('推广') >= 0 || name.indexOf('海报') >= 0 || name.indexOf('链接') >= 0) {
-		openWorkspace('专属推广工具', 'commission')
+	if (name.indexOf('海报') >= 0) {
+		uni.navigateTo({
+			url: '/pagesSub/matchmaker/promoter-center?page=poster',
+			fail: () => showToast('推广海报打开失败，请稍后重试')
+		})
+		return
+	}
+	if (name.indexOf('链接') >= 0) {
+		copyPromotionLink()
 		return
 	}
 	if (name.indexOf('活动') >= 0) {
@@ -3363,6 +3520,10 @@ onLoad((options: any) => {
 })
 
 onShow(async () => {
+	if (managementCenterVisible.value) {
+		refreshPendingReviewCount()
+		startPendingReviewCountTimer()
+	}
 	if (pendingReviewVisible.value) pendingReviewRefreshToken.value += 1
 	if (autoOpenPendingReview.value) {
 		autoOpenPendingReview.value = false
@@ -3385,6 +3546,9 @@ onShow(async () => {
 	}
 	if (!managementCenterVisible.value && !pendingReviewVisible.value && !workspaceVisible.value) loadManagementAccess()
 })
+
+onHide(() => { stopPendingReviewCountTimer(); pendingReviewCountRequest += 1 })
+onUnload(() => { stopPendingReviewCountTimer(); pendingReviewCountRequest += 1 })
 
 const guideToRequiredVerification = (message: string) => {
 	const needsPhone = message.indexOf('绑定手机号') >= 0
@@ -6240,6 +6404,17 @@ const submitApplication = async () => {
 .ls-label { color: #93A39C; font-size: 21rpx; font-weight: 600; }
 .ls-label-row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
 .ls-count { color: #A9B8B1; font-size: 20rpx; }
+
+/* 自动生成称呼：勾选框 + 右侧实时编号预览，说明文案压在下一行。 */
+.ls-auto { margin-top: 4rpx; padding: 18rpx 20rpx; border-radius: 18rpx; background: #F5F8F6; display: flex; flex-direction: column; gap: 8rpx; }
+.ls-auto-head { display: flex; flex-direction: row; align-items: center; gap: 14rpx; }
+.ls-auto-box { width: 30rpx; height: 30rpx; border-radius: 8rpx; border: 2rpx solid #C6D3CD; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+.ls-auto.checked .ls-auto-box { background: #123B33; border-color: #123B33; }
+.ls-auto-tick { color: #FFFFFF; font-size: 20rpx; font-weight: 800; line-height: 1; }
+.ls-auto-title { color: #2A3B34; font-size: 23rpx; font-weight: 700; }
+.ls-auto-code { flex: 1; text-align: right; color: #123B33; font-size: 23rpx; font-weight: 800; }
+.ls-auto-sub { color: #93A39C; font-size: 20rpx; line-height: 1.5; }
+.ls-auto:active { opacity: .75; }
 .ls-field input { width: 100%; color: #16211D; font-size: 28rpx; font-weight: 600; }
 
 /* 选择器 */

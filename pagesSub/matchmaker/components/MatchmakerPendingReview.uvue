@@ -61,7 +61,7 @@
             </view>
           </view>
 
-          <text v-if="member.review_status == 'REJECTED' && member.review_reason" class="mcard-reason">弃海原因：{{ member.review_reason }}</text>
+          <text v-if="member.abandoned && member.abandoned_reason" class="mcard-reason">弃海原因：{{ member.abandoned_reason }}</text>
 
           <view class="mcard-actions">
             <view :id="'more-trigger-' + member.user_id" class="act-more" @tap.stop="toggleMenu(member, $event)"><text>更多</text></view>
@@ -134,7 +134,7 @@
         <view class="more-item" @tap="openMatch(menuMember)"><text>匹配</text></view>
         <view class="more-item" @tap="openNote(menuMember)"><text>红娘说</text></view>
         <view class="more-item" :class="{ last: !canReview }" @tap="openAssign(menuMember)"><text>修改红娘</text></view>
-        <view v-if="canReview" class="more-item last" @tap="onAbandonEntry(menuMember)"><text>{{ menuMember.review_status == 'REJECTED' ? '已弃海' : '移入弃海' }}</text></view>
+        <view v-if="canReview" class="more-item last" @tap="onAbandonEntry(menuMember)"><text>{{ menuMember.abandoned ? '已弃海' : '移入弃海' }}</text></view>
         </template>
       </view>
     </view>
@@ -333,12 +333,11 @@ import {
   getMatchmakerMemberNote,
   getMatchmakerMemberProfile,
   getMatchmakerReviewMembers,
-  pickupMatchmakerMember,
   getMatchmakerWorkspaceProfile,
-  getDiscoveryPlaza,
   updateMatchmakerMemberNote,
   updateMatchmakerReviewMember
 } from '@/api'
+import { abandonMemberRecord, pickupAbandonedMemberRecord } from '@/api/matchmaker.uts'
 import { resolveMediaUrl } from '@/api/config.uts'
 
 interface Props {
@@ -449,7 +448,8 @@ const notify = (message: string) => uni.showToast({ title: message, icon: 'none'
 const emptyText = computed(() => {
   if (activeTab.value == 'PENDING') return '暂无待审核的会员资料'
   if (activeTab.value == 'REJECTED') return '暂无弃海的会员资料'
-  if (activeTab.value == 'vip_online' || activeTab.value == 'vip_offline') return 'VIP 标签服务端暂未开放，敬请期待'
+  if (activeTab.value == 'vip_online') return '暂无线上VIP会员'
+  if (activeTab.value == 'vip_offline') return '暂无线下VIP会员'
   return '当前没有符合条件的会员资料'
 })
 
@@ -527,7 +527,7 @@ const memberMeta = (member: any): string => {
   if (member.height != null) parts.push(String(member.height) + 'cm')
   return parts.join(' · ')
 }
-const reviewLabel = (status: string): string => status == 'PASSED' ? '已通过' : (status == 'REJECTED' ? '已弃海' : '待审核')
+const reviewLabel = (status: string): string => status == 'PASSED' ? '已通过' : (status == 'REJECTED' ? '未通过' : (status == 'STORE_VERIFIED' ? '已到店核验' : '待审核'))
 const isVipMember = (member: any): boolean => {
   if (member == null) return false
   const value = member.is_vip
@@ -560,54 +560,6 @@ const emitServedCount = () => {
   emit('servedCount', count)
 }
 
-// 学历编码 → 展示文案（与首页会员专区保持一致）：education_level 存储刻度
-// 1=高中及以下 … 5=博士，与后端 EDUCATION_LEVEL_LABELS 同一套。
-const eduText = (code: any): string => {
-  const labels: string[] = ['', '高中及以下', '大专', '本科', '硕士', '博士']
-  const value = code != null ? Number(code) : 0
-  return value > 0 && value < labels.length ? labels[value] : ''
-}
-
-// 把首页广场卡片映射成资料待审卡片所需的字段；extra 为红娘工作台数据（分派/审核状态）补充。
-const memberFromPlaza = (user: any, extra: any): any => {
-  const raw = user.raw != null ? user.raw : {}
-  const certTags: string[] = Array.isArray(user.certificationTags) ? user.certificationTags as string[] : []
-  const mapped: any = {
-    user_id: Number(user.id || 0),
-    nickname: user.name,
-    avatar: user.avatar,
-    gender: Number(user.gender || 0),
-    age: user.age != null ? Number(user.age) : null,
-    birthday: raw.birthday != null ? '' + raw.birthday : null,
-    is_married: raw.is_married,
-    education: eduText(raw.education_level),
-    job: user.job,
-    height: user.height,
-    income: user.income,
-    residence: user.city,
-    hometown: user.hometown,
-    realname_status: certTags.indexOf('实名认证') >= 0 ? 2 : 0,
-    review_status: 'PASSED',
-    review_reason: null,
-    matchmaker_id: 0,
-    matchmaker_name: '',
-    created_at: '',
-    followCount: 0,
-    introCount: 0,
-    is_vip: true,
-    online_status: user.online === true,
-    source: 'plaza'
-  }
-  if (extra != null) {
-    if (extra.review_status != null) mapped.review_status = String(extra.review_status)
-    if (extra.review_reason != null) mapped.review_reason = extra.review_reason
-    if (extra.matchmaker_id != null) mapped.matchmaker_id = Number(extra.matchmaker_id)
-    if (extra.matchmaker_name != null) mapped.matchmaker_name = String(extra.matchmaker_name)
-    if (extra.created_at != null) mapped.created_at = String(extra.created_at)
-  }
-  return mapped
-}
-
 // 红娘工作台审核队列 → 卡片字段。录入会员和自助注册会员都只在这条链路上出现，
 // 广场接口里没有他们（非 VIP、未过审），所以待审列表不能以广场为数据源。
 const memberFromWorkbench = (row: any): any => {
@@ -628,6 +580,8 @@ const memberFromWorkbench = (row: any): any => {
     realname_status: row.realname_status != null ? Number(row.realname_status) : 0,
     review_status: row.review_status != null ? String(row.review_status) : 'PENDING',
     review_reason: row.review_reason != null ? String(row.review_reason) : null,
+    abandoned: row.abandoned === true,
+    abandoned_reason: row.abandoned_reason != null ? String(row.abandoned_reason) : null,
     matchmaker_id: row.matchmaker_id != null ? Number(row.matchmaker_id) : 0,
     matchmaker_name: row.matchmaker_name != null ? String(row.matchmaker_name) : '',
     created_at: row.created_at != null ? String(row.created_at) : '',
@@ -640,20 +594,41 @@ const memberFromWorkbench = (row: any): any => {
 }
 
 const loadWorkbenchMembers = async (tab: string, append: boolean = false): Promise<void> => {
-  const data: any = { page: append ? memberPage.value + 1 : 1, page_size: 30 }
-  if (tab == 'PENDING' || tab == 'REJECTED') data['review_status'] = tab
+  const data: any = { page: append ? memberPage.value + 1 : 1, page_size: 30, member_pool: 'all' }
+  if (tab == 'PENDING') data['review_status'] = tab
+  if (tab == 'REJECTED') data['abandoned'] = true
   if (keyword.value.trim().length > 0) data['search'] = keyword.value.trim()
   const selected: any = {}
   for (const key of Object.keys(appliedMemberFilter.value)) { const value = String(appliedMemberFilter.value[key] || ''); if (value.length > 0) selected[key] = value }
   if (tab == 'mine') selected['mine'] = '1'
+  if (tab == 'vip_online') selected['online_vip'] = '1'
+  if (tab == 'vip_offline') selected['offline_vip'] = '1'
   data['filters'] = JSON.stringify(selected)
   const result = await getMatchmakerReviewMembers(data)
   if (!result.success || result.data == null) {
-    if (!append) { rawMembers.value = []; members.value = [] }
+    if (!append) { rawMembers.value = []; members.value = []; hasMoreMembers.value = false }
     errorMessage.value = result.message != null ? String(result.message) : '资料数据加载失败'
+    if ((tab == 'vip_online' || tab == 'vip_offline') && Number(result.code) == 422 && errorMessage.value == '不支持的筛选条件') {
+      errorMessage.value = '当前后端尚未支持VIP列表，请更新后端后重试'
+    }
     return
   }
-  if (Object.keys(selected).length > 0 && Number(result.data.filter_version || 0) != 1) {
+  if (Number(result.data.member_pool_version || 0) < 1) {
+    rawMembers.value = []
+    members.value = []
+    hasMoreMembers.value = false
+    errorMessage.value = '后端尚未支持全部会员列表，请更新后端后重试'
+    return
+  }
+  if (tab == 'REJECTED' && Number(result.data.abandonment_pool_version || 0) < 1) {
+    rawMembers.value = []
+    members.value = []
+    hasMoreMembers.value = false
+    errorMessage.value = '后端尚未支持会员弃海池，请更新后端后重试'
+    return
+  }
+  const requiredFilterVersion = tab == 'vip_offline' ? 3 : (tab == 'vip_online' ? 2 : 1)
+  if (Object.keys(selected).length > 0 && Number(result.data.filter_version || 0) < requiredFilterVersion) {
     rawMembers.value = []
     members.value = []
     hasMoreMembers.value = false
@@ -662,7 +637,11 @@ const loadWorkbenchMembers = async (tab: string, append: boolean = false): Promi
   }
   const items = Array.isArray(result.data.items) ? result.data.items as any[] : []
   const list: any[] = []
-  for (let i = 0; i < items.length; i++) list.push(memberFromWorkbench(items[i]))
+  for (let i = 0; i < items.length; i++) {
+    const member = memberFromWorkbench(items[i])
+    if (tab == 'vip_online' || tab == 'vip_offline') member.is_vip = true
+    list.push(member)
+  }
   memberPage.value = Number(result.data.page || 1)
   hasMoreMembers.value = result.data.has_more === true
   rawMembers.value = append ? [...rawMembers.value, ...list] : list
@@ -670,53 +649,9 @@ const loadWorkbenchMembers = async (tab: string, append: boolean = false): Promi
   emitServedCount()
 }
 const loadMoreMembers = async () => {
-  if (loading.value || loadingMoreMembers.value || !hasMoreMembers.value || activeTab.value == 'vip_online' || activeTab.value == 'vip_offline') return
+  if (loading.value || loadingMoreMembers.value || !hasMoreMembers.value) return
   loadingMoreMembers.value = true
   try { await loadWorkbenchMembers(activeTab.value, true) } finally { loadingMoreMembers.value = false }
-}
-
-const loadVipMembers = async (tab: string): Promise<void> => {
-  hasMoreMembers.value = false
-  if (Object.keys(appliedMemberFilter.value).some((key: string) => String(appliedMemberFilter.value[key] || '').length > 0)) {
-    rawMembers.value = []
-    members.value = []
-    errorMessage.value = 'VIP 页签暂不支持资料条件筛选，请在全部、待审或我的页签使用'
-    return
-  }
-  // 线上VIP / 线下VIP：在线状态只有首页广场提供，继续与首页「会员专区」同源。
-  const workbenchRes = await getMatchmakerReviewMembers({ page: 1, page_size: 100 })
-  const extras: any = {}
-  if (workbenchRes.success && workbenchRes.data != null && Array.isArray(workbenchRes.data.items)) {
-    const rows = workbenchRes.data.items as any[]
-    for (let i = 0; i < rows.length; i++) extras[String(Number(rows[i].user_id))] = rows[i]
-  }
-  const plazaRes = await getDiscoveryPlaza({ page: 1, page_size: 20 })
-  if (!plazaRes.success || plazaRes.data == null) {
-    rawMembers.value = []
-    members.value = []
-    errorMessage.value = plazaRes.message || '会员数据加载失败'
-    return
-  }
-  const plazaItems = Array.isArray(plazaRes.data.items) ? plazaRes.data.items as any[] : []
-  const list: any[] = []
-  const kw = keyword.value.trim()
-  for (let i = 0; i < plazaItems.length; i++) {
-    const user = plazaItems[i]
-    if (user == null) continue
-    if (!(user.isVip === true || user.is_vip === true)) continue
-    if (tab == 'vip_online' && user.online !== true) continue
-    if (tab == 'vip_offline' && user.online === true) continue
-    const uid = Number(user.id || 0)
-    if (kw.length > 0) {
-      const nameHit = user.name != null && String(user.name).indexOf(kw) >= 0
-      const idHit = String(uid).indexOf(kw) >= 0
-      if (!nameHit && !idHit) continue
-    }
-    list.push(memberFromPlaza(user, extras[String(uid)]))
-  }
-  rawMembers.value = list
-  members.value = list
-  emitServedCount()
 }
 
 const loadMembers = async () => {
@@ -724,11 +659,7 @@ const loadMembers = async () => {
   errorMessage.value = ''
   try {
     const tab = activeTab.value
-    if (tab == 'vip_online' || tab == 'vip_offline') {
-      await loadVipMembers(tab)
-      return
-    }
-    // 全部 / 待审 / 我的 / 弃海：读服务端审核队列，录入的会员要在这里落地。
+    // 所有页签都读工作台；VIP 按管理员端订阅/签约记录筛选，与在线状态无关。
     await loadWorkbenchMembers(tab)
   } catch (error) {
     rawMembers.value = []
@@ -866,19 +797,13 @@ const pickupMember = async (member: any) => {
   if (pickupLoading.value || member == null) return
   pickupLoading.value = true
   try {
-    const result = await pickupMatchmakerMember(String(member.user_id))
-    if (!result.success) {
-      notify(result.message || '捞取失败，请重试')
-      return
-    }
+    const result = await pickupAbandonedMemberRecord(String(member.user_id))
+    if (!result.success) { notify(result.message || '捞取失败，请重试'); return }
     closeMenu()
     notify('捞取成功，已归入我的会员')
     await loadMembers()
-  } catch (error) {
-    notify('捞取失败，请重试')
-  } finally {
-    pickupLoading.value = false
-  }
+  } catch (error) { notify('捞取失败，请重试') }
+  finally { pickupLoading.value = false }
 }
 
 const loadIntroCount = async (member: any) => {
@@ -1018,7 +943,7 @@ const submitAssign = async () => {
 const onAbandonEntry = (member: any) => {
   closeMenu()
   selected.value = member
-  if (member.review_status == 'REJECTED') {
+  if (member.abandoned === true) {
     notify('该会员已在弃海列表中')
     return
   }
@@ -1044,11 +969,8 @@ const submitAbandon = async () => {
     closeSheet()
     return
   }
-  const result = await updateMatchmakerReviewMember(String(selected.value.user_id), { status: 'REJECTED', reason: reason })
-  if (!result.success) {
-    notify(result.message || '移入弃海失败')
-    return
-  }
+  const result = await abandonMemberRecord(String(selected.value.user_id), reason)
+  if (!result.success) { notify(result.message || '移入弃海失败'); return }
   pendingAbandon.value = false
   notify('已弃海')
   closeSheet()

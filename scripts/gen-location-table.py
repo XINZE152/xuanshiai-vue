@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""从 data/location.json 生成两份前端字典，并写回目标文件。
+"""从 data/location.json 生成三份前端字典，并写回目标文件。
 
 1. utils/profile-field-display.uts 的 LOCATION_NAME_TABLE
    扁平「码 → 名」表，供主包展示层兜底（市辖区已解析为省名）。
 2. pagesSub/userExtra/data/location.uts 的 LOCATION_TREE_RAW
    省/市/区三级树，供 userExtra 分包的级联选择器。
+3. pagesSub/profileExtra/data/location.uts 的同一份紧凑树
+   供 profileExtra 搜索页的居住地两级选择器；微信分包之间不能互相 import，
+   因此按分包各生成一份。
 
-两份都必须是**字符串常量**：直接 `import '@/data/location.json'` 会让 UTS
+三份都必须是**字符串常量**：直接 `import '@/data/location.json'` 会让 UTS
 把嵌套 JSON 编译成 UTSJSONObject 字面量（约 404 KB），并被提升到主包根目录的
 location.js，把省下来的包体积又吃回去。
 
 用法：
     python scripts/gen-location-table.py            # 只校验是否过期
-    python scripts/gen-location-table.py --write    # 写回两份
+    python scripts/gen-location-table.py --write    # 写回三份
 """
 import argparse
 import io
@@ -23,7 +26,8 @@ import sys
 
 LOCATION_JSON = 'data/location.json'
 FLAT_UTS = 'utils/profile-field-display.uts'
-TREE_UTS = 'pagesSub/userExtra/data/location.uts'
+TREE_UTS_USER = 'pagesSub/userExtra/data/location.uts'
+TREE_UTS_PROFILE = 'pagesSub/profileExtra/data/location.uts'
 
 FLAT_MARK = 'const LOCATION_NAME_TABLE: string = '
 TREE_MARK = 'const LOCATION_TREE_RAW: string = '
@@ -61,7 +65,7 @@ def build():
 
 UTS_HEADER = '''// 由 scripts/gen-location-table.py 从 data/location.json 生成，请勿手改。
 //
-// 只服务 pagesSub/userExtra 的省/市/区级联选择器。刻意用紧凑字符串 + 运行时解析，
+// 只服务 %s 的省/市/区级联选择器。刻意用紧凑字符串 + 运行时解析，
 // 而不是 import 那份嵌套 JSON：JSON 会被 UTS 编译成约 404 KB 的 UTSJSONObject 字面量，
 // 并且被提升到主包根目录，直接顶爆 2 MB 主包限制。
 //
@@ -69,8 +73,8 @@ UTS_HEADER = '''// 由 scripts/gen-location-table.py 从 data/location.json 生�
 '''
 
 
-def render_tree(tree_raw):
-    return (UTS_HEADER + "\n" + TREE_MARK + "'" + tree_raw + "'\n\n" + """
+def render_tree(tree_raw, scope):
+    return ((UTS_HEADER % scope) + "\n" + TREE_MARK + "'" + tree_raw + "'\n\n" + """
 function parseLocationTree(): any[] {
 	const provinces: any[] = []
 	for (const provStr of LOCATION_TREE_RAW.split('|')) {
@@ -163,7 +167,11 @@ def main():
 
     if not args.write:
         rc = 0
-        for path, marker, value in ((FLAT_UTS, FLAT_MARK, flat), (TREE_UTS, TREE_MARK, tree)):
+        for path, marker, value in (
+            (FLAT_UTS, FLAT_MARK, flat),
+            (TREE_UTS_USER, TREE_MARK, tree),
+            (TREE_UTS_PROFILE, TREE_MARK, tree),
+        ):
             src = io.open(path, encoding='utf-8').read() if os.path.isfile(path) else ''
             m = re.search(re.escape(marker) + r"'([^']*)'", src)
             if m and m.group(1) == value:
@@ -180,18 +188,20 @@ def main():
         io.open(FLAT_UTS, 'w', encoding='utf-8', newline='').write(src)
     print('%s %s (%d 条码)' % (state, FLAT_UTS, count))
 
-    if os.path.isfile(TREE_UTS):
-        tsrc = io.open(TREE_UTS, encoding='utf-8').read()
-        m = re.search(re.escape(TREE_MARK) + r"'([^']*)'", tsrc)
-        if m and m.group(1) == tree:
-            state = 'OK'
+    for path, scope in (
+        (TREE_UTS_USER, 'pagesSub/userExtra'),
+        (TREE_UTS_PROFILE, 'pagesSub/profileExtra'),
+    ):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if os.path.isfile(path):
+            tsrc = io.open(path, encoding='utf-8').read()
+            m = re.search(re.escape(TREE_MARK) + r"'([^']*)'", tsrc)
+            state = 'OK' if (m and m.group(1) == tree) else 'WROTE'
         else:
-            io.open(TREE_UTS, 'w', encoding='utf-8', newline='').write(render_tree(tree))
-            state = 'WROTE'
-    else:
-        io.open(TREE_UTS, 'w', encoding='utf-8', newline='').write(render_tree(tree))
-        state = 'CREATED'
-    print('%s %s (%d 字节紧凑树)' % (state, TREE_UTS, len(tree.encode('utf-8'))))
+            state = 'CREATED'
+        if state != 'OK':
+            io.open(path, 'w', encoding='utf-8', newline='').write(render_tree(tree, scope))
+        print('%s %s (%d 字节紧凑树)' % (state, path, len(tree.encode('utf-8'))))
     return 0
 
 

@@ -108,11 +108,14 @@ function patchSandbox(script) {
     searchRunId: 1,
     aiDraftId: { value: 'd1' },
     aiDraft: { value: { revision: 7 } },
+    aiEnabled: { value: true },
+    aiCapabilityState: { value: 'enabled' },
     aiPatchIdempotencyKey: { value: '' },
     aiDraftError: { value: '' },
     buildAiConditionActions: () => [{ condition_no: 1, action: 'edit', value: 25 }],
     searchDraftRevision: () => 7,
     setAiDraftResponse: () => {},
+    setAiFailure: (res) => { ctx.aiDraftError.value = res != null && res.message != null ? String(res.message) : 'failed' },
     getSearchDraft: async () => ({ success: true, data: {} }),
     patchSearchDraft: async (draftId, actions, revision, key) => {
       sent.push({ draftId, key })
