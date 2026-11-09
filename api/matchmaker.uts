@@ -512,8 +512,8 @@ export async function updateMatchmakerWorkspaceHomepage(changes: any) {
 }
 
 /** 查询当前服务红娘工作范围内的客源线索。 */
-export async function getMatchmakerWorkspaceLeads() {
-  return request({ url: '/matchmaker/workbench/leads', method: 'GET', data: { page: 1, page_size: 100 } })
+export async function getMatchmakerWorkspaceLeads(page: number = 1) {
+  return request({ url: '/matchmaker/workbench/leads', method: 'GET', data: { page: page, page_size: 100 } })
 }
 
 /** 查询客源线索跟进记录。 */
@@ -1149,6 +1149,14 @@ export async function updateMatchmakerReviewMember(id: string, changes: any) {
 
 export async function pickupMatchmakerMember(id: string) {
   return request({ url: '/matchmaker/workbench/members/' + encodeURIComponent(id) + '/pickup', method: 'POST' })
+}
+
+export async function abandonMemberRecord(id: string, reason: string) {
+  return request({ url: '/matchmaker/workbench/members/' + encodeURIComponent(id) + '/abandonment', method: 'POST', data: { reason: reason } })
+}
+
+export async function pickupAbandonedMemberRecord(id: string) {
+  return request({ url: '/matchmaker/workbench/members/' + encodeURIComponent(id) + '/abandonment/pickup', method: 'POST' })
 }
 
 export async function getMatchmakerMemberFollowUps(id: string) {

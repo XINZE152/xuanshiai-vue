@@ -53,6 +53,8 @@ const REMOTE_OPERATIONS: string[] = [
   "POST /matchmaker/workbench/introductions",
   "GET /matchmaker/workbench/meeting-requests",
   "PATCH /matchmaker/workbench/members/{member_id}/public-profile-review",
+  "POST /matchmaker/workbench/members/{member_id}/abandonment",
+  "POST /matchmaker/workbench/members/{member_id}/abandonment/pickup",
   "GET /matchmaker/workbench/members/{member_id}/follow-ups",
   "POST /matchmaker/workbench/members/{member_id}/follow-ups",
   "GET /matchmaker/workbench/members/{member_id}/contact",

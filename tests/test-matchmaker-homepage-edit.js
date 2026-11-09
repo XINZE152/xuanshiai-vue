@@ -5,7 +5,7 @@ const vm = require('node:vm')
 const babel = require('@babel/core')
 const source = fs.readFileSync(path.join(__dirname, '../api/matchmaker.uts'), 'utf8')
 const start = source.indexOf('export async function getMatchmakerWorkspaceHomepage()')
-const end = source.indexOf('export async function getMatchmakerWorkspaceLeads()', start)
+const end = source.indexOf('export async function getMatchmakerWorkspaceLeads(', start)
 const code = babel.transformSync(source.slice(start, end).replace(/^export /gm, ''), {
   filename: 'homepage.ts', configFile: false, babelrc: false,
   plugins: ['@babel/plugin-transform-typescript']

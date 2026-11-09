@@ -108,7 +108,7 @@
 						</view>
 					</view>
 					<view v-else>
-					<view class="workspace-notice"><text>超级红娘可查看全部客源线索，普通红娘仅查看已分派的客源。</text></view>
+					<view class="workspace-notice"><text>总店超级红娘可查看全部客源，门店超级红娘查看本门店客源，普通红娘查看本人客源。</text></view>
 					<view v-if="workspaceLeadsLoading" class="workspace-state"><text>正在加载客源数据…</text></view>
 					<view v-else-if="workspaceLeadsError.length > 0" class="workspace-state"><text>{{ workspaceLeadsError }}</text><text class="workspace-state-action" @click="loadWorkspaceLeads">重新加载</text><text v-if="workspaceLeadsDiagnostic.length > 0" class="workspace-state-action" @tap="copyLeadDiagnostic">复制故障信息</text></view>
 					<view v-else-if="workspaceVisibleLeads.length == 0" class="workspace-state"><text>没有符合条件的客源</text></view>
@@ -1252,6 +1252,42 @@ const refreshBusinessMetricCounts = async () => {
 	}
 }
 const workspaceMembers = ref<any[]>([])
+// 与资料待审“待审”页使用相同的全会员筛选和服务端总数，避免工作范围汇总与列表不一致。
+let pendingReviewCountRequest = 0
+let pendingReviewCountTimer: any = null
+const applyPendingReviewCount = (value: string) => {
+	if (managementCenterSnapshot.value == null || !Array.isArray(managementCenterSnapshot.value.storeMetrics)) return
+	managementCenterSnapshot.value = {
+		...managementCenterSnapshot.value,
+		storeMetrics: managementCenterSnapshot.value.storeMetrics.map((item: any) => item.key == 'pending_review'
+			? { ...item, value: value }
+			: item)
+	}
+}
+const refreshPendingReviewCount = async () => {
+	const requestId = ++pendingReviewCountRequest
+	try {
+		const result = await getMatchmakerReviewMembers({ page: 1, page_size: 1, member_pool: 'all', review_status: 'PENDING', filters: '{}' })
+		if (requestId != pendingReviewCountRequest) return
+		if (!result.success || result.data == null || Number(result.data.member_pool_version || 0) < 1 || result.data.total == null) {
+			applyPendingReviewCount('--')
+			return
+		}
+		applyPendingReviewCount(String(Math.max(0, Number(result.data.total))))
+	} catch (e) {
+		if (requestId == pendingReviewCountRequest) applyPendingReviewCount('--')
+	}
+}
+const stopPendingReviewCountTimer = () => {
+	if (pendingReviewCountTimer != null) clearInterval(pendingReviewCountTimer)
+	pendingReviewCountTimer = null
+}
+const startPendingReviewCountTimer = () => {
+	stopPendingReviewCountTimer()
+	pendingReviewCountTimer = setInterval(() => {
+		if (managementCenterVisible.value && !pendingReviewVisible.value && !workspaceVisible.value) refreshPendingReviewCount()
+	}, 15000)
+}
 // 「我服务的」以会员列表真实数据（matchmaker_id == 当前红娘）为准，实时覆盖简报里的服务端统计。
 const selfMatchmakerUserId = ref(0)
 const ensureSelfMatchmakerUserId = async (): Promise<number> => {
@@ -1297,7 +1333,7 @@ const reloadManagementCenterSnapshot = async () => {
 		const result = await getMatchmakerManagementCenterSnapshot()
 		if (!result.success || result.data == null) return
 		managementCenterSnapshot.value = result.data
-		await Promise.all([refreshBusinessMetricCounts(), refreshServedMemberCount()])
+		await Promise.all([refreshBusinessMetricCounts(), refreshServedMemberCount(), refreshPendingReviewCount()])
 	} catch (e) {
 		// 重拉失败时保留上一次有效统计，和刷新接口的容错一致。
 	}
@@ -1495,8 +1531,10 @@ const openManagementCenter = async () => {
 		const result = await getMatchmakerManagementCenterSnapshot()
 		if (result.success && result.data != null) {
 			managementCenterSnapshot.value = result.data
-			await Promise.all([refreshBusinessMetricCounts(), refreshServedMemberCount()])
+			applyPendingReviewCount('--')
+			await Promise.all([refreshBusinessMetricCounts(), refreshServedMemberCount(), refreshPendingReviewCount()])
 			managementCenterVisible.value = true
+			startPendingReviewCountTimer()
 		} else {
 			showToast(result.message != null ? String(result.message) : '工作台加载失败，请稍后重试')
 		}
@@ -1508,6 +1546,8 @@ const openManagementCenter = async () => {
 }
 
 const exitManagementCenter = () => {
+	stopPendingReviewCountTimer()
+	pendingReviewCountRequest += 1
 	pendingReviewVisible.value = false
 	workspaceVisible.value = false
 	managementCenterVisible.value = false
@@ -1531,6 +1571,7 @@ const openPendingReview = (initialTab: string = 'PENDING') => {
 
 const closePendingReview = () => {
 	pendingReviewVisible.value = false
+	refreshPendingReviewCount()
 }
 
 const closeWorkspace = () => {
@@ -1655,15 +1696,34 @@ const loadWorkspaceLeads = async () => {
 	workspaceLeadsLoading.value = true
 	workspaceLeadsError.value = ''
 	try {
-		const result = await getMatchmakerWorkspaceLeads()
-		if (!result.success || result.data == null) {
-			workspaceLeads.value = []
-			workspaceLeadsError.value = result.message != null ? String(result.message) : '客源数据加载失败'
-			workspaceLeadsDiagnostic.value = result.diagnostic != null ? String(result.diagnostic) : ''
-			return
+		// 状态、搜索和意向在页面上组合筛选，须先读取工作范围内的全部分页，避免只筛选前 100 条。
+		const items: any[] = []
+		let page = 1
+		let hasMore = true
+		while (hasMore) {
+			const result = await getMatchmakerWorkspaceLeads(page)
+			if (!result.success || result.data == null) {
+				workspaceLeads.value = []
+				workspaceLeadsError.value = result.message != null ? String(result.message) : '客源数据加载失败'
+				workspaceLeadsDiagnostic.value = result.diagnostic != null ? String(result.diagnostic) : ''
+				return
+			}
+			const source = result.data
+			if (!Array.isArray(source.items) || typeof source.has_more != 'boolean' || Number(source.page) != page) {
+				workspaceLeads.value = []
+				workspaceLeadsError.value = '客源数据不完整，请重新加载'
+				return
+			}
+			const batch = source.items as any[]
+			for (let i = 0; i < batch.length; i++) items.push(batch[i])
+			hasMore = source.has_more === true
+			if (hasMore && (batch.length == 0 || page >= 1000)) {
+				workspaceLeads.value = []
+				workspaceLeadsError.value = '客源数据不完整，请重新加载'
+				return
+			}
+			page += 1
 		}
-		const source = result.data
-		const items = Array.isArray(source.items) ? source.items : []
 		workspaceLeads.value = items.map((item: any) => {
 			const status = item.status != null ? String(item.status) : 'NEW'
 			const intentionLevel = item.intention_level != null ? Number(item.intention_level) : 1
@@ -3222,7 +3282,8 @@ const refreshManagementCenter = async () => {
 		const result = await getMatchmakerManagementCenterSnapshot()
 		if (result.success && result.data != null) {
 			managementCenterSnapshot.value = result.data
-			await Promise.all([refreshBusinessMetricCounts(), refreshServedMemberCount()])
+			applyPendingReviewCount('--')
+			await Promise.all([refreshBusinessMetricCounts(), refreshServedMemberCount(), refreshPendingReviewCount()])
 			showToast('工作台已刷新')
 		} else {
 			showToast(result.message != null ? String(result.message) : '工作台刷新失败')
@@ -3373,6 +3434,10 @@ onLoad((options: any) => {
 })
 
 onShow(async () => {
+	if (managementCenterVisible.value) {
+		refreshPendingReviewCount()
+		startPendingReviewCountTimer()
+	}
 	if (pendingReviewVisible.value) pendingReviewRefreshToken.value += 1
 	if (autoOpenPendingReview.value) {
 		autoOpenPendingReview.value = false
@@ -3395,6 +3460,9 @@ onShow(async () => {
 	}
 	if (!managementCenterVisible.value && !pendingReviewVisible.value && !workspaceVisible.value) loadManagementAccess()
 })
+
+onHide(() => { stopPendingReviewCountTimer(); pendingReviewCountRequest += 1 })
+onUnload(() => { stopPendingReviewCountTimer(); pendingReviewCountRequest += 1 })
 
 const guideToRequiredVerification = (message: string) => {
 	const needsPhone = message.indexOf('绑定手机号') >= 0
