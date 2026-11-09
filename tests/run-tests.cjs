@@ -24,6 +24,7 @@ const core = [
   'test-contact-exchange-real.js',
   'test-matchmaker-remote.js',
   'test-workspace-lead-pagination.js',
+  'test-lead-auto-name.js',
   'test-matchmaker-vip-tabs.js',
   'test-pending-review-counter.js',
   'test-matchmaker-homepage-edit.js',
