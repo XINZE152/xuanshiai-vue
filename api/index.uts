@@ -45,6 +45,7 @@ export {
 // 首页与我的页面的发现数据
 export {
   getDiscoveryRecommendations,
+  getDiscoveryFilterOptions,
   getDiscoveryPlaza,
   getUserCardPreview,
   getProfileOverview,
@@ -123,6 +124,11 @@ export {
   recomputeCompatibility,
   waitForCompatibilityTask
 } from './ai-compatibility.uts'
+
+export {
+  getAiCapabilities,
+  isAiSearchEnabled
+} from './ai-capabilities.uts'
 
 export {
   createSearchDraft,

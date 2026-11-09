@@ -14,10 +14,11 @@
 		<scroll-view class="search-scroll" scroll-y enhanced show-scrollbar="false">
 			<view v-if="activeTab === 0" class="search-panel ai-panel">
 				<view class="ai-input-wrap">
-					<textarea class="ai-input" :value="aiQuery" maxlength="300" :placeholder="aiPlaceholder" @input="onAiInput"></textarea>
-					<view class="ai-input-foot"><view class="ai-template-trigger" @tap="onAiSuggestTap"><text class="ai-trigger-text">{{ aiSuggestions.length > 0 ? '选择一条期待' : '读取可编辑建议' }}</text></view><button class="ai-submit-button" :disabled="aiGenerating || aiQuery.trim().length == 0" @tap="submitAiSearch">{{ aiGenerating ? '正在解析…' : '解析期待' }}</button></view>
+					<textarea class="ai-input" :value="aiQuery" maxlength="300" :placeholder="aiPlaceholder" :disabled="!aiEnabled" @input="onAiInput"></textarea>
+					<view class="ai-input-foot"><view class="ai-template-trigger" :class="{ 'ai-template-trigger--disabled': !aiEnabled }" @tap="onAiSuggestTap"><text class="ai-trigger-text">{{ aiSuggestions.length > 0 ? '选择一条期待' : '读取可编辑建议' }}</text></view><button class="ai-submit-button" :disabled="!aiEnabled || aiGenerating || aiQuery.trim().length == 0" @tap="submitAiSearch">{{ aiGenerating ? '正在解析…' : '解析期待' }}</button></view>
 					<view v-if="aiSuggestions.length > 0" class="ai-suggestion-row"><text v-for="item in aiSuggestions" :key="item" class="ai-suggestion-chip" @tap="typeAiText(item)">{{ item }}</text></view>
 					<text class="panel-note">先把期待解析成条件，再由你确认后执行搜索；不会自动改写长期偏好。</text>
+					<text v-if="!aiEnabled" class="panel-unavailable-note" @tap="retryAiCapability">{{ aiCapabilityNotice }}</text>
 					<text v-if="aiGenerating" class="ai-task-inline">{{ aiDraftTaskStage }}</text>
 					<!-- 解析失败时草稿区可能尚不存在：错误放在无草稿也可见的位置。 -->
 					<text v-if="aiDraft == null && aiDraftError != ''" class="panel-error">{{ aiDraftError }}</text>
@@ -55,13 +56,12 @@
 				</view>
 				<view class="mbti-tag-cloud"><text>INTJ</text><text>ENFP</text><text>INFJ</text><text>ENTP</text><text>ISFJ</text></view>
 				<text class="mbti-balance-copy">同频的人，终会相遇</text>
-				<text class="panel-unavailable-note">MBTI 筛选能力接入中：暂不支持按人格类型筛选</text>
 			</view>
 
 			<view v-else class="search-panel condition-panel">
 				<view class="condition-group">
 					<text class="condition-label">居住地偏好</text>
-					<view class="condition-control location-row"><picker class="condition-picker" mode="selector" :range="residenceOptions" :value="residenceIndex" @change="onResidenceChange"><view class="picker-value"><text>{{ residenceOptions[residenceIndex] }}</text><text>⌄</text></view></picker><picker class="condition-add-picker" mode="selector" :range="residenceOptions" :value="residenceIndex" @change="onResidenceChange"><view class="condition-add"><text>＋ 添加</text></view></picker></view>
+					<view class="condition-control location-row"><picker class="condition-picker" mode="multiSelector" :range="residenceColumns" :value="residenceMultiIndex" @columnchange="onResidenceColumnChange" @change="onResidenceChange"><view class="picker-value"><text>{{ residenceLabel }}</text><text>⌄</text></view></picker></view>
 				</view>
 				<view class="condition-group">
 					<text class="condition-label">年龄偏好 {{ ageReadout }}</text>
@@ -178,7 +178,10 @@
 <script setup lang="uts">
 	import XsaSheet from '@/components/XsaSheet.uvue'
 	import XsaTag from '@/pagesSub/profileExtra/components/XsaTag.uvue'
-	import { getOwnProfile, getEmotionLabSummary, setMyMbtiType, getDiscoveryRecommendations, createSearchDraft, getSearchDraft, patchSearchDraft, confirmSearchDraft, waitForSearchTask, getSearchSnapshotResults, getSearchSuggestions, generateSearchSuggestions, searchResultItems, searchNextCursor, searchDraftConditions, searchDraftUnknown, searchDraftConflicts, searchDraftRevision } from '@/api'
+	import { LOCATION_TREE } from './data/location.uts'
+	import { buildStructuredSearchParams, residenceCityCodeFor } from '@/utils/searchFilterMapping.uts'
+	import { aiFailureNotice } from '@/utils/ai-error.uts'
+	import { getOwnProfile, getEmotionLabSummary, setMyMbtiType, getDiscoveryRecommendations, getDiscoveryFilterOptions, getAiCapabilities, isAiSearchEnabled, createSearchDraft, getSearchDraft, patchSearchDraft, confirmSearchDraft, waitForSearchTask, getSearchSnapshotResults, getSearchSuggestions, generateSearchSuggestions, searchResultItems, searchNextCursor, searchDraftConditions, searchDraftUnknown, searchDraftConflicts, searchDraftRevision } from '@/api'
 
 	const systemInfo = uni.getSystemInfoSync()
 	const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
@@ -250,6 +253,51 @@
 	const aiSuggestionGenerating = ref(false)
 	const aiSuggestionIdempotencyKey = ref('')
 	const aiTaskStage = ref('正在等待后端任务完成')
+	const aiEnabled = ref(false)
+	const aiCapabilityState = ref('unknown')
+	const aiCapabilityNotice = computed(() => aiCapabilityState.value == 'error' ? 'AI 能力状态读取失败，点击重试' : (aiCapabilityState.value == 'unknown' ? '正在确认 AI 能力…' : 'AI 觅遇暂未开放'))
+	let aiCapabilityTask: any = null
+	const loadAiCapabilities = (): any => {
+		if (aiCapabilityTask != null) return aiCapabilityTask
+		aiCapabilityTask = (async () => {
+			try {
+				const res = await getAiCapabilities()
+				if (!searchPageAlive) return false
+				if (res == null || !res.success || res.data == null) {
+					aiEnabled.value = false
+					aiCapabilityState.value = 'error'
+					return false
+				}
+				const enabled = isAiSearchEnabled(res)
+				aiEnabled.value = enabled
+				aiCapabilityState.value = enabled ? 'enabled' : 'disabled'
+				return enabled
+			} catch (error) {
+				if (searchPageAlive) {
+					aiEnabled.value = false
+					aiCapabilityState.value = 'error'
+				}
+				return false
+			}
+		})()
+		return aiCapabilityTask
+	}
+	const retryAiCapability = () => {
+		if (aiCapabilityState.value != 'error') return
+		aiCapabilityTask = null
+		loadAiCapabilities()
+	}
+	// 后端 503/AI_FEATURE_DISABLED 统一按运营态展示，不当作网络故障。
+	const setAiFailure = (res: any) => {
+		const notice = aiFailureNotice(res, 'AI 觅遇')
+		if (notice.disabled) {
+			aiEnabled.value = false
+			aiCapabilityState.value = 'disabled'
+			aiDraftError.value = notice.title
+			return
+		}
+		aiDraftError.value = notice.title + ' · ' + notice.hint
+	}
 	// confirm 已知成功后的任务/快照引用：成功响应丢失时用它重读结果，而不是重跑整链。
 	let aiConfirmTaskId = ''
 	const aiDraftStatusLabel = computed(() => aiDraftStatus.value == 'awaiting_confirmation' ? '待确认' : (aiDraftStatus.value == 'confirmed' ? '已确认' : (aiDraftStatus.value == 'failed' ? '解析失败' : '解析中')))
@@ -337,6 +385,7 @@
 		if (response != null && response.success && response.data != null && Array.isArray(response.data.items)) aiSuggestions.value = response.data.items as string[]
 	}
 	const onAiSuggestTap = async () => {
+		if (!aiEnabled.value) { aiDraftError.value = aiCapabilityNotice.value; return }
 		if (aiSuggestions.value.length > 0 || aiSuggestionGenerating.value) return
 		aiSuggestionGenerating.value = true
 		if (aiSuggestionIdempotencyKey.value == '') aiSuggestionIdempotencyKey.value = 'search-suggest-' + String(Date.now())
@@ -361,7 +410,9 @@
 	}
 
 	const hometownOptions = ['不限', '江苏', '浙江', '上海', '安徽']
-	const residenceOptions = ['不限', '南京', '杭州', '上海', '深圳']
+	const RESIDENCE_ANY = '不限'
+	// 仅用于恢复旧版搜索历史（旧记录只存中文标签）。
+	const LEGACY_RESIDENCE_OPTIONS = ['不限', '南京', '杭州', '上海', '深圳']
 	const AGE_MIN = 18
 	const AGE_MAX = 60
 	const HEIGHT_MIN = 140
@@ -370,9 +421,50 @@
 	// 学历选项与存储域（education_level 1=高中及以下 … 5=博士，编辑器写入域）对齐；
 	// 小学/初中/技校在存储域不可表达，隐藏（后端字典冲突已单独记录）。
 	const educationOptions = ['不限', '高中', '大专', '本科', '硕士', '博士']
-	const marriageOptions = ['未婚', '离异']
+	const marriageOptions = ['未婚', '离异', '丧偶']
 	const hometownIndex = ref(0)
-	const residenceIndex = ref(0)
+	const residenceProvinceIndex = ref(0)
+	const residenceCityIndex = ref(0)
+	const residenceProvinceName = (): string => {
+		const index = residenceProvinceIndex.value
+		return index > 0 && index <= LOCATION_TREE.length ? '' + LOCATION_TREE[index - 1].name : RESIDENCE_ANY
+	}
+	const residenceCityName = (): string => {
+		const provinceIndex = residenceProvinceIndex.value
+		const cityIndex = residenceCityIndex.value
+		if (provinceIndex <= 0 || provinceIndex > LOCATION_TREE.length) return RESIDENCE_ANY
+		const cities = LOCATION_TREE[provinceIndex - 1].city
+		return cityIndex > 0 && cityIndex <= cities.length ? '' + cities[cityIndex - 1].name : RESIDENCE_ANY
+	}
+	const residenceLabel = computed(() => {
+		const province = residenceProvinceName()
+		if (province == RESIDENCE_ANY) return RESIDENCE_ANY
+		const city = residenceCityName()
+		return city == RESIDENCE_ANY ? province : province + ' ' + city
+	})
+	const residenceProvinceCode = computed(() => {
+		const provinceIndex = residenceProvinceIndex.value
+		return provinceIndex > 0 && provinceIndex <= LOCATION_TREE.length ? '' + LOCATION_TREE[provinceIndex - 1].code : ''
+	})
+	const residenceCityCode = computed(() => {
+		const provinceIndex = residenceProvinceIndex.value
+		const cityIndex = residenceCityIndex.value
+		if (provinceIndex <= 0 || provinceIndex > LOCATION_TREE.length) return ''
+		const cities = LOCATION_TREE[provinceIndex - 1].city
+		return cityIndex > 0 && cityIndex <= cities.length ? '' + cities[cityIndex - 1].code : ''
+	})
+	const residenceColumns = computed<any[]>(() => {
+		const provinces: string[] = [RESIDENCE_ANY]
+		for (let i = 0; i < LOCATION_TREE.length; i++) provinces.push('' + LOCATION_TREE[i].name)
+		const cities: string[] = [RESIDENCE_ANY]
+		const provinceIndex = residenceProvinceIndex.value
+		if (provinceIndex > 0 && provinceIndex <= LOCATION_TREE.length) {
+			const list = LOCATION_TREE[provinceIndex - 1].city
+			for (let i = 0; i < list.length; i++) cities.push('' + list[i].name)
+		}
+		return [provinces, cities]
+	})
+	const residenceMultiIndex = computed<number[]>(() => [residenceProvinceIndex.value, residenceCityIndex.value])
 	const ageMin = ref(null as any)
 	const ageMax = ref(null as any)
 	const heightMin = ref(null as any)
@@ -381,7 +473,8 @@
 	const incomeMax = ref(null as any)
 	const education = ref('')
 	const marriage = ref('')
-	const certificationOnly = ref(true)
+	// 认证筛选依赖后端 Q20 字段；上线前保持关闭，也不恢复历史里的旧开关值。
+	const certificationOnly = ref(false)
 
 	const mbtiSheetVisible = ref(false)
 	const mbtiSheetMode = ref('self')
@@ -391,12 +484,13 @@
 	const savingOwnMbti = ref(false)
 	const targetMbtis = ref<string[]>([])
 	const activeTrait = ref('')
-	const mbtiTypes = [
+	const MBTI_FALLBACK_TYPES: any[] = [
 		{ code: 'INTJ', trait: 'INTJ 理性搭档' }, { code: 'INTP', trait: 'INTP 好奇探索' }, { code: 'ENTJ', trait: 'ENTJ 目标同行' }, { code: 'ENTP', trait: 'ENTP 思维碰撞' },
 		{ code: 'INFJ', trait: 'INFJ 灵魂知己' }, { code: 'INFP', trait: 'INFP 温柔治愈' }, { code: 'ENFJ', trait: 'ENFJ 共情支持' }, { code: 'ENFP', trait: 'ENFP 热情灵感' },
 		{ code: 'ISTJ', trait: 'ISTJ 稳定靠谱' }, { code: 'ISFJ', trait: 'ISFJ 细腻守护' }, { code: 'ESTJ', trait: 'ESTJ 执行默契' }, { code: 'ESFJ', trait: 'ESFJ 温暖联结' },
 		{ code: 'ISTP', trait: 'ISTP 自在相处' }, { code: 'ISFP', trait: 'ISFP 感受共鸣' }, { code: 'ESTP', trait: 'ESTP 活力同游' }, { code: 'ESFP', trait: 'ESFP 快乐分享' }
 	]
+	const mbtiTypes = ref<any[]>(MBTI_FALLBACK_TYPES)
 	const mbtiNames: any = { INTJ: '建筑师', INTP: '逻辑学家', ENTJ: '指挥官', ENTP: '辩论家', INFJ: '提倡者', INFP: '调停者', ENFJ: '主人公', ENFP: '竞选者', ISTJ: '物流师', ISFJ: '守卫者', ESTJ: '总经理', ESFJ: '执政官', ISTP: '鉴赏家', ISFP: '探险家', ESTP: '企业家', ESFP: '表演者' }
 	const mbtiCompatibility: any = {
 		INTJ: 'ENFP / ENTP', INTP: 'ENTJ / ENFJ', ENTJ: 'INTP / INFP', ENTP: 'INFJ / INTJ',
@@ -412,6 +506,29 @@
 	})
 
 	const toText = (value: any): string => value == null ? '' : ('' + value)
+	let mbtiOptionsLoaded = false
+	const loadMbtiOptions = async () => {
+		if (mbtiOptionsLoaded) return
+		try {
+			const res = await getDiscoveryFilterOptions()
+			if (!searchPageAlive || res == null || !res.success || res.data == null) return
+			const list = res.data.mbti_types
+			if (!Array.isArray(list) || list.length == 0) {
+				mbtiOptionsLoaded = true
+				return
+			}
+			const next: any[] = []
+			for (let i = 0; i < list.length; i++) {
+				const code = toText(list[i].value).toUpperCase()
+				if (code == '' || mbtiNames[code] == null) continue
+				next.push({ code: code, trait: code + ' ' + toText(list[i].label) })
+			}
+			if (next.length > 0) mbtiTypes.value = next
+			mbtiOptionsLoaded = true
+		} catch (error) {
+			console.error('[Search] mbti options load failed', error)
+		}
+	}
 	const aiTargetPronoun = computed(() => {
 		const gender = toText(ownGender.value).toLowerCase()
 		return ownGender.value == 2 || gender == '2' || gender == '女' || gender == 'female' ? '他' : '她'
@@ -458,6 +575,7 @@
 		aiConfirming.value = false
 	}
 	const onAiInput = (event: any) => {
+		if (!aiEnabled.value) return
 		const next = toText(event.detail.value)
 		if (next == aiQuery.value) return
 		invalidateAiRun()
@@ -471,6 +589,7 @@
 		}
 	}
 	const typeAiText = (value: string) => {
+		if (!aiEnabled.value) return
 		stopAiTyping()
 		invalidateAiRun()
 		aiQuery.value = ''
@@ -483,6 +602,7 @@
 		}, 45)
 	}
 	const submitAiSearch = async () => {
+		if (!aiEnabled.value) { aiDraftError.value = aiCapabilityNotice.value; return }
 		const query = aiQuery.value.trim()
 		if (query.length == 0 || aiGenerating.value) return
 		const runId = searchRunId + 1
@@ -502,14 +622,24 @@
 		try {
 			const created = await createSearchDraft(query, 'search_page', 'zh-CN', aiDraftIdempotencyKey.value)
 			if (runId != searchRunId) return
-			if (created == null || !created.success || created.data == null) { aiDraftError.value = created != null && created.message != null ? String(created.message) : '搜索期待解析失败'; return }
+			if (created == null || !created.success || created.data == null) { setAiFailure(created); return }
 			const data = created.data
 			aiDraftId.value = data.draft_id != null ? String(data.draft_id) : ''
 			aiDraftTaskId.value = data.task_id != null ? String(data.task_id) : ''
 			if (aiDraftId.value == '' || aiDraftTaskId.value == '') { aiDraftError.value = '搜索服务未返回有效解析任务'; return }
 			const task = await waitForSearchTask(aiDraftTaskId.value, () => runId == searchRunId)
 			if (runId != searchRunId) return
-			if (!task.done || task.status != 'succeeded') { aiDraftError.value = task.error != null ? String(task.error) : '搜索期待解析未完成'; return }
+			if (!task.done || task.status != 'succeeded') {
+				const taskError = task.error != null ? String(task.error) : ''
+				if (taskError.indexOf('AI_FEATURE_DISABLED') >= 0) {
+					aiEnabled.value = false
+					aiCapabilityState.value = 'disabled'
+					aiDraftError.value = 'AI 觅遇暂未开放'
+				} else {
+					aiDraftError.value = taskError != '' ? taskError : '搜索期待解析未完成'
+				}
+				return
+			}
 			aiDraftTaskStage.value = '解析完成，等待你确认条件'
 			const draft = await getSearchDraft(aiDraftId.value)
 			if (runId != searchRunId) return
@@ -543,6 +673,7 @@
 		return actions
 	}
 	const patchAiConditions = async (runId: number, draftId: string): Promise<boolean> => {
+		if (!aiEnabled.value) return false
 		if (draftId == '' || runId != searchRunId || draftId != aiDraftId.value) return false
 		if (aiPatchIdempotencyKey.value.length == 0) aiPatchIdempotencyKey.value = 'search-patch-' + String(Date.now()) + '-' + String(Math.floor(Math.random() * 1000000))
 		const actions = buildAiConditionActions()
@@ -556,7 +687,7 @@
 			if (runId != searchRunId || draftId != aiDraftId.value) return false
 			if (latest.success && latest.data != null) setAiDraftResponse(latest)
 		}
-		if (runId == searchRunId && draftId == aiDraftId.value) aiDraftError.value = response.message != null ? String(response.message) : '条件版本已变化，请检查后重试'
+		if (runId == searchRunId && draftId == aiDraftId.value) setAiFailure(response)
 		return false
 	}
 	// 阶段化确认：PATCH 与 confirm 各自保存"已知成功"标记与请求快照。
@@ -565,6 +696,7 @@
 	let aiPatchPhaseSucceeded = false
 	const aiConfirmSucceeded = ref(false)
 	const confirmAiSearch = async () => {
+		if (!aiEnabled.value) { aiDraftError.value = aiCapabilityNotice.value; return }
 		if (aiConfirming.value || aiDraftId.value == '') return
 		const runId = searchRunId
 		const draftId = aiDraftId.value
@@ -585,7 +717,7 @@
 				accepted = await confirmSearchDraft(draftId, searchDraftRevision(aiDraft.value), aiConfirmIdempotencyKey.value)
 			}
 			if (runId != searchRunId || draftId != aiDraftId.value) return
-			if (accepted == null || !accepted.success || accepted.data == null) { aiDraftError.value = accepted != null && accepted.message != null ? String(accepted.message) : '条件确认失败，请检查条件后重试'; return }
+			if (accepted == null || !accepted.success || accepted.data == null) { setAiFailure(accepted); return }
 			const acceptedData = accepted.data
 			aiSnapshotId.value = acceptedData.snapshot_id != null ? String(acceptedData.snapshot_id) : aiSnapshotId.value
 			const taskId = acceptedData.task_id != null ? String(acceptedData.task_id) : aiConfirmTaskId
@@ -598,7 +730,14 @@
 			if (runId != searchRunId || draftId != aiDraftId.value) return
 			if (!task.done || task.status != 'succeeded') {
 				resultState.value = 'error'
-				resultError.value = task.error != null ? String(task.error) : '搜索任务未完成'
+				const taskError = task.error != null ? String(task.error) : ''
+				if (taskError.indexOf('AI_FEATURE_DISABLED') >= 0) {
+					aiEnabled.value = false
+					aiCapabilityState.value = 'disabled'
+					resultError.value = 'AI 觅遇暂未开放'
+				} else {
+					resultError.value = taskError != '' ? taskError : '搜索任务未完成'
+				}
 				if (task.done) {
 					// 任务明确失败：解除两阶段标记与幂等键，用户主动重试才产生新操作。
 					aiConfirmIdempotencyKey.value = ''
@@ -622,7 +761,14 @@
 		if (runId != searchRunId || draftId != aiDraftId.value) return false
 		if (results == null || !results.success || results.data == null) {
 			resultState.value = 'error'
-			resultError.value = results != null && results.message != null ? String(results.message) : '候选结果读取失败'
+			const notice = aiFailureNotice(results, 'AI 觅遇')
+			if (notice.disabled) {
+				aiEnabled.value = false
+				aiCapabilityState.value = 'disabled'
+				resultError.value = notice.title
+			} else {
+				resultError.value = notice.title + ' · ' + notice.hint
+			}
 			return false
 		}
 		resultCandidates.value = searchResultItems(results)
@@ -632,7 +778,50 @@
 		return true
 	}
 	const onHometownChange = (event: any) => { hometownIndex.value = Number(event.detail.value) }
-	const onResidenceChange = (event: any) => { residenceIndex.value = Number(event.detail.value) }
+	const onResidenceColumnChange = (event: any) => {
+		if (event == null || event.detail == null) return
+		const column = Number(event.detail.column)
+		const value = Number(event.detail.value)
+		if (column == 0) {
+			residenceProvinceIndex.value = value
+			residenceCityIndex.value = 0
+		} else if (column == 1) {
+			residenceCityIndex.value = value
+		}
+	}
+	const onResidenceChange = (event: any) => {
+		const values = event != null && event.detail != null ? event.detail.value : null
+		if (Array.isArray(values) && values.length >= 2) {
+			residenceProvinceIndex.value = Number(values[0])
+			residenceCityIndex.value = Number(values[1])
+		}
+	}
+	const applyResidenceByProvinceCode = (code: string) => {
+		residenceProvinceIndex.value = 0
+		residenceCityIndex.value = 0
+		if (code == '') return
+		for (let provinceIndex = 0; provinceIndex < LOCATION_TREE.length; provinceIndex++) {
+			if (('' + LOCATION_TREE[provinceIndex].code) == code) {
+				residenceProvinceIndex.value = provinceIndex + 1
+				return
+			}
+		}
+	}
+	const applyResidenceByCode = (code: string) => {
+		residenceProvinceIndex.value = 0
+		residenceCityIndex.value = 0
+		if (code == '') return
+		for (let provinceIndex = 0; provinceIndex < LOCATION_TREE.length; provinceIndex++) {
+			const cities = LOCATION_TREE[provinceIndex].city
+			for (let cityIndex = 0; cityIndex < cities.length; cityIndex++) {
+				if (('' + cities[cityIndex].code) == code) {
+					residenceProvinceIndex.value = provinceIndex + 1
+					residenceCityIndex.value = cityIndex + 1
+					return
+				}
+			}
+		}
+	}
 	const clampInt = (value: any, min: number, max: number, fallback: number): number => {
 		if (value == null) return fallback
 		const num = Number(value)
@@ -825,7 +1014,7 @@
 		}
 		applyIncomeTrackValue(x)
 	}
-	const resetCondition = () => { hometownIndex.value = 0; residenceIndex.value = 0; ageMin.value = null; ageMax.value = null; heightMin.value = null; heightMax.value = null; incomeMin.value = null; incomeMax.value = null; education.value = ''; marriage.value = ''; certificationOnly.value = false }
+	const resetCondition = () => { hometownIndex.value = 0; residenceProvinceIndex.value = 0; residenceCityIndex.value = 0; ageMin.value = null; ageMax.value = null; heightMin.value = null; heightMax.value = null; incomeMin.value = null; incomeMax.value = null; education.value = ''; marriage.value = ''; certificationOnly.value = false; targetMbtis.value = []; activeTrait.value = '' }
 	const loadHistory = () => {
 		try {
 			const stored = uni.getStorageSync(SEARCH_HISTORY_STORAGE_KEY)
@@ -842,7 +1031,9 @@
 			aiQuery: aiQuery.value,
 			targetMbtis: targetMbtis.value.slice(),
 			hometownIndex: hometownIndex.value,
-			residenceIndex: residenceIndex.value,
+			residenceProvinceCode: residenceProvinceCode.value,
+			residenceCityCode: residenceCityCode.value,
+			residenceLabel: residenceLabel.value,
 			ageMin: ageMin.value,
 			ageMax: ageMax.value,
 			heightMin: heightMin.value,
@@ -855,7 +1046,7 @@
 		}
 		if (record.tab == 0) record.label = `AI：${aiQuery.value.trim()}`
 		else if (record.tab == 1) record.label = `MBTI：${targetMbtis.value.join(' / ')}`
-		else record.label = `条件：${residenceOptions[residenceIndex.value]}，${ageReadout.value}`
+		else record.label = `条件：${residenceLabel.value}，${ageReadout.value}`
 		return record
 	}
 	const saveHistory = (record: any) => {
@@ -876,7 +1067,7 @@
 	const resultQuerySummary = computed(() => {
 		if (activeTab.value == 0) return aiQuery.value.trim()
 		if (activeTab.value == 1) return 'MBTI ' + targetMbtis.value.join(' / ')
-		return residenceOptions[residenceIndex.value] + '，' + ageReadout.value
+		return residenceLabel.value + '，' + ageReadout.value
 	})
 	const resultProfile = (item: any): any => item != null && item.profile != null ? item.profile : (item != null ? item : {})
 	const resultAvatar = (item: any): string => {
@@ -908,6 +1099,7 @@
 		return []
 	}
 	const buildCurrentQuery = (): any => {
+		if (activeTab.value == 1) return buildStructuredSearchParams({ mbti: targetMbtis.value })
 		return buildStructuredSearchParams({
 			ageMin: ageMin.value,
 			ageMax: ageMax.value,
@@ -917,7 +1109,8 @@
 			incomeMaxWan: incomeMax.value,
 			education: education.value,
 			marriage: marriage.value,
-			residenceLabel: residenceOptions[residenceIndex.value]
+			residenceProvinceCode: residenceProvinceCode.value,
+			residenceCityCode: residenceCityCode.value
 		})
 	}
 	const beginSearch = async () => {
@@ -995,12 +1188,18 @@
 	}
 	const submitSearch = () => {
 		if (activeTab.value == 0) { saveHistory(buildHistoryRecord()); submitAiSearch(); return }
-		if (activeTab.value == 1) { uni.showToast({ title: 'MBTI 筛选暂未开放', icon: 'none' }); return }
+		if (activeTab.value == 1) {
+			if (targetMbtis.value.length == 0) { uni.showToast({ title: '请先选择人格类型', icon: 'none' }); return }
+			saveHistory(buildHistoryRecord())
+			beginSearch()
+			return
+		}
 		saveHistory(buildHistoryRecord())
 		beginSearch()
 	}
 	const retrySearch = () => {
 		if (activeTab.value == 0) {
+			if (!aiEnabled.value) { resultError.value = aiCapabilityNotice.value; return }
 			// 已经有快照时，失败原因只可能是"读结果"这一步：只重读既有快照，
 			// 不重跑 create/patch/confirm 整链（否则会重复执行同一次搜索）。
 			if (aiSnapshotId.value != '') {
@@ -1041,7 +1240,22 @@
 			else targetMbtis.value = []
 		} else if (tab == 2) {
 			hometownIndex.value = validIndex(item.hometownIndex, hometownOptions.length)
-			residenceIndex.value = validIndex(item.residenceIndex, residenceOptions.length)
+			const storedResidenceCode = toText(item.residenceCityCode)
+			const storedProvinceCode = toText(item.residenceProvinceCode)
+			if (storedResidenceCode != '') {
+				applyResidenceByCode(storedResidenceCode)
+			} else if (storedProvinceCode != '') {
+				applyResidenceByProvinceCode(storedProvinceCode)
+			} else {
+				const legacyIndex = validIndex(item.residenceIndex, LEGACY_RESIDENCE_OPTIONS.length)
+				const legacyLabel = toText(LEGACY_RESIDENCE_OPTIONS[legacyIndex])
+				let legacyCode = ''
+				if (legacyLabel != RESIDENCE_ANY) {
+					const mappedCode = residenceCityCodeFor(legacyLabel)
+					if (mappedCode != null) legacyCode = mappedCode
+				}
+				applyResidenceByCode(legacyCode)
+			}
 			ageMin.value = item.ageMin == null ? null : clampInt(item.ageMin, AGE_MIN, AGE_MAX, AGE_MIN)
 			ageMax.value = item.ageMax == null ? null : clampInt(item.ageMax, AGE_MIN, AGE_MAX, AGE_MAX)
 			heightMin.value = item.heightMin == null ? null : clampInt(item.heightMin, HEIGHT_MIN, HEIGHT_MAX, HEIGHT_MIN)
@@ -1050,7 +1264,8 @@
 			incomeMax.value = item.incomeMax == null ? null : INCOME_STOPS[incomeStopIndex(Number(item.incomeMax))]
 			education.value = toText(item.education)
 			marriage.value = toText(item.marriage)
-			certificationOnly.value = item.certificationOnly == true
+			// Q20 未上线：不恢复旧历史里的认证开关值，避免解禁前误传 certified_only。
+			certificationOnly.value = false
 		} else {
 			aiQuery.value = toText(item.aiQuery)
 			resetAiDraftState()
@@ -1098,8 +1313,19 @@
 		activeTrait.value = trait
 	}
 
-	onLoad((options: any) => { if (options != null && String(options.suggest ?? '') == '1') setTimeout(() => { onAiSuggestTap() }, 120) })
-	onShow(() => { loadOwnMbti(); loadHistory() })
+	onLoad((options: any) => {
+		if (options != null && String(options.suggest ?? '') == '1') setTimeout(async () => {
+			await loadAiCapabilities()
+			if (searchPageAlive && aiEnabled.value) onAiSuggestTap()
+		}, 120)
+	})
+	onShow(() => {
+		aiCapabilityTask = null
+		loadAiCapabilities()
+		loadMbtiOptions()
+		loadOwnMbti()
+		loadHistory()
+	})
 	onUnmounted(() => {
 		// 退出页面后作废请求上下文：建议/任务回调不再更新界面。
 		searchPageAlive = false

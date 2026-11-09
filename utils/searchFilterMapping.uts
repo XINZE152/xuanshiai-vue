@@ -15,8 +15,8 @@
 // 证据：pagesSub/userExtra/user/edit.uvue:328 educationOptions 数组下标即编号
 //（'高中及以下'=1 … '博士'=5）；后端 _AI_SYNC_EDU_MAP（app/services/profile.py:962）
 // 目标域 1..5 与之一致。SQL 语义为 `p.education_level >= :education_min`（及以上）。
-// 注意：GET /discovery/filter-options 返回的 1=博士…5=高中 与存储域方向相反，
-// 不可作为本映射来源（存量后端缺陷，已单独记录）。
+// 注意：filter-options 的 education_levels 已于 2026-09-13 修正为与存储域一致
+//（1=高中及以下 … 5=博士）；这里仍用档案编辑同源字典，避免依赖网络字典。
 // 搜索页的 '小学'/'初中'/'技校' 在存储域不可表达（编辑器最低档为'高中及以下'），
 // 返回 null → 调用方禁用这三个选项。
 export function educationMinFor(label: string): number | null {
@@ -34,8 +34,13 @@ export function educationMinFor(label: string): number | null {
 export function marriageStatusFor(label: string): number | null {
 	if (label == '未婚') return 1
 	if (label == '离异') return 2
+	if (label == '丧偶') return 3
 	return null
 }
+
+// ---- MBTI（mbti → 参数化 IN；空数组不传）----
+// 证据：DiscoveryFilters.mbti 为 16 型大写数组，最多 16 个；
+// 前端产品上限 5 个（search.uvue toggleTargetMbti）。
 
 // ---- 居住地（city_code → p.residence_city_code 精确等值）----
 // 证据：档案写入与展示使用前端 data/location.json 的 6 位码
@@ -71,6 +76,7 @@ export function incomeYuanFromWanPerYear(stopWan: number): number {
 // height 100–250）内，无静默截断。
 export function buildStructuredSearchParams(input: any): any {
 	const params: any = {}
+	if (Array.isArray(input.mbti) && input.mbti.length > 0) params.mbti = input.mbti.slice()
 	if (input.ageMin != null) params.age_min = Number(input.ageMin)
 	if (input.ageMax != null) params.age_max = Number(input.ageMax)
 	if (input.heightMin != null) params.height_min = Number(input.heightMin)
@@ -85,7 +91,12 @@ export function buildStructuredSearchParams(input: any): any {
 		const status = marriageStatusFor(input.marriage)
 		if (status != null) params.marriage_status = status
 	}
-	if (input.residenceLabel != '' && input.residenceLabel != '不限') {
+	if (input.residenceCityCode != null && ('' + input.residenceCityCode) != '') {
+		params.city_code = '' + input.residenceCityCode
+	} else if (input.residenceProvinceCode != null && ('' + input.residenceProvinceCode) != '') {
+		params.province_code = '' + input.residenceProvinceCode
+	} else if (input.residenceLabel != '' && input.residenceLabel != '不限') {
+		// 旧历史记录只存中文标签时仍可恢复。
 		const code = residenceCityCodeFor(input.residenceLabel)
 		if (code != null) params.city_code = code
 	}
